@@ -16,7 +16,7 @@
     "test:rules": "cd .. && npx -y firebase-tools emulators:exec --only firestore --project demo-courtier-intelligent \"node --test functions/test/firestore-rules.test.mjs\""
   },
   "dependencies": {
-    "firebase-admin": "^13.10.0",
+    "firebase-admin": "^14.5.0",
     "firebase-functions": "^7.4.0"
   },
   "devDependencies": {
