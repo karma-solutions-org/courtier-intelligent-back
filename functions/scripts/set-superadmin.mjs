@@ -26,7 +26,7 @@ const claims = { ...(user.customClaims ?? {}) };
 if (flag === '--remove') {
   if (claims.ci_role === 'superadmin') delete claims.ci_role;
 } else {
-  if (claims.ci_tenant_id) {
+  if (claims.ci_cabinet_id) {
     console.error('Ce compte est rattaché à un cabinet : utiliser un compte dédié au super-admin.');
     process.exit(1);
   }

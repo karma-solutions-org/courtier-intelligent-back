@@ -1,24 +1,24 @@
 import * as admin from "firebase-admin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { assertSignedIn, assertTenantAdmin, requireEmail, requireString, setTenantClaims } from "../core/auth.utils";
-import { CLAIM_TENANT_ID, INVITATION_TTL_DAYS, MAIL_COLLECTION, CALLABLE_OPTIONS, TENANT_ROLES, UserRole } from "../core/config";
+import { assertSignedIn, assertCabinetAdmin, requireEmail, requireString, setCabinetClaims } from "../core/auth.utils";
+import { CLAIM_CABINET_ID, INVITATION_TTL_DAYS, MAIL_COLLECTION, CALLABLE_OPTIONS, CABINET_ROLES, UserRole } from "../core/config";
 import { escapeHtml } from "../core/html.utils";
-import { invitationPath, invitationsPath, memberPath, tenantPath } from "../core/firestore-paths";
-import type { TenantRole } from "../shared/index.js";
+import { invitationPath, invitationsPath, memberPath, cabinetPath } from "../core/firestore-paths";
+import type { CabinetRole } from "../shared/index.js";
 
-function requireTenantRole(value: unknown): TenantRole {
-  if (!TENANT_ROLES.includes(value as TenantRole)) {
+function requireCabinetRole(value: unknown): CabinetRole {
+  if (!CABINET_ROLES.includes(value as CabinetRole)) {
     throw new HttpsError("invalid-argument", "Rôle invalide.");
   }
-  return value as TenantRole;
+  return value as CabinetRole;
 }
 
 /** Un cabinet doit toujours garder au moins un administrateur actif. */
-async function assertNotLastAdmin(tenantId: string, uid: string): Promise<void> {
+async function assertNotLastAdmin(cabinetId: string, uid: string): Promise<void> {
   const admins = await admin
     .firestore()
-    .collection(`${tenantPath(tenantId)}/members`)
+    .collection(`${cabinetPath(cabinetId)}/members`)
     .where("role", "==", "admin")
     .where("status", "==", "active")
     .get();
@@ -28,15 +28,15 @@ async function assertNotLastAdmin(tenantId: string, uid: string): Promise<void> 
 }
 
 /** L'admin invite un collaborateur : crée l'invitation et envoie le lien par email. */
-export const inviteMember = onCall(CALLABLE_OPTIONS, async request => {
-  const { tenantId, uid } = await assertTenantAdmin(request);
+export const inviter = onCall(CALLABLE_OPTIONS, async request => {
+  const { cabinetId, uid } = await assertCabinetAdmin(request);
   const email = requireEmail(request.data?.email);
-  const role = requireTenantRole(request.data?.role);
+  const role = requireCabinetRole(request.data?.role);
   const appUrl = requireString(request.data?.appUrl, "appUrl", 300);
 
   const db = admin.firestore();
   const pending = await db
-    .collection(invitationsPath(tenantId))
+    .collection(invitationsPath(cabinetId))
     .where("email", "==", email)
     .where("status", "==", "pending")
     .limit(1)
@@ -46,7 +46,7 @@ export const inviteMember = onCall(CALLABLE_OPTIONS, async request => {
   }
 
   const expiresAt = Timestamp.fromMillis(Date.now() + INVITATION_TTL_DAYS * 24 * 3600 * 1000);
-  const invitation = await db.collection(invitationsPath(tenantId)).add({
+  const invitation = await db.collection(invitationsPath(cabinetId)).add({
     email,
     role,
     status: "pending",
@@ -55,15 +55,15 @@ export const inviteMember = onCall(CALLABLE_OPTIONS, async request => {
     createdAt: FieldValue.serverTimestamp(),
   });
 
-  const tenant = await db.doc(tenantPath(tenantId)).get();
-  const tenantName = escapeHtml(String(tenant.get("name") ?? ""));
-  const link = `${appUrl.replace(/\/$/, "")}/invitation?cabinet=${tenantId}&invitation=${invitation.id}`;
+  const cabinet = await db.doc(cabinetPath(cabinetId)).get();
+  const cabinetName = escapeHtml(String(cabinet.get("name") ?? ""));
+  const link = `${appUrl.replace(/\/$/, "")}/invitation?cabinet=${cabinetId}&invitation=${invitation.id}`;
   await db.collection(MAIL_COLLECTION).add({
     to: email,
     message: {
-      subject: `Invitation à rejoindre ${tenantName} sur Courtier Intelligent`,
+      subject: `Invitation à rejoindre ${cabinetName} sur Courtier Intelligent`,
       html:
-        `<p>Vous êtes invité à rejoindre le cabinet <strong>${tenantName}</strong> sur Courtier Intelligent.</p>` +
+        `<p>Vous êtes invité à rejoindre le cabinet <strong>${cabinetName}</strong> sur Courtier Intelligent.</p>` +
         `<p><a href="${link}">Accepter l'invitation</a></p>` +
         `<p>Ce lien expire dans ${INVITATION_TTL_DAYS} jours.</p>`,
     },
@@ -73,22 +73,22 @@ export const inviteMember = onCall(CALLABLE_OPTIONS, async request => {
 });
 
 /** L'invité (connecté avec l'email invité) accepte : il devient membre du cabinet. */
-export const acceptInvitation = onCall(CALLABLE_OPTIONS, async request => {
+export const accepterInvitation = onCall(CALLABLE_OPTIONS, async request => {
   const uid = assertSignedIn(request);
-  if (request.auth?.token[CLAIM_TENANT_ID]) {
+  if (request.auth?.token[CLAIM_CABINET_ID]) {
     throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.");
   }
-  const tenantId = requireString(request.data?.tenantId, "cabinet");
+  const cabinetId = requireString(request.data?.cabinetId, "cabinet");
   const invitationId = requireString(request.data?.invitationId, "invitation");
   const user = await admin.auth().getUser(uid);
 
   const db = admin.firestore();
-  const invitationRef = db.doc(invitationPath(tenantId, invitationId));
+  const invitationRef = db.doc(invitationPath(cabinetId, invitationId));
 
   const role = await db.runTransaction(async tx => {
     const invitation = await tx.get(invitationRef);
-    const tenant = await tx.get(db.doc(tenantPath(tenantId)));
-    if (tenant.get("active") !== true) {
+    const cabinet = await tx.get(db.doc(cabinetPath(cabinetId)));
+    if (cabinet.get("active") !== true) {
       throw new HttpsError("permission-denied", "Ce cabinet est désactivé.");
     }
     if (!invitation.exists || invitation.get("status") !== "pending") {
@@ -101,7 +101,7 @@ export const acceptInvitation = onCall(CALLABLE_OPTIONS, async request => {
       throw new HttpsError("permission-denied", "Cette invitation a été envoyée à une autre adresse email.");
     }
     const invitedRole = invitation.get("role") as UserRole;
-    tx.set(db.doc(memberPath(tenantId, uid)), {
+    tx.set(db.doc(memberPath(cabinetId, uid)), {
       email: user.email,
       displayName: user.displayName ?? null,
       role: invitedRole,
@@ -112,56 +112,56 @@ export const acceptInvitation = onCall(CALLABLE_OPTIONS, async request => {
     return invitedRole;
   });
 
-  await setTenantClaims(uid, tenantId, role);
-  return { tenantId, role };
+  await setCabinetClaims(uid, cabinetId, role);
+  return { cabinetId, role };
 });
 
 /** L'admin change le rôle d'un membre. */
-export const setMemberRole = onCall(CALLABLE_OPTIONS, async request => {
-  const { tenantId } = await assertTenantAdmin(request);
+export const changerRole = onCall(CALLABLE_OPTIONS, async request => {
+  const { cabinetId } = await assertCabinetAdmin(request);
   const memberUid = requireString(request.data?.uid, "uid");
-  const role = requireTenantRole(request.data?.role);
+  const role = requireCabinetRole(request.data?.role);
 
-  const ref = admin.firestore().doc(memberPath(tenantId, memberUid));
+  const ref = admin.firestore().doc(memberPath(cabinetId, memberUid));
   const member = await ref.get();
   if (!member.exists) {
     throw new HttpsError("not-found", "Membre introuvable.");
   }
   if (member.get("role") === "admin" && role !== "admin") {
-    await assertNotLastAdmin(tenantId, memberUid);
+    await assertNotLastAdmin(cabinetId, memberUid);
   }
 
   await ref.update({ role, updatedAt: FieldValue.serverTimestamp() });
   if (member.get("status") === "active") {
-    await setTenantClaims(memberUid, tenantId, role);
+    await setCabinetClaims(memberUid, cabinetId, role);
   }
   return { success: true };
 });
 
 /** L'admin désactive ou réactive un membre. Un membre désactivé perd ses accès et ses sessions. */
-export const setMemberStatus = onCall(CALLABLE_OPTIONS, async request => {
-  const { tenantId } = await assertTenantAdmin(request);
+export const activerMembre = onCall(CALLABLE_OPTIONS, async request => {
+  const { cabinetId } = await assertCabinetAdmin(request);
   const memberUid = requireString(request.data?.uid, "uid");
   const status = request.data?.status;
   if (status !== "active" && status !== "disabled") {
     throw new HttpsError("invalid-argument", "Statut invalide.");
   }
 
-  const ref = admin.firestore().doc(memberPath(tenantId, memberUid));
+  const ref = admin.firestore().doc(memberPath(cabinetId, memberUid));
   const member = await ref.get();
   if (!member.exists) {
     throw new HttpsError("not-found", "Membre introuvable.");
   }
   if (status === "disabled" && member.get("role") === "admin") {
-    await assertNotLastAdmin(tenantId, memberUid);
+    await assertNotLastAdmin(cabinetId, memberUid);
   }
 
   await ref.update({ status, updatedAt: FieldValue.serverTimestamp() });
   if (status === "disabled") {
-    await setTenantClaims(memberUid, null, null);
+    await setCabinetClaims(memberUid, null, null);
     await admin.auth().revokeRefreshTokens(memberUid);
   } else {
-    await setTenantClaims(memberUid, tenantId, member.get("role") as UserRole);
+    await setCabinetClaims(memberUid, cabinetId, member.get("role") as UserRole);
   }
   return { success: true };
 });

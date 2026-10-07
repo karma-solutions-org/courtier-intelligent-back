@@ -1,4 +1,4 @@
-import type { TenantRole } from "../shared/index.js";
+import type { CabinetRole } from "../shared/index.js";
 
 /** Région des Cloud Functions : l'app Angular doit appeler la même. */
 export const REGION_ID = "europe-west3";
@@ -16,11 +16,11 @@ export const CALLABLE_OPTIONS = { region: REGION_ID, invoker: "public" } as cons
  * Le projet Firebase de test est partagé avec d'autres applications dont les règles
  * accordent des droits sur des claims génériques (`admin`, `role`…) : ne pas les renommer.
  */
-export const CLAIM_TENANT_ID = "ci_tenant_id";
+export const CLAIM_CABINET_ID = "ci_cabinet_id";
 export const CLAIM_ROLE = "ci_role";
 
 export type { UserRole } from "../shared/index.js";
-export const TENANT_ROLES: TenantRole[] = ["admin", "courtier"];
+export const CABINET_ROLES: CabinetRole[] = ["admin", "courtier"];
 
 /** Collection lue par l'extension Firebase « Trigger Email » de ce projet. */
 export const MAIL_COLLECTION = "MailCourtierIntelligent";

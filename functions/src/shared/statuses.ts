@@ -1,7 +1,7 @@
 // ⚠️ Copie générée par scripts/sync-shared.mjs — ne pas modifier ici.
-/** Rôles. Stockés dans les claims `ci_role` et dans tenants/{t}/members/{uid}.role. */
+/** Rôles. Stockés dans les claims `ci_role` et dans cabinets/{t}/members/{uid}.role. */
 export type UserRole = 'superadmin' | 'admin' | 'courtier';
-export type TenantRole = Exclude<UserRole, 'superadmin'>;
+export type CabinetRole = Exclude<UserRole, 'superadmin'>;
 
 export type MemberStatus = 'active' | 'disabled';
 export type InvitationStatus = 'pending' | 'accepted' | 'expired';

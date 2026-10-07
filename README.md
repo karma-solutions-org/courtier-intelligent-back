@@ -13,9 +13,8 @@ courtier-intelligent-back/
     └── src/
         ├── index.ts                         Export de toutes les functions
         ├── core/                            Config (région, claims), chemins Firestore, utilitaires d'auth
-        ├── tenants/                         createCabinet (inscription), adminCreateTenant (super-admin)
-        ├── members/members.callable.ts      inviteMember, acceptInvitation, setMemberRole, setMemberStatus
-        └── extension/create-extension-token.callable.ts
+        ├── cabinets/                        creerMonCabinet, creer, activer
+        └── equipe/equipe.callable.ts        inviter, accepterInvitation, changerRole, activerMembre
 ```
 
 ## Functions
@@ -24,19 +23,19 @@ Exportées par groupe dans `index.ts` (`export * as members from ...`) : le nom 
 
 | Function | Appelée par | Rôle |
 |---|---|---|
-| `tenants-createCabinet` | Utilisateur juste inscrit | Crée le cabinet, l'ajoute comme `admin`, pose ses claims |
-| `tenants-adminCreateTenant` | Super-admin | Crée un cabinet et son admin (compte créé si besoin, email avec lien pour choisir le mot de passe) |
-| `members-inviteMember` | Admin du cabinet | Crée une invitation (7 jours) et envoie l'email |
-| `members-acceptInvitation` | Invité connecté | Le rattache au cabinet avec le rôle prévu |
-| `members-setMemberRole` | Admin du cabinet | Change le rôle d'un membre (garde au moins un admin) |
-| `members-setMemberStatus` | Admin du cabinet | Désactive / réactive un membre (révoque ses sessions) |
-| `extension-createExtensionToken` | App Angular | Custom token pour connecter l'extension avec l'identité du courtier |
+| `cabinets-creerMonCabinet` | Utilisateur juste inscrit | Crée le cabinet, l'ajoute comme `admin`, pose ses claims |
+| `cabinets-creer` | Super-admin | Crée un cabinet et son admin (compte créé si besoin, email avec lien pour choisir le mot de passe) |
+| `cabinets-activer` | Super-admin | Active / désactive un cabinet (désactivé : données bloquées, membres déconnectés) |
+| `equipe-inviter` | Admin du cabinet | Crée une invitation (7 jours) et envoie l'email |
+| `equipe-accepterInvitation` | Invité connecté | Le rattache au cabinet avec le rôle prévu |
+| `equipe-changerRole` | Admin du cabinet | Change le rôle d'un membre (garde au moins un admin) |
+| `equipe-activerMembre` | Admin du cabinet | Désactive / réactive un membre (révoque ses sessions) |
 
 Région : **europe-west3** (le front appelle la même).
 
 ## Claims
 
-Claims **préfixés `ci_`** : `ci_tenant_id`, `ci_role` (`admin` | `courtier` | `superadmin`).
+Claims **préfixés `ci_`** : `ci_cabinet_id`, `ci_role` (`admin` | `courtier` | `superadmin`).
 Le projet de test est partagé avec d'autres applications dont les règles donnent des droits sur des claims génériques (`admin`, `role`) : ne pas les renommer. Les claims existants des autres applications sont conservés.
 
 ## ⚠️ Projet Firebase partagé
@@ -46,7 +45,6 @@ Le projet de test est partagé avec d'autres applications dont les règles donne
 - Déployer **uniquement les functions** : `npm --prefix functions run deploy` (codebase `courtier-intelligent`).
 - **Ne jamais lancer `firebase deploy` sans `--only`** : les règles Firestore/Storage de ce repo remplaceraient celles des autres applications. Elles servent aux emulators.
 - Les emails partent via la collection `MailCourtierIntelligent` : une instance de l'extension Firebase *Trigger Email* doit écouter cette collection.
-- `createExtensionToken` nécessite le rôle **Service Account Token Creator** sur le compte de service des Functions.
 
 ## Super-admin
 

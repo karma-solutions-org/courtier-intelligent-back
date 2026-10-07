@@ -1,11 +1,11 @@
 import * as admin from "firebase-admin";
 import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
-import { CLAIM_ROLE, CLAIM_TENANT_ID, UserRole } from "./config";
-import { memberPath, tenantPath } from "./firestore-paths";
+import { CLAIM_ROLE, CLAIM_CABINET_ID, UserRole } from "./config";
+import { memberPath, cabinetPath } from "./firestore-paths";
 
 export interface Membership {
   uid: string;
-  tenantId: string;
+  cabinetId: string;
   role: UserRole;
 }
 
@@ -32,24 +32,24 @@ export function assertSuperAdmin(request: CallableRequest): string {
  */
 export async function getActiveMembership(request: CallableRequest): Promise<Membership> {
   const uid = assertSignedIn(request);
-  const tenantId = request.auth?.token[CLAIM_TENANT_ID] as string | undefined;
-  if (!tenantId) {
+  const cabinetId = request.auth?.token[CLAIM_CABINET_ID] as string | undefined;
+  if (!cabinetId) {
     throw new HttpsError("failed-precondition", "Ce compte n'est rattaché à aucun cabinet.");
   }
-  const [tenant, member] = await Promise.all([
-    admin.firestore().doc(tenantPath(tenantId)).get(),
-    admin.firestore().doc(memberPath(tenantId, uid)).get(),
+  const [cabinet, member] = await Promise.all([
+    admin.firestore().doc(cabinetPath(cabinetId)).get(),
+    admin.firestore().doc(memberPath(cabinetId, uid)).get(),
   ]);
-  if (tenant.get("active") !== true) {
+  if (cabinet.get("active") !== true) {
     throw new HttpsError("permission-denied", "Ce cabinet est désactivé.");
   }
   if (!member.exists || member.get("status") !== "active") {
     throw new HttpsError("permission-denied", "Accès au cabinet refusé.");
   }
-  return { uid, tenantId, role: member.get("role") as UserRole };
+  return { uid, cabinetId, role: member.get("role") as UserRole };
 }
 
-export async function assertTenantAdmin(request: CallableRequest): Promise<Membership> {
+export async function assertCabinetAdmin(request: CallableRequest): Promise<Membership> {
   const membership = await getActiveMembership(request);
   if (membership.role !== "admin") {
     throw new HttpsError("permission-denied", "Réservé aux administrateurs du cabinet.");
@@ -58,14 +58,14 @@ export async function assertTenantAdmin(request: CallableRequest): Promise<Membe
 }
 
 /** Pose les claims Courtier Intelligent sans écraser ceux des autres applications du projet partagé. */
-export async function setTenantClaims(uid: string, tenantId: string | null, role: UserRole | null): Promise<void> {
+export async function setCabinetClaims(uid: string, cabinetId: string | null, role: UserRole | null): Promise<void> {
   const user = await admin.auth().getUser(uid);
   const claims: Record<string, unknown> = { ...(user.customClaims ?? {}) };
-  if (tenantId && role) {
-    claims[CLAIM_TENANT_ID] = tenantId;
+  if (cabinetId && role) {
+    claims[CLAIM_CABINET_ID] = cabinetId;
     claims[CLAIM_ROLE] = role;
   } else {
-    delete claims[CLAIM_TENANT_ID];
+    delete claims[CLAIM_CABINET_ID];
     delete claims[CLAIM_ROLE];
   }
   await admin.auth().setCustomUserClaims(uid, claims);

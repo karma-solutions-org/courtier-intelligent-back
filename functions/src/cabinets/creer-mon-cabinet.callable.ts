@@ -1,9 +1,9 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { assertSignedIn, requireString, setTenantClaims } from "../core/auth.utils";
-import { CLAIM_TENANT_ID, CALLABLE_OPTIONS } from "../core/config";
-import { memberPath, tenantPath } from "../core/firestore-paths";
+import { assertSignedIn, requireString, setCabinetClaims } from "../core/auth.utils";
+import { CLAIM_CABINET_ID, CALLABLE_OPTIONS } from "../core/config";
+import { memberPath, cabinetPath } from "../core/firestore-paths";
 
 /**
  * Inscription d'un nouveau cabinet : appelée juste après la création du compte.
@@ -11,9 +11,9 @@ import { memberPath, tenantPath } from "../core/firestore-paths";
  * Ne peut s'exécuter qu'une fois par compte : un utilisateur déjà rattaché
  * (ou invité dans un autre cabinet) ne peut pas s'en créer un nouveau.
  */
-export const createCabinet = onCall(CALLABLE_OPTIONS, async request => {
+export const creerMonCabinet = onCall(CALLABLE_OPTIONS, async request => {
   const uid = assertSignedIn(request);
-  if (request.auth?.token[CLAIM_TENANT_ID]) {
+  if (request.auth?.token[CLAIM_CABINET_ID]) {
     throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.");
   }
 
@@ -22,11 +22,11 @@ export const createCabinet = onCall(CALLABLE_OPTIONS, async request => {
   const user = await admin.auth().getUser(uid);
 
   const db = admin.firestore();
-  const tenantRef = db.collection("tenants").doc();
-  const tenantId = tenantRef.id;
+  const cabinetRef = db.collection("cabinets").doc();
+  const cabinetId = cabinetRef.id;
 
   await db.runTransaction(async tx => {
-    tx.set(db.doc(tenantPath(tenantId)), {
+    tx.set(db.doc(cabinetPath(cabinetId)), {
       name,
       orias,
       active: true,
@@ -35,7 +35,7 @@ export const createCabinet = onCall(CALLABLE_OPTIONS, async request => {
       enabledProducts: [],
       createdAt: FieldValue.serverTimestamp(),
     });
-    tx.set(db.doc(memberPath(tenantId, uid)), {
+    tx.set(db.doc(memberPath(cabinetId, uid)), {
       email: user.email ?? null,
       displayName: user.displayName ?? null,
       role: "admin",
@@ -44,6 +44,6 @@ export const createCabinet = onCall(CALLABLE_OPTIONS, async request => {
     });
   });
 
-  await setTenantClaims(uid, tenantId, "admin");
-  return { tenantId };
+  await setCabinetClaims(uid, cabinetId, "admin");
+  return { cabinetId };
 });

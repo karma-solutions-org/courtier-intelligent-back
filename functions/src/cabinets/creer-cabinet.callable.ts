@@ -1,17 +1,17 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { assertSuperAdmin, requireEmail, requireString, setTenantClaims } from "../core/auth.utils";
-import { CLAIM_TENANT_ID, MAIL_COLLECTION, CALLABLE_OPTIONS } from "../core/config";
+import { assertSuperAdmin, requireEmail, requireString, setCabinetClaims } from "../core/auth.utils";
+import { CLAIM_CABINET_ID, MAIL_COLLECTION, CALLABLE_OPTIONS } from "../core/config";
 import { escapeHtml } from "../core/html.utils";
-import { memberPath, tenantPath } from "../core/firestore-paths";
+import { memberPath, cabinetPath } from "../core/firestore-paths";
 
 /**
  * Le super-admin crée un cabinet et son administrateur.
  * Si aucun compte n'existe pour l'email, il est créé sans mot de passe et l'admin
  * reçoit un lien pour choisir le sien. Un compte déjà rattaché à un cabinet est refusé.
  */
-export const adminCreateTenant = onCall(CALLABLE_OPTIONS, async request => {
+export const creer = onCall(CALLABLE_OPTIONS, async request => {
   const callerUid = assertSuperAdmin(request);
   const name = requireString(request.data?.name, "nom du cabinet", 120);
   const orias = typeof request.data?.orias === "string" ? request.data.orias.trim().substring(0, 20) : null;
@@ -24,7 +24,7 @@ export const adminCreateTenant = onCall(CALLABLE_OPTIONS, async request => {
   let isNewAccount = false;
   try {
     adminUser = await admin.auth().getUserByEmail(adminEmail);
-    if (adminUser.customClaims?.[CLAIM_TENANT_ID]) {
+    if (adminUser.customClaims?.[CLAIM_CABINET_ID]) {
       throw new HttpsError("already-exists", "Ce compte est déjà rattaché à un cabinet.");
     }
   } catch (error) {
@@ -34,11 +34,11 @@ export const adminCreateTenant = onCall(CALLABLE_OPTIONS, async request => {
   }
 
   const db = admin.firestore();
-  const tenantRef = db.collection("tenants").doc();
-  const tenantId = tenantRef.id;
+  const cabinetRef = db.collection("cabinets").doc();
+  const cabinetId = cabinetRef.id;
 
   await db.runTransaction(async tx => {
-    tx.set(db.doc(tenantPath(tenantId)), {
+    tx.set(db.doc(cabinetPath(cabinetId)), {
       name,
       orias,
       active: true,
@@ -48,7 +48,7 @@ export const adminCreateTenant = onCall(CALLABLE_OPTIONS, async request => {
       enabledProducts: [],
       createdAt: FieldValue.serverTimestamp(),
     });
-    tx.set(db.doc(memberPath(tenantId, adminUser.uid)), {
+    tx.set(db.doc(memberPath(cabinetId, adminUser.uid)), {
       email: adminEmail,
       displayName: adminUser.displayName ?? adminName,
       role: "admin",
@@ -57,7 +57,7 @@ export const adminCreateTenant = onCall(CALLABLE_OPTIONS, async request => {
     });
   });
 
-  await setTenantClaims(adminUser.uid, tenantId, "admin");
+  await setCabinetClaims(adminUser.uid, cabinetId, "admin");
 
   // Email d'accueil : lien pour choisir son mot de passe si le compte vient d'être créé.
   const link = isNewAccount
@@ -74,5 +74,5 @@ export const adminCreateTenant = onCall(CALLABLE_OPTIONS, async request => {
     },
   });
 
-  return { tenantId, adminUid: adminUser.uid, isNewAccount };
+  return { cabinetId, adminUid: adminUser.uid, isNewAccount };
 });
