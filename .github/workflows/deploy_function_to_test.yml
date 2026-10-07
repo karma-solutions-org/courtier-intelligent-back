@@ -61,7 +61,7 @@ jobs:
           project_id: aibs-partenaire-testing
 
       - name: Deploy
-        run: npx --yes "firebase-tools@$FIREBASE_TOOLS_VERSION" deploy --project aibs-partenaire-testing --only "functions:$FUNCTION_NAME" --non-interactive
+        run: npx --yes "firebase-tools@$FIREBASE_TOOLS_VERSION" deploy --project aibs-partenaire-testing --only "functions:courtier-intelligent:$FUNCTION_NAME" --non-interactive
 
       # Redeploying a function resets its Cloud Run VPC config, so re-apply the
       # shared VPC if (and only if) the deployed function is in the manifest.
