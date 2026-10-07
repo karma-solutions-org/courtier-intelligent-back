@@ -1,0 +1,9 @@
+node_modules/
+functions/lib/
+*.log
+firebase-debug.*.log
+.firebase/
+.env
+.env.*.local
+*.local
+google-application-credentials.json

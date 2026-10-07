@@ -1,0 +1,26 @@
+rules_version = '2';
+
+// ⚠️ Même avertissement que firestore.rules : projet de test partagé, ne pas déployer seules.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function inActiveTenant(tenantId) {
+      return request.auth != null
+        && request.auth.token.ci_tenant_id == tenantId
+        && firestore.get(/databases/(default)/documents/tenants/$(tenantId)).data.active == true;
+    }
+
+    // Logo du cabinet : lisible par ses membres, modifiable par ses admins (image ≤ 2 Mo).
+    match /tenants/{tenantId}/logo/{fileName} {
+      allow read: if inActiveTenant(tenantId);
+      allow write: if inActiveTenant(tenantId)
+        && request.auth.token.ci_role == 'admin'
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Autres fichiers du cabinet (documents des dossiers, devis…).
+    match /tenants/{tenantId}/{allPaths=**} {
+      allow read, write: if inActiveTenant(tenantId);
+    }
+  }
+}

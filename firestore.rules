@@ -1,0 +1,84 @@
+rules_version = '2';
+
+// Règles de Courtier Intelligent.
+// ⚠️ Le projet de test aibs-partenaire-testing est PARTAGÉ avec aibs-partenaire et compli-scan :
+// ces règles servent aux emulators. Ne jamais les déployer seules sur ce projet
+// (elles remplaceraient celles des autres applications) — voir README.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Claims préfixés « ci_ » pour ne jamais hériter des droits des autres applications.
+    function signedIn() { return request.auth != null; }
+    // Un cabinet désactivé par le super-admin bloque toutes ses données.
+    function tenantActive(tenantId) {
+      return get(/databases/$(database)/documents/tenants/$(tenantId)).data.active == true;
+    }
+    function inTenant(tenantId) {
+      return signedIn() && request.auth.token.ci_tenant_id == tenantId && tenantActive(tenantId);
+    }
+    function hasRole(roles) { return signedIn() && request.auth.token.ci_role in roles; }
+    function isSuperAdmin() { return hasRole(['superadmin']); }
+
+    // ── Catalogue global (géré par le super-admin) ─────────────────────────
+    match /products/{productId} {
+      allow read: if signedIn();
+      allow write: if isSuperAdmin();
+    }
+    match /insurers/{insurerId}/{document=**} {
+      allow read: if signedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    // ── Données d'un cabinet ──────────────────────────────────────────────
+    match /tenants/{tenantId} {
+      allow read: if inTenant(tenantId) || isSuperAdmin();
+      // L'admin ne modifie que les informations du cabinet (jamais active, ownerUid…).
+      allow update: if inTenant(tenantId) && hasRole(['admin'])
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'orias', 'address', 'phone', 'email', 'logoPath']);
+
+      // Membres et invitations : écrits uniquement par les Cloud Functions.
+      match /members/{uid} {
+        allow read: if inTenant(tenantId) || isSuperAdmin();
+        allow write: if false;
+      }
+      match /invitations/{invitationId} {
+        allow read: if inTenant(tenantId) && hasRole(['admin']);
+        allow write: if false;
+      }
+
+      // Compteurs (référence des dossiers) : écrits uniquement par les Cloud Functions.
+      match /counters/{counterId} {
+        allow read: if inTenant(tenantId);
+        allow write: if false;
+      }
+
+      // ⚠️ Pas de joker {document=**} ici : il s'appliquerait aussi au cabinet,
+      // aux membres et à l'historique, et Firestore autorise dès qu'UNE règle autorise.
+      match /assures/{assureId} {
+        allow read: if inTenant(tenantId) || isSuperAdmin();
+        allow write: if inTenant(tenantId) && hasRole(['admin', 'courtier']);
+      }
+
+      match /dossiers/{dossierId} {
+        allow read: if inTenant(tenantId) || isSuperAdmin();
+        allow write: if inTenant(tenantId) && hasRole(['admin', 'courtier']);
+
+        // Jobs de tarification, offres, documents.
+        match /{collection}/{docId} {
+          allow read: if (inTenant(tenantId) || isSuperAdmin()) && collection in ['quoteJobs', 'offers', 'documents'];
+          allow write: if inTenant(tenantId) && hasRole(['admin', 'courtier'])
+            && collection in ['quoteJobs', 'offers', 'documents'];
+        }
+
+        // Historique non modifiable.
+        match /events/{eventId} {
+          allow read: if inTenant(tenantId) || isSuperAdmin();
+          allow create: if inTenant(tenantId) && hasRole(['admin', 'courtier']);
+          allow update, delete: if false;
+        }
+      }
+    }
+  }
+}

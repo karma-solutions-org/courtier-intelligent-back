@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "aibs-partenaire-testing",
+    "test": "aibs-partenaire-testing"
+  }
+}
