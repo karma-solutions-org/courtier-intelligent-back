@@ -2,7 +2,7 @@ import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { assertSignedIn, requireString, setTenantClaims } from "../core/auth.utils";
-import { CLAIM_TENANT_ID, REGION_ID } from "../core/config";
+import { CLAIM_TENANT_ID, CALLABLE_OPTIONS } from "../core/config";
 import { memberPath, tenantPath } from "../core/firestore-paths";
 
 /**
@@ -11,7 +11,7 @@ import { memberPath, tenantPath } from "../core/firestore-paths";
  * Ne peut s'exécuter qu'une fois par compte : un utilisateur déjà rattaché
  * (ou invité dans un autre cabinet) ne peut pas s'en créer un nouveau.
  */
-export const createCabinet = onCall({ region: REGION_ID }, async request => {
+export const createCabinet = onCall(CALLABLE_OPTIONS, async request => {
   const uid = assertSignedIn(request);
   if (request.auth?.token[CLAIM_TENANT_ID]) {
     throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.");

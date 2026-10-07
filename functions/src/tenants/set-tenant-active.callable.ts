@@ -2,14 +2,14 @@ import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { assertSuperAdmin, requireString } from "../core/auth.utils";
-import { REGION_ID } from "../core/config";
+import { CALLABLE_OPTIONS } from "../core/config";
 import { tenantPath } from "../core/firestore-paths";
 
 /**
  * Le super-admin active ou désactive un cabinet.
  * Désactivé : les règles Firestore bloquent toutes ses données et ses membres sont déconnectés.
  */
-export const setTenantActive = onCall({ region: REGION_ID }, async request => {
+export const setTenantActive = onCall(CALLABLE_OPTIONS, async request => {
   const callerUid = assertSuperAdmin(request);
   const tenantId = requireString(request.data?.tenantId, "cabinet");
   const active = request.data?.active;

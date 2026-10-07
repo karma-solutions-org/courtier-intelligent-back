@@ -2,7 +2,7 @@ import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { assertSuperAdmin, requireEmail, requireString, setTenantClaims } from "../core/auth.utils";
-import { CLAIM_TENANT_ID, MAIL_COLLECTION, REGION_ID } from "../core/config";
+import { CLAIM_TENANT_ID, MAIL_COLLECTION, CALLABLE_OPTIONS } from "../core/config";
 import { escapeHtml } from "../core/html.utils";
 import { memberPath, tenantPath } from "../core/firestore-paths";
 
@@ -11,7 +11,7 @@ import { memberPath, tenantPath } from "../core/firestore-paths";
  * Si aucun compte n'existe pour l'email, il est créé sans mot de passe et l'admin
  * reçoit un lien pour choisir le sien. Un compte déjà rattaché à un cabinet est refusé.
  */
-export const adminCreateTenant = onCall({ region: REGION_ID }, async request => {
+export const adminCreateTenant = onCall(CALLABLE_OPTIONS, async request => {
   const callerUid = assertSuperAdmin(request);
   const name = requireString(request.data?.name, "nom du cabinet", 120);
   const orias = typeof request.data?.orias === "string" ? request.data.orias.trim().substring(0, 20) : null;

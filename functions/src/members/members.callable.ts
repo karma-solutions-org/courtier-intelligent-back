@@ -2,7 +2,7 @@ import * as admin from "firebase-admin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { assertSignedIn, assertTenantAdmin, requireEmail, requireString, setTenantClaims } from "../core/auth.utils";
-import { CLAIM_TENANT_ID, INVITATION_TTL_DAYS, MAIL_COLLECTION, REGION_ID, TENANT_ROLES, UserRole } from "../core/config";
+import { CLAIM_TENANT_ID, INVITATION_TTL_DAYS, MAIL_COLLECTION, CALLABLE_OPTIONS, TENANT_ROLES, UserRole } from "../core/config";
 import { escapeHtml } from "../core/html.utils";
 import { invitationPath, invitationsPath, memberPath, tenantPath } from "../core/firestore-paths";
 import type { TenantRole } from "../shared/index.js";
@@ -28,7 +28,7 @@ async function assertNotLastAdmin(tenantId: string, uid: string): Promise<void> 
 }
 
 /** L'admin invite un collaborateur : crée l'invitation et envoie le lien par email. */
-export const inviteMember = onCall({ region: REGION_ID }, async request => {
+export const inviteMember = onCall(CALLABLE_OPTIONS, async request => {
   const { tenantId, uid } = await assertTenantAdmin(request);
   const email = requireEmail(request.data?.email);
   const role = requireTenantRole(request.data?.role);
@@ -73,7 +73,7 @@ export const inviteMember = onCall({ region: REGION_ID }, async request => {
 });
 
 /** L'invité (connecté avec l'email invité) accepte : il devient membre du cabinet. */
-export const acceptInvitation = onCall({ region: REGION_ID }, async request => {
+export const acceptInvitation = onCall(CALLABLE_OPTIONS, async request => {
   const uid = assertSignedIn(request);
   if (request.auth?.token[CLAIM_TENANT_ID]) {
     throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.");
@@ -117,7 +117,7 @@ export const acceptInvitation = onCall({ region: REGION_ID }, async request => {
 });
 
 /** L'admin change le rôle d'un membre. */
-export const setMemberRole = onCall({ region: REGION_ID }, async request => {
+export const setMemberRole = onCall(CALLABLE_OPTIONS, async request => {
   const { tenantId } = await assertTenantAdmin(request);
   const memberUid = requireString(request.data?.uid, "uid");
   const role = requireTenantRole(request.data?.role);
@@ -139,7 +139,7 @@ export const setMemberRole = onCall({ region: REGION_ID }, async request => {
 });
 
 /** L'admin désactive ou réactive un membre. Un membre désactivé perd ses accès et ses sessions. */
-export const setMemberStatus = onCall({ region: REGION_ID }, async request => {
+export const setMemberStatus = onCall(CALLABLE_OPTIONS, async request => {
   const { tenantId } = await assertTenantAdmin(request);
   const memberUid = requireString(request.data?.uid, "uid");
   const status = request.data?.status;
