@@ -1,0 +1,6 @@
+lib/
+node_modules/
+coverage/
+package-lock.json
+# Copie générée depuis le repo front (scripts/sync-shared.mjs)
+src/shared/
