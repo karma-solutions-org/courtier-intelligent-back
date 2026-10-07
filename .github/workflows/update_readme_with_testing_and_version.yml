@@ -1,0 +1,72 @@
+name: Update README with Testing Coverage Badges and Version
+
+on:
+  push:
+    branches: [main]
+
+# Only the newest main commit's badges matter: a queued run is replaced by the
+# next one, while a running one finishes so it never stops mid-push.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  testing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.BOT_GITHUB_ACTION_TOKEN }}
+
+      - name: Set up project
+        uses: ./.github/actions/setup
+        with:
+          working-directory: functions
+
+      - name: Testing and Code Coverage Badges
+        working-directory: functions
+        run: |
+          npm run test:coverage-badge
+          mkdir -p coverage-badges
+          cp coverage/badge-*.svg coverage-badges/
+
+      - name: Update README Package Version badge
+        run: |
+          escape_string() {
+            local unescaped_text="$1"
+            local escaped_text=""
+
+            # Escape special characters for use in regular expressions
+            escaped_text=$(echo "$unescaped_text" | sed 's/\([][\/.]\)/\\\1/g')
+
+            echo "$escaped_text"
+          }
+          PACKAGE_VERSION=$(node -e "console.log(require('./functions/package.json').version)")
+          prefix_badge_url="[![NPM VERSION Badge](https://img.shields.io/badge/npm%20version-"
+          suffix_badge_url="-red)](https://github.com/karma-solutions-org/aibs-partenaire-back/blob/main/functions/package.json)"
+          new_badge_url=$prefix_badge_url$PACKAGE_VERSION$suffix_badge_url
+          file="README.md"
+          # Perform replacement
+          sed -i "s#$(escape_string "$prefix_badge_url").*#$(escape_string "$new_badge_url")#" "$file"
+
+      - name: Push changes to main
+        run: |
+          set -e
+          if [[ -z $(git status --porcelain) ]]; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898283+github-actions[bot]@users.noreply.github.com'
+          git add .
+          git commit -m "chore: Update README.md [skip actions]"
+          # Rebase onto anything that landed on main while the tests ran.
+          for attempt in 1 2 3; do
+            git pull --rebase origin main && git push origin main && exit 0
+            sleep $((attempt * 5))
+          done
+          exit 1

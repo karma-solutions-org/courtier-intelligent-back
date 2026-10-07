@@ -1,0 +1,33 @@
+name: Building
+
+on:
+  push:
+    branches:
+      - '**'
+
+# A newer push to a branch supersedes the running check; main keeps every run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  building:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ./functions
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up project
+        uses: ./.github/actions/setup
+        with:
+          working-directory: functions
+
+      - name: Building
+        run: npm run build

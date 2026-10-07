@@ -1,0 +1,82 @@
+name: Deploy Function to TEST
+
+on:
+  workflow_dispatch:
+    inputs:
+      function_name:
+        description: 'Name of the function to deploy'
+        required: true
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-to-firebase-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: testing
+    permissions:
+      contents: read
+      # Lets the job request a GitHub OIDC token for keyless Google Cloud auth.
+      id-token: write
+    defaults:
+      run:
+        working-directory: ./functions
+    # The input reaches the shell through the environment, never through
+    # `${{ }}` interpolation, so it cannot inject commands.
+    env:
+      FUNCTION_NAME: ${{ github.event.inputs.function_name }}
+      # Pinned here rather than in devDependencies: only the deploy jobs need the
+      # CLI, and its ~500 packages would otherwise slow every CI install.
+      FIREBASE_TOOLS_VERSION: 15.32.1
+
+    steps:
+      # After checkout: the job's default working directory, ./functions, only
+      # exists once the repository is checked out.
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Validate function name
+        run: |
+          if [[ ! "$FUNCTION_NAME" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::Invalid function name: only letters, digits, '_', '-' and '.' are allowed."
+            exit 1
+          fi
+
+      - name: Set up project
+        uses: ./.github/actions/setup
+        with:
+          working-directory: functions
+
+      # Keyless: exchanges the job's GitHub OIDC token for short-lived
+      # credentials of the test deploy service account. Only this repository's
+      # `testing` environment may impersonate it. Also authenticates gcloud for
+      # the VPC step below.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/244765868255/locations/global/workloadIdentityPools/github/providers/github-actions
+          service_account: github-action@aibs-partenaire-testing.iam.gserviceaccount.com
+          project_id: aibs-partenaire-testing
+
+      - name: Deploy
+        run: npx --yes "firebase-tools@$FIREBASE_TOOLS_VERSION" deploy --project aibs-partenaire-testing --only "functions:$FUNCTION_NAME" --non-interactive
+
+      # Redeploying a function resets its Cloud Run VPC config, so re-apply the
+      # shared VPC if (and only if) the deployed function is in the manifest.
+      - name: Apply shared VPC if the deployed function needs it
+        run: |
+          svc=$(echo "$FUNCTION_NAME" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+          if npm run --silent list-vpc | grep -qx "$svc"; then
+            echo "Applying shared VPC to $svc"
+            gcloud run services update "$svc" \
+              --region=europe-west3 \
+              --project=aibs-partenaire-testing \
+              --network=projects/shared-vpc-container/global/networks/shared-vpc \
+              --subnet=projects/shared-vpc-container/regions/europe-west3/subnetworks/shared-vpc-subnet \
+              --vpc-egress=all-traffic \
+              --quiet
+          else
+            echo "$svc is not a shared-VPC function; skipping VPC config."
+          fi

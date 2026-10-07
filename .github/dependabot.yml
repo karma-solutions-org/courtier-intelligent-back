@@ -1,0 +1,62 @@
+# Dependabot version updates.
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Updates are grouped and weekly on purpose, matching aibs-partenaire-web-and-desktop
+# and ngx-sg, where a daily, ungrouped setup piled up dozens of stale PRs. Grouping
+# keeps a version line (Firebase, the ESLint toolchain, the test stack) moving as a
+# single reviewable PR.
+#
+# Groups are declared per `applies-to`: a group only batches the update kind it
+# names, and security updates ignore `ignore` rules, so a pinned dependency is
+# still allowed through when it carries an advisory.
+
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/functions'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    ignore:
+      # firebase-functions-test 3.5.0 (latest) only accepts firebase-admin up to
+      # ^13, so a major bump fails `npm ci` with ERESOLVE. Drop this once a
+      # firebase-functions-test release supports the next major.
+      - dependency-name: 'firebase-admin'
+        update-types: ['version-update:semver-major']
+      # Moves with firebase-admin: admin 13 bundles storage 7 and admin 14
+      # storage 8, and the code mixes types from both (e.g. GetFilesResponse on
+      # getStorage().bucket()), so bumping storage alone fails to compile.
+      - dependency-name: '@google-cloud/storage'
+        update-types: ['version-update:semver-major']
+    groups:
+      firebase:
+        applies-to: version-updates
+        patterns: ['firebase-admin', 'firebase-functions', 'firebase-functions-test', 'firebase-tools', '@google-cloud/*']
+      linting:
+        applies-to: version-updates
+        patterns:
+          ['eslint', '@eslint/*', '@typescript-eslint/*', 'typescript-eslint', 'prettier', 'eslint-*', 'globals']
+      testing:
+        applies-to: version-updates
+        patterns: ['jest', 'ts-jest', '@types/jest', '@faker-js/faker', 'coverage-badges-cli']
+      remaining:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+      security:
+        applies-to: security-updates
+        patterns: ['*']
+
+  - package-ecosystem: 'github-actions'
+    # Workflows plus the local composite actions they call.
+    directories: ['/', '/.github/actions/*']
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        applies-to: version-updates
+        patterns: ['*']
+      security:
+        applies-to: security-updates
+        patterns: ['*']
