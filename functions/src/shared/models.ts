@@ -20,6 +20,8 @@ export interface Cabinet {
   email?: string | null;
   logoPath?: string | null;
   active: boolean;
+  /** Nombre d'utilisateurs autorisés (admin compris) selon l'offre : écrit uniquement côté serveur. */
+  maxUtilisateurs: number;
   ownerUid: string;
   enabledInsurers: string[];
   enabledProducts: string[];
@@ -32,7 +34,23 @@ export interface Member {
   displayName: string | null;
   role: CabinetRole;
   status: MemberStatus;
+  /** Session de l'appareil connecté : un seul appareil à la fois. */
+  session?: MemberSession | null;
   createdAt?: TimestampLike;
+}
+
+export interface MemberSession {
+  /** Identifiant de l'appareil (informatif). */
+  id: string;
+  /**
+   * Heure de connexion (secondes) du token qui a ouvert la session : seul ce token est accepté
+   * par les règles Firestore et les functions (un autre appareil a une autre valeur).
+   */
+  authTime: number;
+  appareil: string | null;
+  ouverteLe?: TimestampLike;
+  /** Dernier signal de vie de l'appareil. */
+  lastSeen?: TimestampLike;
 }
 
 export interface Invitation {

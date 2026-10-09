@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
-import { CLAIM_ROLE, CLAIM_CABINET_ID, UserRole } from "./config";
-import { memberPath, cabinetPath } from "./firestore-paths";
+import { CLAIM_CABINET_ID, CLAIM_ROLE, LEGACY_CLAIM_SESSION_ID, UserRole } from "./config";
+import { cabinetPath, memberPath } from "./firestore-paths";
 
 export interface Membership {
   uid: string;
@@ -16,21 +16,31 @@ export function assertSignedIn(request: CallableRequest): string {
   return request.auth.uid;
 }
 
-/** Réservé au super-admin de la plateforme (claim posé par scripts/set-superadmin.mjs). */
-export function assertSuperAdmin(request: CallableRequest): string {
-  const uid = assertSignedIn(request);
-  if (request.auth?.token[CLAIM_ROLE] !== "superadmin") {
-    throw new HttpsError("permission-denied", "Réservé au super-admin.");
+/**
+ * Heure de connexion (en secondes) de l'appareil qui appelle, lue dans son token signé par Firebase.
+ * Elle est propre à chaque connexion par mot de passe : un autre appareil, même avec le même compte,
+ * a une autre valeur. C'est elle qui identifie la session, pas un claim (commun à tout le compte).
+ */
+export function tokenAuthTime(request: CallableRequest): number {
+  const authTime = request.auth?.token.auth_time;
+  if (typeof authTime !== "number") {
+    throw new HttpsError("unauthenticated", "Authentification requise.");
   }
-  return uid;
+  return authTime;
 }
 
 /**
  * Résout le cabinet et le rôle de l'appelant.
  * La source de vérité est Firestore, pas le token : un token reste valide ~1 h,
  * il peut donc encore porter un rôle retiré entre-temps.
+ *
+ * Par défaut, exige aussi que l'appelant soit l'appareil de la session en cours :
+ * les functions appliquent la même règle « un seul appareil » que Firestore.
  */
-export async function getActiveMembership(request: CallableRequest): Promise<Membership> {
+export async function getActiveMembership(
+  request: CallableRequest,
+  { requireSession = true }: { requireSession?: boolean } = {},
+): Promise<Membership> {
   const uid = assertSignedIn(request);
   const cabinetId = request.auth?.token[CLAIM_CABINET_ID] as string | undefined;
   if (!cabinetId) {
@@ -45,6 +55,9 @@ export async function getActiveMembership(request: CallableRequest): Promise<Mem
   }
   if (!member.exists || member.get("status") !== "active") {
     throw new HttpsError("permission-denied", "Accès au cabinet refusé.");
+  }
+  if (requireSession && member.get("session.authTime") !== tokenAuthTime(request)) {
+    throw new HttpsError("permission-denied", "Session expirée ou ouverte sur un autre appareil. Reconnectez-vous.");
   }
   return { uid, cabinetId, role: member.get("role") as UserRole };
 }
@@ -61,6 +74,7 @@ export async function assertCabinetAdmin(request: CallableRequest): Promise<Memb
 export async function setCabinetClaims(uid: string, cabinetId: string | null, role: UserRole | null): Promise<void> {
   const user = await admin.auth().getUser(uid);
   const claims: Record<string, unknown> = { ...(user.customClaims ?? {}) };
+  delete claims[LEGACY_CLAIM_SESSION_ID];
   if (cabinetId && role) {
     claims[CLAIM_CABINET_ID] = cabinetId;
     claims[CLAIM_ROLE] = role;

@@ -1,10 +1,11 @@
 // ⚠️ Copie générée par scripts/sync-shared.mjs — ne pas modifier ici.
 /** Rôles. Stockés dans les claims `ci_role` et dans cabinets/{t}/members/{uid}.role. */
-export type UserRole = 'superadmin' | 'admin' | 'courtier';
-export type CabinetRole = Exclude<UserRole, 'superadmin'>;
+export type UserRole = 'admin' | 'courtier';
+/** Rôle d'un membre dans son cabinet (identique à UserRole : tout utilisateur appartient à un cabinet). */
+export type CabinetRole = UserRole;
 
 export type MemberStatus = 'active' | 'disabled';
-export type InvitationStatus = 'pending' | 'accepted' | 'expired';
+export type InvitationStatus = 'pending' | 'accepted' | 'expired' | 'cancelled';
 
 /** Cycle de vie d'un dossier. */
 export const DOSSIER_STATUSES = [

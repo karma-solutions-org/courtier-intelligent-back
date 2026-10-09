@@ -4,6 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { assertSignedIn, assertCabinetAdmin, requireEmail, requireString, setCabinetClaims } from "../core/auth.utils";
 import { CLAIM_CABINET_ID, INVITATION_TTL_DAYS, MAIL_COLLECTION, CALLABLE_OPTIONS, CABINET_ROLES, UserRole } from "../core/config";
 import { escapeHtml } from "../core/html.utils";
+import { assertSeatAvailable, getSeatUsage, lockSeats } from "../core/seats.utils";
 import { invitationPath, invitationsPath, memberPath, cabinetPath } from "../core/firestore-paths";
 import type { CabinetRole } from "../shared/index.js";
 
@@ -35,24 +36,29 @@ export const inviter = onCall(CALLABLE_OPTIONS, async request => {
   const appUrl = requireString(request.data?.appUrl, "appUrl", 300);
 
   const db = admin.firestore();
-  const pending = await db
-    .collection(invitationsPath(cabinetId))
-    .where("email", "==", email)
-    .where("status", "==", "pending")
-    .limit(1)
-    .get();
-  if (!pending.empty) {
-    throw new HttpsError("already-exists", "Une invitation est déjà en attente pour cet email.");
-  }
-
+  const invitation = db.collection(invitationsPath(cabinetId)).doc();
   const expiresAt = Timestamp.fromMillis(Date.now() + INVITATION_TTL_DAYS * 24 * 3600 * 1000);
-  const invitation = await db.collection(invitationsPath(cabinetId)).add({
-    email,
-    role,
-    status: "pending",
-    invitedBy: uid,
-    expiresAt,
-    createdAt: FieldValue.serverTimestamp(),
+
+  // Comptage des sièges et création de l'invitation dans la même transaction.
+  await db.runTransaction(async tx => {
+    const pending = await tx.get(
+      db.collection(invitationsPath(cabinetId)).where("email", "==", email).where("status", "==", "pending").limit(1),
+    );
+    if (!pending.empty) {
+      throw new HttpsError("already-exists", "Une invitation est déjà en attente pour cet email.");
+    }
+    // Une invitation réserve une place : membres actifs + invitations en attente + celle-ci.
+    const usage = await getSeatUsage(cabinetId, tx);
+    assertSeatAvailable(usage, usage.activeMembers + usage.pendingInvitations + 1);
+    lockSeats(tx, cabinetId);
+    tx.create(invitation, {
+      email,
+      role,
+      status: "pending",
+      invitedBy: uid,
+      expiresAt,
+      createdAt: FieldValue.serverTimestamp(),
+    });
   });
 
   const cabinet = await db.doc(cabinetPath(cabinetId)).get();
@@ -88,6 +94,10 @@ export const accepterInvitation = onCall(CALLABLE_OPTIONS, async request => {
   const role = await db.runTransaction(async tx => {
     const invitation = await tx.get(invitationRef);
     const cabinet = await tx.get(db.doc(cabinetPath(cabinetId)));
+    // L'invitation occupait déjà une place : il suffit qu'une place de membre actif reste libre.
+    const usage = await getSeatUsage(cabinetId, tx);
+    assertSeatAvailable(usage, usage.activeMembers + 1);
+    lockSeats(tx, cabinetId);
     if (cabinet.get("active") !== true) {
       throw new HttpsError("permission-denied", "Ce cabinet est désactivé.");
     }
@@ -147,7 +157,8 @@ export const activerMembre = onCall(CALLABLE_OPTIONS, async request => {
     throw new HttpsError("invalid-argument", "Statut invalide.");
   }
 
-  const ref = admin.firestore().doc(memberPath(cabinetId, memberUid));
+  const db = admin.firestore();
+  const ref = db.doc(memberPath(cabinetId, memberUid));
   const member = await ref.get();
   if (!member.exists) {
     throw new HttpsError("not-found", "Membre introuvable.");
@@ -156,12 +167,38 @@ export const activerMembre = onCall(CALLABLE_OPTIONS, async request => {
     await assertNotLastAdmin(cabinetId, memberUid);
   }
 
-  await ref.update({ status, updatedAt: FieldValue.serverTimestamp() });
+  await db.runTransaction(async tx => {
+    // Réactivation : il faut une place libre, comptée dans la même transaction que l'écriture.
+    if (status === "active" && member.get("status") !== "active") {
+      const usage = await getSeatUsage(cabinetId, tx);
+      assertSeatAvailable(usage, usage.activeMembers + usage.pendingInvitations + 1);
+      lockSeats(tx, cabinetId);
+    }
+    tx.update(ref, {
+      status,
+      updatedAt: FieldValue.serverTimestamp(),
+      // Désactivation : la session de son appareil est supprimée, il perd l'accès immédiatement.
+      ...(status === "disabled" ? { session: FieldValue.delete() } : {}),
+    });
+  });
   if (status === "disabled") {
     await setCabinetClaims(memberUid, null, null);
     await admin.auth().revokeRefreshTokens(memberUid);
   } else {
     await setCabinetClaims(memberUid, cabinetId, member.get("role") as UserRole);
   }
+  return { success: true };
+});
+
+/** L'admin annule une invitation en attente : la place réservée est libérée. */
+export const annulerInvitation = onCall(CALLABLE_OPTIONS, async request => {
+  const { cabinetId } = await assertCabinetAdmin(request);
+  const invitationId = requireString(request.data?.invitationId, "invitation");
+  const ref = admin.firestore().doc(invitationPath(cabinetId, invitationId));
+  const invitation = await ref.get();
+  if (!invitation.exists || invitation.get("status") !== "pending") {
+    throw new HttpsError("not-found", "Invitation introuvable ou déjà utilisée.");
+  }
+  await ref.update({ status: "cancelled", cancelledAt: FieldValue.serverTimestamp() });
   return { success: true };
 });

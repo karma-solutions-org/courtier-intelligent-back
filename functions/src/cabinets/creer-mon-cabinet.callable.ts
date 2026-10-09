@@ -2,7 +2,7 @@ import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { assertSignedIn, requireString, setCabinetClaims } from "../core/auth.utils";
-import { CLAIM_CABINET_ID, CALLABLE_OPTIONS } from "../core/config";
+import { CALLABLE_OPTIONS, CLAIM_CABINET_ID, DEFAULT_MAX_UTILISATEURS } from "../core/config";
 import { memberPath, cabinetPath } from "../core/firestore-paths";
 
 /**
@@ -30,6 +30,8 @@ export const creerMonCabinet = onCall(CALLABLE_OPTIONS, async request => {
       name,
       orias,
       active: true,
+      // Limite d'utilisateurs (admin compris) : modifiable uniquement côté serveur.
+      maxUtilisateurs: DEFAULT_MAX_UTILISATEURS,
       ownerUid: uid,
       enabledInsurers: [],
       enabledProducts: [],

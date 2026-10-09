@@ -3,10 +3,13 @@ rules_version = '2';
 // ⚠️ Même avertissement que firestore.rules : projet de test partagé, ne pas déployer seules.
 service firebase.storage {
   match /b/{bucket}/o {
+    // Membre d'un cabinet actif, depuis l'appareil de sa session en cours.
     function inActiveCabinet(cabinetId) {
       return request.auth != null
         && request.auth.token.ci_cabinet_id == cabinetId
-        && firestore.get(/databases/(default)/documents/cabinets/$(cabinetId)).data.active == true;
+        && firestore.get(/databases/(default)/documents/cabinets/$(cabinetId)).data.active == true
+        && firestore.get(/databases/(default)/documents/cabinets/$(cabinetId)/members/$(request.auth.uid)).data.session.authTime
+          == request.auth.token.auth_time;
     }
 
     // Logo du cabinet : lisible par ses membres, modifiable par ses admins (image ≤ 2 Mo).

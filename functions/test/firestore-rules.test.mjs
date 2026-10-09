@@ -1,22 +1,37 @@
-// Tests des règles Firestore dans l'emulator : isolation des cabinets et droits par rôle.
-// Lancer avec : npm run test:rules
+// Tests des règles Firestore dans l'emulator : isolation des cabinets, rôles, session unique.
+// Lancer avec : npm run test
 import { after, before, beforeEach, describe, it } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
 
-const rulesPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../firestore.rules');
+const rulesPath = process.env.RULES_PATH ? path.resolve(process.env.RULES_PATH) : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../firestore.rules');
 let env;
 
-// Identités de test (claims préfixés ci_, comme en production).
-const adminA = () => env.authenticatedContext('admin-a', { ci_cabinet_id: 'A', ci_role: 'admin' }).firestore();
-const courtierA = () => env.authenticatedContext('courtier-a', { ci_cabinet_id: 'A', ci_role: 'courtier' }).firestore();
-const adminB = () => env.authenticatedContext('admin-b', { ci_cabinet_id: 'B', ci_role: 'admin' }).firestore();
+// Chaque membre a une session ouverte, liée à l'heure de connexion (auth_time) de son appareil.
+const MEMBERS = {
+  'admin-a': { cabinet: 'A', role: 'admin', authTime: 1_790_000_001 },
+  'courtier-a': { cabinet: 'A', role: 'courtier', authTime: 1_790_000_002 },
+  'admin-b': { cabinet: 'B', role: 'admin', authTime: 1_790_000_003 },
+};
+/** Heure de connexion d'un autre appareil qui se connecte avec le même compte. */
+const OTHER_DEVICE_AUTH_TIME = 1_790_009_999;
+
+/**
+ * Le client Firestore d'un membre, connecté depuis l'appareil dont la connexion date de [authTime]
+ * (celui de sa session par défaut). Les claims ci_ sont ceux du compte : identiques sur tous ses appareils.
+ */
+function as(uid, authTime = MEMBERS[uid].authTime) {
+  const { cabinet, role } = MEMBERS[uid];
+  return env.authenticatedContext(uid, { ci_cabinet_id: cabinet, ci_role: role, auth_time: authTime }).firestore();
+}
+const adminA = () => as('admin-a');
+const courtierA = () => as('courtier-a');
+const adminB = () => as('admin-b');
 const noCabinet = () => env.authenticatedContext('sans-cabinet', {}).firestore();
-const genericAdmin = () => env.authenticatedContext('autre-app', { admin: true, role: 'SUPER_ADMIN' }).firestore();
-const superAdmin = () => env.authenticatedContext('super', { ci_role: 'superadmin' }).firestore();
+const otherAppAdmin = () => env.authenticatedContext('autre-app', { admin: true, role: 'SUPER_ADMIN' }).firestore();
 const anonymous = () => env.unauthenticatedContext().firestore();
 
 before(async () => {
@@ -31,10 +46,16 @@ beforeEach(async () => {
   await env.withSecurityRulesDisabled(async context => {
     const db = context.firestore();
     for (const cabinet of ['A', 'B']) {
-      await setDoc(doc(db, `cabinets/${cabinet}`), { name: `Cabinet ${cabinet}`, active: true });
-      await setDoc(doc(db, `cabinets/${cabinet}/members/admin-${cabinet.toLowerCase()}`), { role: 'admin', status: 'active' });
+      await setDoc(doc(db, `cabinets/${cabinet}`), { name: `Cabinet ${cabinet}`, active: true, maxUtilisateurs: 3 });
       await setDoc(doc(db, `cabinets/${cabinet}/dossiers/d1`), { status: 'brouillon' });
       await setDoc(doc(db, `cabinets/${cabinet}/dossiers/d1/events/e1`), { type: 'created' });
+    }
+    for (const [uid, member] of Object.entries(MEMBERS)) {
+      await setDoc(doc(db, `cabinets/${member.cabinet}/members/${uid}`), {
+        role: member.role,
+        status: 'active',
+        session: { id: `appareil-${uid}`, authTime: member.authTime, appareil: 'Chrome', lastSeen: Timestamp.now() },
+      });
     }
     await setDoc(doc(db, 'products/auto'), { name: 'Auto' });
   });
@@ -50,14 +71,14 @@ describe('Isolation des cabinets', () => {
     await assertSucceeds(getDoc(doc(courtierA(), 'cabinets/A/dossiers/d1')));
   });
 
-  it("le cabinet A ne peut rien lire du cabinet B", async () => {
+  it('le cabinet A ne peut rien lire du cabinet B', async () => {
     await assertFails(getDoc(doc(adminA(), 'cabinets/B')));
     await assertFails(getDoc(doc(adminA(), 'cabinets/B/dossiers/d1')));
     await assertFails(getDoc(doc(adminA(), 'cabinets/B/members/admin-b')));
     await assertFails(getDoc(doc(adminA(), 'cabinets/B/dossiers/d1/events/e1')));
   });
 
-  it("le cabinet A ne peut rien écrire dans le cabinet B", async () => {
+  it('le cabinet A ne peut rien écrire dans le cabinet B', async () => {
     await assertFails(setDoc(doc(adminA(), 'cabinets/B/dossiers/d2'), { status: 'brouillon' }));
     await assertFails(updateDoc(doc(adminA(), 'cabinets/B'), { name: 'Piraté' }));
   });
@@ -68,13 +89,54 @@ describe('Isolation des cabinets', () => {
   });
 
   it("les claims génériques d'une autre application ne donnent aucun droit", async () => {
-    await assertFails(getDoc(doc(genericAdmin(), 'cabinets/A')));
-    await assertFails(setDoc(doc(genericAdmin(), 'products/auto'), { name: 'Piraté' }));
+    await assertFails(getDoc(doc(otherAppAdmin(), 'cabinets/A')));
+    await assertFails(setDoc(doc(otherAppAdmin(), 'products/auto'), { name: 'Piraté' }));
   });
 
   it('un visiteur non connecté ne lit rien', async () => {
     await assertFails(getDoc(doc(anonymous(), 'cabinets/A')));
     await assertFails(getDoc(doc(anonymous(), 'products/auto')));
+  });
+});
+
+describe('Un seul appareil par utilisateur', () => {
+  it("un deuxième appareil, avec le bon compte et les mêmes claims, n'a accès à rien", async () => {
+    const autreAppareil = as('courtier-a', OTHER_DEVICE_AUTH_TIME);
+    await assertFails(getDoc(doc(autreAppareil, 'cabinets/A')));
+    await assertFails(getDoc(doc(autreAppareil, 'cabinets/A/dossiers/d1')));
+    await assertFails(setDoc(doc(autreAppareil, 'cabinets/A/dossiers/d2'), { status: 'brouillon' }));
+  });
+
+  it("un compte dont la session a été fermée n'a plus accès", async () => {
+    await env.withSecurityRulesDisabled(async context => {
+      await updateDoc(doc(context.firestore(), 'cabinets/A/members/courtier-a'), { session: null });
+    });
+    await assertFails(getDoc(doc(courtierA(), 'cabinets/A/dossiers/d1')));
+  });
+
+  it('un membre envoie le signal de vie de sa session', async () => {
+    await assertSucceeds(
+      updateDoc(doc(courtierA(), 'cabinets/A/members/courtier-a'), { 'session.lastSeen': serverTimestamp() }),
+    );
+  });
+
+  it("le signal de vie ne permet de modifier ni la session, ni le rôle, ni l'heure", async () => {
+    const me = doc(courtierA(), 'cabinets/A/members/courtier-a');
+    await assertFails(updateDoc(me, { 'session.id': 'session-pirate' }));
+    await assertFails(updateDoc(me, { 'session.authTime': OTHER_DEVICE_AUTH_TIME }));
+    await assertFails(updateDoc(me, { role: 'admin' }));
+    await assertFails(updateDoc(me, { 'session.lastSeen': Timestamp.fromMillis(Date.now() + 3600_000) }));
+  });
+
+  it("un autre appareil ou un collègue ne peut pas entretenir la session d'un membre", async () => {
+    await assertFails(
+      updateDoc(doc(as('courtier-a', OTHER_DEVICE_AUTH_TIME), 'cabinets/A/members/courtier-a'), {
+        'session.lastSeen': serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      updateDoc(doc(adminA(), 'cabinets/A/members/courtier-a'), { 'session.lastSeen': serverTimestamp() }),
+    );
   });
 });
 
@@ -88,14 +150,18 @@ describe('Droits dans un cabinet', () => {
     await assertSucceeds(updateDoc(doc(adminA(), 'cabinets/A'), { name: 'Nouveau nom', orias: '12345678' }));
   });
 
+  it("l'admin ne peut pas augmenter la limite d'utilisateurs de son offre", async () => {
+    await assertFails(updateDoc(doc(adminA(), 'cabinets/A'), { maxUtilisateurs: 87 }));
+  });
+
   it("l'admin ne peut ni réactiver son cabinet ni changer son propriétaire", async () => {
     await assertFails(updateDoc(doc(adminA(), 'cabinets/A'), { active: false }));
     await assertFails(updateDoc(doc(adminA(), 'cabinets/A'), { ownerUid: 'quelquun' }));
   });
 
-  it('les membres ne sont jamais modifiés depuis le client, même par un admin', async () => {
+  it('les membres ne sont jamais créés ni promus depuis le client, même par un admin', async () => {
     await assertFails(setDoc(doc(adminA(), 'cabinets/A/members/intrus'), { role: 'admin', status: 'active' }));
-    await assertFails(updateDoc(doc(adminA(), 'cabinets/A/members/admin-a'), { role: 'courtier' }));
+    await assertFails(updateDoc(doc(adminA(), 'cabinets/A/members/courtier-a'), { role: 'admin' }));
   });
 
   it('un courtier écrit les jobs et offres de ses dossiers, pas une collection inconnue', async () => {
@@ -122,24 +188,16 @@ describe('Cabinet désactivé', () => {
     await assertFails(getDoc(doc(adminA(), 'cabinets/A')));
     await assertFails(getDoc(doc(courtierA(), 'cabinets/A/dossiers/d1')));
     await assertFails(setDoc(doc(courtierA(), 'cabinets/A/dossiers/d2'), { status: 'brouillon' }));
-    await assertFails(updateDoc(doc(adminA(), 'cabinets/A'), { name: 'Nouveau nom' }));
   });
 
-  it('les autres cabinets ne sont pas affectés, le super-admin garde la lecture', async () => {
+  it('les autres cabinets ne sont pas affectés', async () => {
     await assertSucceeds(getDoc(doc(adminB(), 'cabinets/B/dossiers/d1')));
-    await assertSucceeds(getDoc(doc(superAdmin(), 'cabinets/A')));
   });
 });
 
 describe('Catalogue global', () => {
-  it('tout utilisateur connecté lit le catalogue, seul le super-admin le modifie', async () => {
+  it('tout utilisateur connecté le lit, personne ne le modifie depuis le client', async () => {
     await assertSucceeds(getDoc(doc(courtierA(), 'products/auto')));
     await assertFails(setDoc(doc(adminA(), 'products/auto'), { name: 'Modifié' }));
-    await assertSucceeds(setDoc(doc(superAdmin(), 'products/auto'), { name: 'Modifié' }));
-  });
-
-  it('le super-admin lit tous les cabinets', async () => {
-    await assertSucceeds(getDoc(doc(superAdmin(), 'cabinets/A')));
-    await assertSucceeds(getDoc(doc(superAdmin(), 'cabinets/B/dossiers/d1')));
   });
 });

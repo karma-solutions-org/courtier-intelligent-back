@@ -1,0 +1,892 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isConnected() {
+        return request.auth != null;
+    }
+
+    function isSameUid(docRef) {
+        return isConnected() && (request.auth.uid == resource.data.userUid || request.auth.uid == docRef);
+    }
+
+    function isSameCreateUid() {
+        return isConnected() && request.auth.uid == request.resource.data.userUid;
+    }
+
+    function isAdmin(){
+        return isConnected() && (
+          request.auth.token.admin == true ||
+          request.auth.token.role == 'SUPER_ADMIN' ||
+          request.auth.token.role == 'MULTI_ROLES'
+        );
+    }
+
+    function isController(){
+        return isConnected() && request.auth.token.controller == true;
+    }
+
+    function isGestionnaire(){
+        return isConnected() && request.auth.token.gestionnaire == true;
+    }
+
+    function isPartenaire(){
+        return isConnected() && request.auth.token.partenaire == true;
+    }
+
+    function isAgent(){
+        return isConnected() && request.auth.token.agent == true;
+    }
+
+    function isCollecteur(){
+        return isConnected() && request.auth.token.collecteur == true;
+    }
+
+    function isCompliScanTenant(data) {
+        return isConnected() && (
+            isAdmin() ||
+            data.admin_id == null ||
+            request.auth.uid == data.admin_id ||
+            request.auth.token.admin_id == data.admin_id
+        );
+    }
+
+    match /Profiles/{docRef} {
+        allow read: if isConnected();
+        allow create, update: if isSameCreateUid();
+        allow update: if isAdmin();
+    }
+
+    match /Gestionnaires/{docRef} {
+        allow get: if isSameUid(docRef) || isAdmin();
+        allow list: if isAdmin();
+        allow create, update: if isSameCreateUid();
+    }
+
+    match /Ribs/{docRef} {
+        allow get: if isSameUid(docRef) || isAdmin();
+        allow list: if isAdmin();
+        allow create, update: if isSameCreateUid();
+    }
+
+    match /Reclamations/{docRef} {
+        allow read: if isSameUid(docRef) || isAdmin();
+        allow create: if isSameCreateUid();
+        allow update: if isAdmin();
+    }
+
+    match /Devis/{docRef} {
+        allow read: if isSameUid(docRef) || isAdmin();
+        allow create: if isSameCreateUid();
+        allow update: if isSameCreateUid() || isAdmin();
+    }
+
+    match /Encaissement/{docRef} {
+        allow read: if isSameUid(docRef) || isAdmin();
+        allow create: if isSameCreateUid();
+        allow update: if isAdmin();
+    }
+
+    match /SoldeStats/{docRef} {
+        allow read: if isSameUid(docRef) || isAdmin();
+    }
+
+    match /Notifications/{docRef} {
+        allow read: if isSameUid(docRef) || isAdmin();
+        allow update: if isSameCreateUid() || isAdmin();
+    }
+
+    match /Notes/{docRef} {
+        allow read, create, update: if isAdmin();
+    }
+
+    match /User/{docRef} {
+        allow read, update: if isAdmin();
+    }
+
+    match /Motif/{docRef} {
+        allow read, update: if isAdmin();
+        allow create: if true;
+    }
+
+    match /ExcelFile/{docRef} {
+        allow read, write: if isAdmin();
+    }
+
+    match /XmlMandatSepa/{docRef} {
+        allow create: if isAdmin();
+        allow read: if isAdmin();
+    }
+
+    match /MandatSepaSubscribe/{docRef} {
+        allow create: if true;
+        allow read, update, delete: if isAdmin();
+    }
+
+    match /MandatSepaTemp/{docRef} {
+        allow create: if true;
+        allow read, update, delete: if isAdmin();
+    }
+
+    match /MandatSepaContractRenewal/{docRef} {
+        allow create: if true;
+        allow read, update, delete: if isAdmin() || isController() || isGestionnaire();
+    }
+
+    match /SepaXmlBankFileModel/{docRef} {
+        allow read, write: if isAdmin();
+    }
+
+    match /SharedConfig/{docRef} {
+        allow read: if true;
+    }
+
+    match /Tasks/{docRef} {
+        allow read, write, update, delete: if true;
+    }
+
+    match /Tickets/{docRef} {
+        allow read, write, update, delete: if true;
+    }
+
+    // ── bazz-work read model + interaction overlay (TEST phase — open).
+    match /controleTickets/{docRef} {
+        allow read: if true;
+    }
+    match /controlePayment/{docRef} {
+        allow read: if true;
+    }
+    match /controleEtude/{docRef} {
+        allow read: if true;
+    }
+    match /WorkManagers/{docRef} {
+        allow read: if true;
+    }
+    match /WorkAssignments/{docRef} {
+        allow read, write: if true;
+    }
+    match /WorkSettings/{docRef} {
+        allow read, write: if true;
+    }
+
+    // ── bazzback* collections — dedicated to bazz-work (TEST phase — open).
+    match /bazzbackTickets/{docRef} {
+        allow read: if true;
+    }
+    match /bazzbackManagers/{docRef} {
+        allow read: if true;
+    }
+    match /bazzbackPayments/{docRef} {
+        allow read: if true;
+    }
+    match /bazzbackEtudes/{docRef} {
+        allow read: if true;
+    }
+    match /bazzbackAssignments/{docRef} {
+        allow read, write: if true;
+    }
+    match /bazzbackSettings/{docRef} {
+        allow read, write: if true;
+    }
+
+    match /Candidates/{docId} {
+        allow read, write: if request.auth != null;
+    }
+    match /Product/{id} {
+        allow read, write: if request.auth != null;
+    }
+
+    match /recruitmentlog/{userId} {
+        allow create: if request.auth != null && request.auth.uid == userId;
+        allow read, update: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /ControleProfiles/{docRef} {
+        allow get: if isSameUid(docRef) || isAdmin();
+        allow list: if isAdmin() || isController();
+        allow create, update, delete: if isSameCreateUid() || isAdmin() || isController() ;
+    }
+
+    match /Compagnies/{docRef} {
+        allow read, write: if isAdmin();
+        allow read: if isController();
+    }
+
+    match /DevisControle/{docRef}{
+        allow get: if isSameUid(docRef) || isAdmin() ;
+        allow read, write: if isAdmin();
+        allow create, update:if isAdmin();
+    }
+
+    match /Cabinet/{docRef}{
+        allow get: if isSameUid(docRef) || isAdmin() || isCollecteur();
+        allow read, write: if isAdmin()  || isCollecteur();
+        allow create, update:if isAdmin();
+    }
+
+    match /accountsAibsCash/{docRef} {
+        allow get, read, create, delete, update, write, list: if isAdmin();
+        allow get, read, write: if isAgent() ||  isCollecteur();
+    }
+
+    match /paymentsAibsCash/{docRef} {
+        allow get, read, write : if isAgent() || isAdmin();
+    }
+
+    match /facturesAibsCash/{docRef} {
+        allow get, read, write : if isAgent() || isAdmin();
+        allow delete : if isAdmin();
+    }
+
+    match /enveloppesAibsCash/{docRef} {
+        allow get, read, write: if isAgent() ||  isCollecteur() || isAdmin();
+    }
+
+    match /ControleUsers/{document=**} {
+        allow read: if true;
+        allow write: if isAdmin();
+    }
+
+    match /WinHistory/{document=**} {
+        allow read: if request.auth != null;
+    }
+
+    match /TeamRewards/{document=**} {
+        allow read: if request.auth != null;
+    }
+
+    match /UserPalierHistory/{docRef} {
+        allow read, write: if isAdmin();
+    }
+
+    match /UserPalierHistory/{document=**} {
+        allow read: if request.auth != null;
+    }
+
+    match /RhEvaluations/{docRef} {
+        allow read, write: if isAdmin();
+    }
+
+    match /RhEvaluations/{document=**} {
+        allow read: if request.auth != null;
+    }
+
+    match /paymentAibsCashHistory/{docId} {
+        allow get, read, write : if  isAdmin();
+    }
+
+    match /factureAibsCashHistory/{docId} {
+        allow get, read, write : if isAdmin();
+    }
+
+    match /transactionsAibsCash/{docRef} {
+        allow get, read, write : if isAdmin();
+    }
+
+    match /historiqueAibsCash/{docRef} {
+        allow get, read, write : if isCollecteur() || isAdmin();
+    }
+
+    match /AuditAppels/{docId} {
+        allow read, write: if request.auth != null;
+    }
+
+    match /reclamation/{id} {
+        allow read, write: if true;
+    }
+
+    match /rendez-vous/{rdvId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /disponibilite/{dispoId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    match /settings/{settingsId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    match /ocrDocuments/{uid}/{filename} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // CompliScan Collections
+    // ════════════════════════════════════════════════════════════════════
+
+    match /UsersCompliScan/{docId} {
+      allow read: if isConnected() && (
+        request.auth.uid == docId ||
+        request.auth.token.admin_id == resource.data.admin_id ||
+        request.auth.uid == resource.data.admin_id ||
+        isAdmin()
+      );
+      allow create, update: if isConnected() && (
+        request.auth.uid == docId ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /MailCompliScan/{docId} {
+      allow read, write: if isConnected();
+    }
+
+    match /Clients/{docId} {
+      allow read: if isConnected() && (resource == null || isCompliScanTenant(resource.data));
+      allow create: if isConnected() && isCompliScanTenant(request.resource.data);
+      allow update, delete: if isConnected() && isCompliScanTenant(resource.data);
+    }
+
+    match /Scans/{docId} {
+      allow read: if isConnected() && (resource == null || isCompliScanTenant(resource.data));
+      allow create: if isConnected() && isCompliScanTenant(request.resource.data);
+      allow update, delete: if isConnected() && isCompliScanTenant(resource.data);
+    }
+
+    match /Alerts/{docId} {
+      allow read: if isConnected() && (resource == null || isCompliScanTenant(resource.data));
+      allow create: if isConnected() && isCompliScanTenant(request.resource.data);
+      allow update, delete: if isConnected() && isCompliScanTenant(resource.data);
+    }
+
+    match /Operations/{docId} {
+      allow read: if isConnected() && (resource == null || isCompliScanTenant(resource.data));
+      allow create: if isConnected() && isCompliScanTenant(request.resource.data);
+      allow update, delete: if isConnected() && isCompliScanTenant(resource.data);
+    }
+
+    match /Verifications/{docId} {
+      allow read: if isConnected() && (resource == null || isCompliScanTenant(resource.data));
+      allow create: if isConnected() && isCompliScanTenant(request.resource.data);
+      allow update, delete: if isConnected() && isCompliScanTenant(resource.data);
+    }
+
+    match /ComplianceDossiers/{docId} {
+      allow read: if isConnected() && (resource == null || isCompliScanTenant(resource.data));
+      allow create: if isConnected() && isCompliScanTenant(request.resource.data);
+      allow update, delete: if isConnected() && isCompliScanTenant(resource.data);
+    }
+
+    match /ComplianceSubflowInstances/{docId} {
+      allow read: if isConnected() && (resource == null || isCompliScanTenant(resource.data));
+      allow create: if isConnected() && isCompliScanTenant(request.resource.data);
+      allow update, delete: if isConnected() && isCompliScanTenant(resource.data);
+    }
+
+    match /ComplianceAuditLog/{docId} {
+      allow read: if isConnected() && (resource == null || isCompliScanTenant(resource.data));
+      allow create: if isConnected() && isCompliScanTenant(request.resource.data);
+      allow update, delete: if false;
+    }
+
+
+      // ════════════════════════════════════════════════════════════════════
+    // SG PBX & Other Systems
+    // ════════════════════════════════════════════════════════════════════
+
+    // Agent Asterisk (SG PBX) — DISTINCT de isAgent() ci-dessus (AIBS Partenaire,
+    // collecte cash, sans rapport ; claim différent : pbxAgent, pas agent).
+    function isPbxAgent() {
+        return isConnected() && request.auth.token.pbxAgent == true;
+    }
+
+    // Interdit à l'agent de modifier autre chose que les champs listés, même
+    // s'il a la permission "update" sur le document.
+    function onlyChangedKeys(allowedKeys) {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedKeys);
+    }
+
+    match /platformAdmins/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+
+    match /users/{uid} {
+      allow get: if request.auth != null &&
+        (request.auth.uid == uid ||
+         resource.data.companyId == request.auth.token.companyId);
+      allow list: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId;
+      allow write: if false;
+    }
+
+    match /companies/{docRef} {
+      allow get, list: if request.auth != null &&
+        exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+      allow get: if request.auth != null && request.auth.token.companyId == docRef;
+      allow get, list: if isPbxAgent();
+      allow update: if isPbxAgent() &&
+                onlyChangedKeys(['provisioning', 'provisioningErrorText']);
+      allow write: if false;
+      allow update: if request.auth != null &&
+        exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid)) &&
+        onlyChangedKeys(['provisioning', 'lastUpdatedAt']) &&
+        resource.data.provisioning == 'failed' &&
+        request.resource.data.provisioning == 'pending';
+    }
+
+    match /departments/{docRef} {
+      allow get: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId;
+      allow list: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId;
+      allow create: if request.auth != null &&
+        request.resource.data.companyId == request.auth.token.companyId &&
+        (request.auth.token.role == 'COMPANY_OWNER' || request.auth.token.role == 'COMPANY_ADMIN');
+      allow update, delete: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId &&
+        (request.auth.token.role == 'COMPANY_OWNER' || request.auth.token.role == 'COMPANY_ADMIN');
+    }
+    match /teams/{docRef} {
+      allow get: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId;
+      allow list: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId;
+      allow create: if request.auth != null &&
+        request.resource.data.companyId == request.auth.token.companyId &&
+        (request.auth.token.role == 'COMPANY_OWNER' || request.auth.token.role == 'COMPANY_ADMIN');
+      allow update, delete: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId &&
+        (request.auth.token.role == 'COMPANY_OWNER' || request.auth.token.role == 'COMPANY_ADMIN');
+    }
+
+       match /extensions/{docRef} {
+      allow get, list: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId;
+
+      allow create: if request.auth != null &&
+        request.resource.data.companyId == request.auth.token.companyId &&
+        (request.auth.token.role == 'COMPANY_OWNER' || request.auth.token.role == 'COMPANY_ADMIN');
+
+      // Édition inline, régénération du mot de passe SIP, désactivation et
+      // marquage pending_deletion passent TOUS par un update côté front.
+      // provisioningStatus limité à 'pending'/'pending_deletion' : seul
+      // l'agent peut écrire 'applied'/'failed'.
+      allow update: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId &&
+        (request.auth.token.role == 'COMPANY_OWNER' || request.auth.token.role == 'COMPANY_ADMIN') &&
+        onlyChangedKeys([
+          'displayName', 'callerName', 'status',
+          'musicOnHoldClass', 'ringTimeoutSeconds',
+          'sipPassword', 'provisioningStatus',
+          'updatedBy', 'lastUpdatedAt'
+        ]) &&
+        request.resource.data.provisioningStatus in ['pending', 'pending_deletion'];
+
+      // Suppression réelle : uniquement l'agent, après nettoyage PJSIP.
+      allow delete: if isPbxAgent();
+
+      // Agent Asterisk — lecture globale (son jeton n'a pas de companyId),
+      // écriture limitée à 2 champs.
+      allow get, list: if isPbxAgent();
+      allow update: if isPbxAgent() &&
+        onlyChangedKeys(['provisioningStatus', 'provisioningErrorText']);
+    }
+
+
+
+       match /voicemail-boxes/{docRef} {
+      allow get, list: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId;
+      allow create: if request.auth != null &&
+        request.resource.data.companyId == request.auth.token.companyId &&
+        (request.auth.token.role == 'COMPANY_OWNER' || request.auth.token.role == 'COMPANY_ADMIN');
+      allow update: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId &&
+        (request.auth.token.role == 'COMPANY_OWNER' || request.auth.token.role == 'COMPANY_ADMIN') &&
+        onlyChangedKeys(['enabled', 'notifyEmail', 'provisioningStatus', 'updatedBy', 'lastUpdatedAt']) &&
+        request.resource.data.provisioningStatus in ['pending', 'pending_deletion'];
+
+      // Suppression réelle : uniquement l'agent, après avoir retiré le fichier .conf.
+      allow delete: if isPbxAgent();
+
+      // Agent Asterisk — resolveVoicemailOwner/regenerateCompanyDialplan lisent
+      // cette collection, et l'agent marque applied/failed/suspended.
+      allow get, list: if isPbxAgent();
+      allow update: if isPbxAgent() &&
+        onlyChangedKeys(['provisioningStatus', 'provisioningErrorText']);
+    }
+    match /call-logs/{docRef} {
+      allow get: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId;
+      allow list: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId;
+      allow create, update: if isPbxAgent();
+      allow delete: if false;
+    }
+
+        match /ring-groups/{docRef} {
+      allow get, list: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId;
+
+      allow create: if request.auth != null &&
+        request.resource.data.companyId == request.auth.token.companyId &&
+        (request.auth.token.role == 'COMPANY_OWNER' || request.auth.token.role == 'COMPANY_ADMIN');
+
+      // Le front ne peut poser provisioningStatus que sur 'pending'/'pending_deletion' —
+      // 'applied'/'failed'/'suspended'/'deletion_failed' sont réservés à l'agent.
+      allow update: if request.auth != null &&
+        resource.data.companyId == request.auth.token.companyId &&
+        (request.auth.token.role == 'COMPANY_OWNER' || request.auth.token.role == 'COMPANY_ADMIN') &&
+        onlyChangedKeys([
+          'name', 'memberUserIds', 'strategy', 'ringTimeoutSeconds',
+          'musicOnHoldClass', 'fallback', 'provisioningStatus',
+          'updatedBy', 'lastUpdatedAt'
+        ]) &&
+        request.resource.data.provisioningStatus in ['pending', 'pending_deletion'];
+
+      // Suppression réelle : uniquement l'agent, après avoir retiré la ligne de dialplan.
+      allow delete: if isPbxAgent();
+
+      // Agent Asterisk — lecture globale (son jeton n'a pas de companyId),
+      // écriture limitée à 2 champs.
+      allow get, list: if isPbxAgent();
+      allow update: if isPbxAgent() &&
+        onlyChangedKeys(['provisioningStatus', 'provisioningErrorText']);
+    }
+
+        match /voicemail-messages/{docId} {
+        allow get, list: if request.auth != null &&
+          resource.data.companyId == request.auth.token.companyId &&
+          (
+            (resource.data.ownerType == 'user' && resource.data.ownerId == request.auth.uid) ||
+            (resource.data.ownerType == 'ringGroup' && (request.auth.token.role == 'COMPANY_OWNER' || request.auth.token.role == 'COMPANY_ADMIN'))
+          );
+        allow update: if request.auth != null &&
+          resource.data.companyId == request.auth.token.companyId &&
+          (
+            (resource.data.ownerType == 'user' && resource.data.ownerId == request.auth.uid) ||
+            (resource.data.ownerType == 'ringGroup' && (request.auth.token.role == 'COMPANY_OWNER' || request.auth.token.role == 'COMPANY_ADMIN'))
+          ) &&
+          onlyChangedKeys(['read']);
+        allow create: if isPbxAgent();
+        allow delete: if false;
+      }
+
+    // ⚠️ MODIFIE : le catch-all n'accorde plus rien aux collections freelance*,
+    // afin que leurs regles dediees (plus bas) soient reellement appliquees.
+    // Comportement inchange pour TOUTES les autres collections.
+    match /{collection}/{document=**} {
+      allow read, write: if request.auth != null
+        && !collection.matches('freelance.*')
+        // Courtier Intelligent : collections protégées par leurs propres règles (plus bas).
+        && !(collection in ['cabinets', 'products', 'insurers', 'MailCourtierIntelligent']);
+    }
+
+    match /UsersPaie/{docRef} {
+        allow get: if isSameUid(docRef) || isAdmin();
+        allow list: if isAdmin();
+        allow create, update, delete: if isSameCreateUid() || isAdmin();
+    }
+
+       match /platform-health/{machineId} {
+      allow get, list: if request.auth != null &&
+        exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+      allow create, update: if isPbxAgent();
+      allow delete: if false;
+    }
+
+    match /company-inventory/{companyId} {
+      allow get, list: if request.auth != null &&
+        exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+      allow create, update: if isPbxAgent();
+      allow delete: if false;
+    }
+
+      match /platform-health-history/{machineId} {
+    allow get, list: if request.auth != null &&
+      exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+    allow create, update: if isPbxAgent();
+    allow delete: if false;
+  }
+
+    match /cleanup-requests/{docRef} {
+      allow get, list: if request.auth != null &&
+        exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+
+
+      allow create: if request.auth != null &&
+        exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid)) &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.kind in ['ivrAnnouncement', 'musicTrack'] &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() < 200 &&
+        request.resource.data.createdBy == request.auth.uid;
+
+
+      allow update: if request.auth != null &&
+        request.auth.token.pbxAgent == true &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'errorText', 'deletedBytes', 'lastUpdatedAt']);
+
+      allow delete: if false;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // Freelance Platform (Solution Groupe)
+    // Les ecritures metier passent par les Cloud Functions (Admin SDK, qui
+    // contourne les Rules) : la plupart des collections sont en `write: if false`.
+    // ════════════════════════════════════════════════════════════════════
+
+    function freelanceIsSignedIn() {
+      return request.auth != null;
+    }
+
+    function freelanceRole() {
+      return freelanceIsSignedIn() ? request.auth.token.role : null;
+    }
+
+    function freelanceIsAdmin() {
+      return freelanceRole() == 'admin';
+    }
+
+    function freelanceIsFreelance() {
+      return freelanceRole() == 'freelance';
+    }
+
+    function freelanceChangedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // Champs du profil pilotes par le serveur ou l'admin : jamais ecrits par le developpeur.
+    function freelanceProfileServerKeys() {
+      return ['role', 'createdAt', 'developerStatus', 'statusHistory', 'verificationStatus',
+              'verificationComment', 'verificationUpdatedAt', 'verificationUpdatedBy'];
+    }
+
+    // Seuls champs qu'un developpeur peut envoyer en deposant un projet.
+    function freelanceMissionCreateKeys() {
+      return ['title', 'description', 'githubUrl', 'clientName', 'clientEmail', 'amount',
+              'currency', 'depositAmount', 'finalPaymentBeforeDelivery', 'freelanceId', 'status',
+              'correctionCyclesUsed', 'cgvAcceptedAt', 'cgvVersion', 'createdAt'];
+    }
+
+    match /freelanceProfiles/{userId} {
+      allow read: if freelanceIsSignedIn() && (request.auth.uid == userId || freelanceIsAdmin());
+      allow create: if freelanceIsAdmin()
+        || (freelanceIsSignedIn() && request.auth.uid == userId
+            && !request.resource.data.keys().hasAny(freelanceProfileServerKeys()));
+      allow update: if freelanceIsAdmin()
+        || (freelanceIsSignedIn() && request.auth.uid == userId
+            && !freelanceChangedKeys().hasAny(freelanceProfileServerKeys()));
+      allow delete: if freelanceIsAdmin();
+    }
+
+    match /freelanceMissions/{missionId} {
+      allow read: if freelanceIsAdmin()
+        || (freelanceIsFreelance() && resource.data.freelanceId == request.auth.uid);
+      allow create: if freelanceIsFreelance()
+        && request.resource.data.freelanceId == request.auth.uid
+        && request.resource.data.keys().hasOnly(freelanceMissionCreateKeys())
+        && request.resource.data.status == 'deposee'
+        && request.resource.data.correctionCyclesUsed == 0
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.currency in ['EUR', 'USD', 'TND']
+        && request.resource.data.githubUrl is string
+        && request.resource.data.githubUrl.matches('https?://.+');
+      allow update: if freelanceIsAdmin()
+        || (freelanceIsFreelance() && resource.data.freelanceId == request.auth.uid
+            && freelanceChangedKeys().hasOnly(['status', 'deliveredAt', 'recetteStartedAt'])
+            && resource.data.status in ['deposee', 'en_developpement']
+            && request.resource.data.status == 'en_recette');
+      allow delete: if freelanceIsAdmin();
+    }
+         match /freelanceMissionAccess/{missionId} {
+      allow read: if freelanceIsAdmin();
+      allow write: if false;
+    }
+    match /freelanceAcceptanceReviews/{reviewId} {
+      allow read: if freelanceIsAdmin();
+      allow write: if false;
+    }
+
+    match /freelanceInvoices/{invoiceId} {
+      allow read: if freelanceIsAdmin()
+        || (freelanceIsFreelance() && resource.data.freelanceId == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /freelanceDeveloperInvoices/{missionId} {
+      allow read: if freelanceIsAdmin()
+        || (freelanceIsFreelance() && resource.data.developerId == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /freelanceMissionPricing/{missionId} {
+      allow read: if freelanceIsAdmin();
+      allow write: if false;
+    }
+
+    match /freelanceCounters/{counterId} {
+      allow read, write: if false;
+    }
+
+    match /freelanceEscrowLedger/{entryId} {
+      allow read: if freelanceIsAdmin();
+      allow write: if false;
+    }
+
+    match /freelancePayoutBatches/{batchId} {
+      allow read: if freelanceIsAdmin();
+      allow write: if false;
+    }
+
+    match /freelanceFeeConfigurations/{configId} {
+      allow read: if freelanceIsAdmin();
+      allow write: if false;
+    }
+
+    match /freelanceAuditLogs/{logId} {
+      allow read: if freelanceIsAdmin()
+        || (freelanceIsFreelance() && resource.data.missionId != null
+            && get(/databases/$(database)/documents/freelanceMissions/$(resource.data.missionId)).data.freelanceId == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /freelanceCreditNotes/{noteId} {
+      allow read: if freelanceIsAdmin();
+      allow write: if false;
+    }
+
+    match /freelanceServiceContracts/{contractId} {
+      allow read: if freelanceIsAdmin();
+      allow write: if false;
+    }
+
+    match /freelanceDeveloperStatusChanges/{changeId} {
+      allow read: if freelanceIsAdmin()
+        || (freelanceIsFreelance() && resource.data.developerId == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /freelanceFiscalCategories/{categoryId} {
+      allow read: if freelanceIsAdmin();
+      allow write: if false;
+    }
+
+    match /freelanceDocumentRequirements/{requirementId} {
+      allow read: if freelanceIsSignedIn();
+      allow write: if false;
+    }
+
+    match /freelanceDeveloperDocuments/{documentId} {
+      allow read: if freelanceIsAdmin()
+        || (freelanceIsFreelance() && resource.data.developerId == request.auth.uid);
+      allow write: if false;
+    }
+
+
+    match /freelanceIpTransfers/{missionId} {
+      allow read: if freelanceIsAdmin()
+        || (freelanceIsFreelance() && (resource == null || resource.data.developerId == request.auth.uid));
+      allow write: if false;
+    }
+      match /profilNexus/{profilId} {
+      allow get: if true;
+    }
+
+    match /serviceNexus/{serviceId}     { allow read: if true; }
+    match /produitNexus/{produitId}     { allow read: if true; }
+    match /portfolioNexus/{portfolioId} { allow read: if true; }
+    match /avisNexus/{avisId}           { allow read: if true; }
+
+    // ════════════════════════════════════════════════════════════════════
+    // Courtier Intelligent (source : courtier-intelligent-back/firestore.rules)
+    // Fonctions préfixées « ci » ; claims ci_cabinet_id / ci_role ; session liée à auth_time.
+    // ════════════════════════════════════════════════════════════════════
+database}/documents {
+
+    // Claims préfixés « ci_ » pour ne jamais hériter des droits des autres applications.
+    function ciSignedIn() { return request.auth != null; }
+    function ciHasRole(roles) { return ciSignedIn() && request.auth.token.ci_role in roles; }
+
+    function ciCabinetDoc(cabinetId) {
+      return get(/databases/$(database)/documents/cabinets/$(cabinetId)).data;
+    }
+    function ciMemberDoc(cabinetId) {
+      return get(/databases/$(database)/documents/cabinets/$(cabinetId)/members/$(request.auth.uid)).data;
+    }
+
+    // Membre actif d'un cabinet actif, connecté depuis l'appareil de sa session en cours.
+    // La session est liée à auth_time : l'heure de la connexion par mot de passe, signée par Firebase,
+    // propre à chaque appareil (un claim, lui, serait commun à tous les appareils du compte).
+    // Un deuxième appareil, même avec le bon mot de passe, n'a donc accès à rien.
+    function ciInCabinet(cabinetId) {
+      return ciSignedIn()
+        && request.auth.token.ci_cabinet_id == cabinetId
+        && ciCabinetDoc(cabinetId).active == true
+        && ciMemberDoc(cabinetId).status == 'active'
+        && ciMemberDoc(cabinetId).session.authTime == request.auth.token.auth_time;
+    }
+
+    // ── Catalogue global (écrit par les Cloud Functions uniquement) ────────
+    match /products/{productId} {
+      allow read: if ciSignedIn();
+      allow write: if false;
+    }
+    match /insurers/{insurerId}/{document=**} {
+      allow read: if ciSignedIn();
+      allow write: if false;
+    }
+
+    // ── Données d'un cabinet ──────────────────────────────────────────────
+    match /cabinets/{cabinetId} {
+      allow read: if ciInCabinet(cabinetId);
+      // L'admin ne modifie que les informations du cabinet :
+      // jamais active, ownerUid ni maxUtilisateurs (la limite de l'offre).
+      allow update: if ciInCabinet(cabinetId) && ciHasRole(['admin'])
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'orias', 'address', 'phone', 'email', 'logoPath']);
+
+      // Membres : écrits par les Cloud Functions, sauf le signal de vie de sa propre session.
+      match /members/{uid} {
+        allow read: if ciInCabinet(cabinetId);
+        allow update: if request.auth != null
+          && request.auth.uid == uid
+          && request.auth.token.ci_cabinet_id == cabinetId
+          && resource.data.session.authTime == request.auth.token.auth_time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['session'])
+          && request.resource.data.session.diff(resource.data.session).affectedKeys().hasOnly(['lastSeen'])
+          && request.resource.data.session.lastSeen == request.time;
+      }
+      match /invitations/{invitationId} {
+        allow read: if ciInCabinet(cabinetId) && ciHasRole(['admin']);
+        allow write: if false;
+      }
+
+      // Compteurs (référence des dossiers) : écrits uniquement par les Cloud Functions.
+      match /counters/{counterId} {
+        allow read: if ciInCabinet(cabinetId);
+        allow write: if false;
+      }
+
+      // ⚠️ Pas de joker {document=**} ici : il s'appliquerait aussi au cabinet,
+      // aux membres et à l'historique, et Firestore autorise dès qu'UNE règle autorise.
+      match /assures/{assureId} {
+        allow read, write: if ciInCabinet(cabinetId);
+      }
+
+      match /dossiers/{dossierId} {
+        allow read, write: if ciInCabinet(cabinetId);
+
+        // Jobs de tarification, offres, documents.
+        match /{collection}/{docId} {
+          allow read, write: if ciInCabinet(cabinetId) && collection in ['quoteJobs', 'offers', 'documents'];
+        }
+
+        // Historique non modifiable.
+        match /events/{eventId} {
+          allow read, create: if ciInCabinet(cabinetId);
+          allow update, delete: if false;
+        }
+      }
+    }
+  }
+}
