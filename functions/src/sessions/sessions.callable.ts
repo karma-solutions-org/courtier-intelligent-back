@@ -4,8 +4,8 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { writeAudit } from "../core/audit.utils";
 import { getActiveMembership, requireString, tokenAuthTime } from "../core/auth.utils";
 import { CALLABLE_OPTIONS, EXTENSION_APP_SESSION_MAX_AGE_MS } from "../core/config";
-import { memberPath } from "../core/firestore-paths";
-import type { BoundDevice, Session } from "../shared/index.js";
+import { cabinetPath, memberPath } from "../core/firestore-paths";
+import { FALLBACK_LIMITS, type BoundDevice, type Session } from "../shared/index.js";
 
 /** Identifiant d'appareil généré par l'app (UUID) et conservé dans son IndexedDB. */
 function requireDeviceId(value: unknown): string {
@@ -19,9 +19,10 @@ function requireDeviceId(value: unknown): string {
 /**
  * Ouvre la session de l'appareil qui se connecte.
  *
- * Un compte est lié à UN appareil : le premier avec lequel il se connecte, jusqu'à ce qu'un admin
- * le réinitialise (`equipe-reinitialiserAppareil`).
- * - autre appareil : REFUSÉ (et tracé dans le journal d'audit du cabinet), même avec le bon mot de passe ;
+ * Un compte est lié à UN appareil (ou jusqu'à `limits.maxAppareilsParUtilisateur` selon l'offre) : les premiers
+ * avec lesquels il se connecte, jusqu'à ce qu'un admin les réinitialise (`equipe-reinitialiserAppareil`).
+ * Le premier reste dans `device`, les suivants dans `extraDevices`.
+ * - autre appareil, toutes les places prises : REFUSÉ (et tracé dans le journal d'audit du cabinet), même avec le bon mot de passe ;
  * - appareil lié : accepté. Une nouvelle connexion remplace aussitôt la précédente (autre onglet, autre
  *   fenêtre) : la session est liée à l'`auth_time` du token (heure de connexion par mot de passe, signée par
  *   Firebase), les règles Firestore et les functions n'acceptent plus que celui de la dernière connexion.
@@ -36,15 +37,22 @@ export const ouvrir = onCall(CALLABLE_OPTIONS, async request => {
   const memberRef = db.doc(memberPath(cabinetId, uid));
 
   const outcome = await db.runTransaction(async tx => {
-    const member = await tx.get(memberRef);
+    const [member, cabinet] = await Promise.all([tx.get(memberRef), tx.get(db.doc(cabinetPath(cabinetId)))]);
     const device = member.get("device") as BoundDevice | undefined;
-    if (device && device.id !== deviceId) {
-      return { refused: true as const, boundLabel: device.label };
+    const extraDevices = (member.get("extraDevices") as BoundDevice[] | undefined) ?? [];
+    const bound = device ? [device, ...extraDevices] : [];
+    const maxDevices =
+      (cabinet.get("limits.maxAppareilsParUtilisateur") as number | undefined) ?? FALLBACK_LIMITS.maxAppareilsParUtilisateur;
+    const isBound = bound.some(entry => entry.id === deviceId);
+    if (!isBound && bound.length >= maxDevices) {
+      return { refused: true as const, boundLabel: bound.map(entry => entry.label).filter(Boolean).join(", ") || null };
     }
+    const newDevice = { id: deviceId, label, boundAt: Timestamp.now() };
     const current = member.get("session") as Session | undefined;
     const isSameLogin = current?.authTime === authTime;
     tx.update(memberRef, {
-      ...(device ? {} : { device: { id: deviceId, label, boundAt: FieldValue.serverTimestamp() } }),
+      // Premier appareil : `device` (forme historique) ; les suivants s'ajoutent à `extraDevices`.
+      ...(isBound ? {} : device ? { extraDevices: [...extraDevices, newDevice] } : { device: { ...newDevice, boundAt: FieldValue.serverTimestamp() } }),
       session: {
         id: deviceId,
         authTime,
@@ -58,7 +66,7 @@ export const ouvrir = onCall(CALLABLE_OPTIONS, async request => {
           : {}),
       },
     });
-    return { refused: false as const, newlyBound: !device, isNewLogin: !isSameLogin };
+    return { refused: false as const, newlyBound: !isBound, isNewLogin: !isSameLogin };
   });
 
   if (outcome.refused) {

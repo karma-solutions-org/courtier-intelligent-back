@@ -1,6 +1,7 @@
 // ⚠️ Copie générée par scripts/sync-shared.mjs — ne pas modifier ici.
 import { CanonicalData, CanonicalPath } from './canonical-paths.js';
 import { DossierStatus, InvitationStatus, MemberStatus, QuoteJobStatus, CabinetRole } from './statuses.js';
+import type { DossierDocumentStatus, DossierDocumentType, OcrField } from './documents.js';
 
 /**
  * Horodatage Firestore. Côté client et côté Admin SDK les classes diffèrent :
@@ -47,6 +48,11 @@ export interface Member {
   status: MemberStatus;
   /** Appareil lié au compte : lui seul peut se connecter, jusqu'à réinitialisation par un admin. */
   device?: BoundDevice | null;
+  /**
+   * Appareils liés en plus de `device`, quand l'offre en autorise plusieurs (`limits.maxAppareilsParUtilisateur`).
+   * Absent avec l'appareil unique (cas par défaut) : `device` reste le premier appareil lié.
+   */
+  extraDevices?: BoundDevice[] | null;
   /** Session de l'appareil connecté : un seul appareil à la fois. */
   session?: Session | null;
   createdAt?: TimestampLike;
@@ -119,6 +125,10 @@ export interface PlanLimits {
   resetsAppareilParMois: number;
   /** Appels à l'IA (fonction `ia-proxy`, tous les utilisateurs du cabinet) autorisés par mois. */
   appelsIaParMois: number;
+  /** Appareils liés autorisés par utilisateur (1 par défaut : appareil unique). */
+  maxAppareilsParUtilisateur: number;
+  /** Délai de grâce (jours) après une baisse d'offre, avant que le cabinet ne passe en accès admin seul. */
+  delaiGraceJours: number;
 }
 
 /** plans/{planId} : catalogue des offres, publié par `seed-catalog`. */
@@ -227,13 +237,35 @@ export interface Dossier {
   completeness: { ok: boolean; missing: CanonicalPath[] };
   needAnalysis: NeedAnalysis | null;
   decision: { insurerId: string; justification: string; decidedBy: string; decidedAt?: TimestampLike } | null;
-  proposal: { sentAt?: TimestampLike; sentTo: string } | null;
-  outcome: { result: 'souscrit' | 'refuse' | 'sans_suite'; contractNumber?: string | null; effectiveDate?: string | null } | null;
+  /** Proposition envoyée à l'assuré (écrite uniquement par `propositions-envoyer`, relances par `taches-quotidiennes`). */
+  proposal: DossierProposal | null;
+  /** Issue de la proposition (écrite uniquement par `propositions-enregistrerReponse`). */
+  outcome: DossierOutcome | null;
   /** Où le courtier s'est arrêté dans le questionnaire : la reprise du brouillon s'y replace exactement. */
   draft?: { sectionIndex: number } | null;
   createdBy?: string;
   createdAt?: TimestampLike;
   updatedAt?: TimestampLike;
+}
+
+export interface DossierProposal {
+  sentAt?: TimestampLike;
+  sentTo: string;
+  sentBy?: string;
+  /** Nombre de relances envoyées au courtier en charge. */
+  reminders?: number;
+  lastReminderAt?: TimestampLike | null;
+}
+
+export type DossierOutcomeResult = 'souscrit' | 'refuse' | 'sans_suite';
+
+export interface DossierOutcome {
+  result: DossierOutcomeResult;
+  contractNumber?: string | null;
+  /** Date d'effet du contrat (« AAAA-MM-JJ »). */
+  effectiveDate?: string | null;
+  decidedBy?: string;
+  decidedAt?: TimestampLike;
 }
 
 /** Types d'événements de l'historique d'un dossier (cabinets/{t}/dossiers/{d}/events). */
@@ -246,7 +278,11 @@ export type DossierEventType =
   | 'note'
   | 'pricing_requested'
   | 'pricing_completed'
-  | 'offer_entered';
+  | 'offer_entered'
+  | 'decision_made'
+  | 'proposal_sent'
+  | 'proposal_reminder'
+  | 'outcome_recorded';
 
 export interface DossierEvent {
   id: string;
@@ -315,22 +351,34 @@ export interface Offer {
   capturedAt?: TimestampLike;
 }
 
-/** cabinets/{t}/dossiers/{d}/documents/{id} : écrit par les functions (devis joint à une offre saisie à la main). */
+/**
+ * cabinets/{t}/dossiers/{d}/documents/{id} : écrit par les functions (devis joint à une offre saisie à la main,
+ * documents du dossier et leur lecture automatique : E12, voir documents.ts).
+ */
 export interface DossierDocument {
   id: string;
-  type: 'devis' | string;
+  type: 'devis' | DossierDocumentType;
   storagePath: string;
   fileName: string | null;
   insurerId?: string | null;
-  ocrFields: unknown[];
-  status: 'uploaded' | string;
+  contentType?: string | null;
+  size?: number | null;
+  /** Valeurs lues par l'IA, proposées au courtier (jamais appliquées sans lui). */
+  ocrFields: OcrField[];
+  status: DossierDocumentStatus;
+  /** Lecture en échec : code de la raison (`ia_quota`, `ia_upstream`, `ia_unusable`…). */
+  error?: string | null;
   uploadedBy: string;
   createdAt?: TimestampLike;
+  analyzedAt?: TimestampLike;
 }
 
 // ── Signalements de l'extension (AUCUNE donnée client) ─────────────────────
-/** Étape de la capture du tarif où le problème est survenu. */
-export const EXTENSION_REPORT_STEPS = ['detect', 'extract', 'confirm', 'write'] as const;
+/**
+ * Étape où le problème est survenu : remplissage de l'extranet (analyse, mapping, remplissage),
+ * puis capture du tarif (détection, lecture, confirmation, écriture).
+ */
+export const EXTENSION_REPORT_STEPS = ['analyze', 'mapping', 'fill', 'detect', 'extract', 'confirm', 'write'] as const;
 export type ExtensionReportStep = (typeof EXTENSION_REPORT_STEPS)[number];
 
 /** Codes fermés : un texte libre pourrait contenir une donnée client, un code jamais. */
@@ -345,6 +393,17 @@ export const EXTENSION_REPORT_ISSUES = [
   'capture_rejected',
   /** L'écriture de l'offre a échoué. */
   'offer_write_failed',
+  // ── Remplissage de l'extranet ──
+  /** Analyse : aucun champ de formulaire reconnu sur la première page du parcours. */
+  'no_fields',
+  /** Mapping : des champs, mais aucun n'a pu être associé à une donnée du dossier (synonymes, mémoire, IA). */
+  'no_field_mapped',
+  /** Mapping : la mémoire partagée a échoué sur ce formulaire et a été invalidée. */
+  'memory_invalidated',
+  /** Remplissage : au moins un champ n'a pas pu être rempli (élément introuvable, valeur refusée). */
+  'fill_failed',
+  /** Remplissage : l'avancement du job n'a pas pu être enregistré. */
+  'job_update_failed',
 ] as const;
 export type ExtensionReportIssue = (typeof EXTENSION_REPORT_ISSUES)[number];
 

@@ -102,9 +102,19 @@ describe('Logo du cabinet', () => {
 });
 
 describe('Autres fichiers du cabinet', () => {
-  it('les documents des dossiers (E12) restent accessibles à ses membres, et à eux seuls', async () => {
-    await assertSucceeds(upload(storageOf('courtier-a'), 'cabinets/A/dossiers/d1/documents/carte-grise.pdf', pdf()));
-    await assertFails(upload(storageOf('courtier-b'), 'cabinets/A/dossiers/d1/documents/carte-grise.pdf', pdf()));
+  it('les documents des dossiers (E12) : PDF/JPG/PNG de 10 Mo maximum, nom simple, création seule, membres du cabinet', async () => {
+    const DOCS = 'cabinets/A/dossiers/d1/documents';
+    await assertSucceeds(upload(storageOf('courtier-a'), `${DOCS}/carte-grise.pdf`, pdf()));
+    await assertSucceeds(upload(storageOf('courtier-a'), `${DOCS}/permis.jpg`, file(100, 'image/jpeg')));
+    await assertSucceeds(getBytes(ref(storageOf('courtier-a'), `${DOCS}/carte-grise.pdf`)));
+    await assertFails(getBytes(ref(storageOf('courtier-b'), `${DOCS}/carte-grise.pdf`)));
+    await assertFails(upload(storageOf('courtier-b'), `${DOCS}/autre.pdf`, pdf()));
+    await assertFails(upload(storageOf('courtier-a'), `${DOCS}/carte-grise.pdf`, pdf()));
+    await assertFails(deleteObject(ref(storageOf('courtier-a'), `${DOCS}/carte-grise.pdf`)));
+    await assertFails(upload(storageOf('courtier-a'), `${DOCS}/script.html`, file(100, 'text/html')));
+    await assertFails(upload(storageOf('courtier-a'), `${DOCS}/gros.pdf`, pdf(10 * 1024 * 1024 + 1)));
+    await assertFails(upload(storageOf('courtier-a'), `${DOCS}/.cache`, pdf()));
+    await assertFails(upload(storageOf('courtier-a'), `${DOCS}/sous/dossier.pdf`, pdf()));
   });
 
   it('tout autre emplacement est refusé, même à un admin du cabinet', async () => {

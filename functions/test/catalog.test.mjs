@@ -29,10 +29,11 @@ function withCatalog(mutate) {
 const questionnaire = 'products/auto/questionnaire.json';
 
 describe('Catalogue du dépôt', () => {
-  it('est valide et contient le produit Auto, 3 assureurs et des offres', () => {
+  it('est valide et contient le produit Auto, 3 assureurs + l’assureur de démo locale et des offres', () => {
     const { catalog, issues } = loadCatalog();
     assert.deepEqual(issues, []);
-    assert.equal(catalog.insurers.length, 3);
+    assert.equal(catalog.insurers.length, 4);
+    assert.ok(catalog.insurers.some(i => i.id === 'assureur-test-local'));
     assert.ok(catalog.plans.length >= 2);
     assert.deepEqual(catalog.products.map(p => p.id), ['auto']);
   });
@@ -88,9 +89,29 @@ describe('Validation : un JSON invalide est détecté', () => {
     assert.ok(issues.some(i => /produit inconnu/.test(i.message)));
   });
 
+  it("un extranet en http est refusé, sauf sur localhost (démo locale)", () => {
+    const http = withCatalog(edit => edit('insurers/assureur-a.json', i => {
+      i.extranetUrl = 'http://extranet.assureur-a.example/connexion';
+      return i;
+    }));
+    assert.ok(http.issues.some(i => /https/.test(i.message)));
+    const local = withCatalog(edit => edit('insurers/assureur-a.json', i => {
+      i.extranetUrl = 'http://localhost:8090/index.html';
+      i.extranetDomains = ['localhost'];
+      return i;
+    }));
+    assert.deepEqual(local.issues, []);
+  });
+
   it('une offre avec une limite invalide', () => {
     const { issues } = withCatalog(edit => edit('plans/essentiel.json', p => { p.limits.maxUtilisateurs = 0; return p; }));
     assert.ok(issues.some(i => i.file === 'plans/essentiel.json'));
+  });
+
+  it('une offre sans appareils par utilisateur ni délai de grâce valides', () => {
+    const { issues } = withCatalog(edit => edit('plans/cabinet.json', p => { p.limits.maxAppareilsParUtilisateur = 0; delete p.limits.delaiGraceJours; return p; }));
+    assert.ok(issues.some(i => /maxAppareilsParUtilisateur/.test(i.message)));
+    assert.ok(issues.some(i => /delaiGraceJours/.test(i.message)));
   });
 
   it('un fichier JSON mal formé', () => {

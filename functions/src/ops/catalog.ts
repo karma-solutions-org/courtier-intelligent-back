@@ -75,7 +75,7 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
     if (data === undefined) continue;
     const limits = isObject(data) && isObject(data.limits) ? data.limits : null;
     if (!isObject(data) || !isText(data.id) || !isText(data.name) || !limits) {
-      add(file, "attendu : { id, name, limits: { maxUtilisateurs, resetsAppareilParMois, appelsIaParMois } }");
+      add(file, "attendu : { id, name, limits: { maxUtilisateurs, resetsAppareilParMois, appelsIaParMois, maxAppareilsParUtilisateur, delaiGraceJours } }");
       continue;
     }
     if (data.id !== name.replace(/\.json$/, "")) add(file, `« id » (${data.id}) doit correspondre au nom du fichier`);
@@ -86,6 +86,8 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
     if (typeof limits.appelsIaParMois !== "number" || !Number.isInteger(limits.appelsIaParMois) || limits.appelsIaParMois < 0) {
       add(file, "limits.appelsIaParMois : entier positif ou nul attendu");
     }
+    if (!isCount(limits.maxAppareilsParUtilisateur)) add(file, "limits.maxAppareilsParUtilisateur : entier strictement positif attendu");
+    if (!isCount(limits.delaiGraceJours)) add(file, "limits.delaiGraceJours : entier strictement positif attendu");
     catalog.plans.push(data as unknown as Plan);
   }
 
@@ -136,7 +138,10 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
     try {
       const url = new URL(data.extranetUrl);
       host = url.hostname;
-      if (url.protocol !== "https:") add(file, "extranetUrl doit être en https");
+      // http n'est accepté que pour un extranet de démonstration servi en local (localhost).
+      if (url.protocol !== "https:" && !(url.protocol === "http:" && url.hostname === "localhost")) {
+        add(file, "extranetUrl doit être en https (http accepté uniquement pour localhost)");
+      }
     } catch {
       add(file, `extranetUrl invalide : ${data.extranetUrl}`);
     }

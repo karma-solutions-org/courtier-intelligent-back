@@ -54,14 +54,14 @@ Le projet de test est partagé avec d'autres applications dont les règles donne
 
 - Déployer **uniquement les functions** : `npm --prefix functions run deploy` (codebase `courtier-intelligent`).
 - **Ne jamais lancer `firebase deploy` sans `--only`** : les règles Firestore/Storage de ce repo remplaceraient celles des autres applications. Elles servent aux emulators.
-- Les emails partent via la collection `MailCourtierIntelligent` : une instance de l'extension Firebase *Trigger Email* doit écouter cette collection.
+- Les emails partent via la collection `mail`, lue par l'instance `firestore-send-email` (*Trigger Email*) déjà installée sur le projet. Les Extensions Firebase s'arrêtent le 31 mars 2027 : prévoir un envoi direct (SMTP) avant.
 
 ## Offres, limites et appareil unique
 
 - **Offres** : `plans/{planId}` (publiées par `seed-catalog`, fichiers `catalog/plans/*.json`) portent les limites `maxUtilisateurs` (admin compris) et `resetsAppareilParMois`.
 - Le cabinet stocke `planId`, une surcharge facultative `overrides` et les limites effectives `limits` (= offre + surcharge, `computeEffectiveLimits`). Tout est **écrit uniquement côté serveur** : passer un cabinet de 3 à 6 sièges se fait avec `npm run ops:set-plan`, sans redéploiement. Une invitation en attente réserve une place.
 - **Baisse d'offre** : si les membres actifs dépassent la nouvelle limite, `graceEndsAt` est posé sur le cabinet (14 jours). Pendant le délai : bandeau côté app et invitations bloquées. Ensuite, les règles Firestore et les functions réservent l'accès aux admins. Le délai se referme dès que le cabinet rentre dans sa limite.
-- **Un compte = un appareil** : la 1re connexion lie l'appareil (`members/{uid}.device`, identifiant conservé dans l'IndexedDB de l'app). Tout autre appareil est refusé par `sessions-ouvrir` (raison `device_not_authorized`) et le refus est tracé dans `cabinets/{id}/auditLog`. Une nouvelle connexion de l'appareil lié remplace aussitôt la précédente (la session est liée à `auth_time`). L'admin libère l'appareil avec `equipe-reinitialiserAppareil` (quota mensuel, chaque action dans `auditLog`).
+- **Un compte = un appareil** : la 1re connexion lie l'appareil (`members/{uid}.device`, identifiant conservé dans l'IndexedDB de l'app). Tout autre appareil est refusé par `sessions-ouvrir` (raison `device_not_authorized`) et le refus est tracé dans `cabinets/{id}/auditLog`. Une nouvelle connexion de l'appareil lié remplace aussitôt la précédente (la session est liée à `auth_time`). L'admin libère l'appareil avec `equipe-reinitialiserAppareil` (quota mensuel, chaque action dans `auditLog`). Une offre peut autoriser plusieurs appareils par utilisateur (`limits.maxAppareilsParUtilisateur`, 1 par défaut : les suivants vont dans `members/{uid}.extraDevices`) et fixe son délai de grâce après une baisse d'offre (`limits.delaiGraceJours`, 14 jours par défaut). Si le seul admin d'un cabinet a perdu son poste, l'exploitation le libère avec `npm run ops:reset-device` (hors quota).
 
 ## Extension Chrome
 
@@ -89,6 +89,16 @@ firebase functions:secrets:set GEMINI_API_KEY --project aibs-partenaire-testing
 
 Les modèles sont imposés côté serveur (`GEMINI_MODELS` dans `core/config.ts`) et essayés **dans l'ordre** : un modèle introuvable, surchargé (429), en panne (5xx), trop lent ou dont la réponse est vide passe la main au suivant ; une clé refusée (401/403) arrête tout de suite. L'appel ne compte qu'une fois dans le quota, et il est rendu si aucun modèle ne répond. L'extension envoie toujours `{ system, messages, maxTokens }` et reçoit `{ text }` : le proxy traduit vers `generateContent`. Les messages sont bornés (20 messages, 30 000 caractères chacun, 2 000 tokens en sortie), le contenu n'est ni journalisé ni conservé. Limite : `limits.appelsIaParMois` de l'offre (200 / 1000 / 5000), compteur `cabinets/{id}/usage/ia-AAAA-MM`, un appel réservé avant l'envoi et remboursé si le service d'IA échoue. `npm run ops:set-plan -- … --appels-ia 500` l'ajuste par cabinet.
 
+### Adresse de l'app (`APP_URL`)
+
+Les emails envoyés par les tâches planifiées (relance d'une proposition sans réponse, `taches-*`) contiennent un lien vers le dossier (`<APP_URL>/espace/dossiers/<id>`). Le serveur ne connaît pas l'adresse de l'app : c'est un paramètre des functions, à définir par projet dans `functions/.env` ou `functions/.env.<projet>` (ex. `functions/.env.aibs-partenaire-testing`) :
+
+```bash
+APP_URL=https://courtier.exemple.fr
+```
+
+Sans `APP_URL` (valeur vide par défaut), les emails partent sans lien. Les invitations ne s'en servent pas : elles reçoivent l'adresse de l'app qui les envoie.
+
 ## Scripts ops
 
 Toujours avec une cible explicite : `--emulator` ou `--project <id>` (le projet de test est partagé, aucune cible par défaut). Les arguments passent après `--`.
@@ -101,6 +111,8 @@ npm run ops:seed-catalog -- --project aibs-partenaire-testing   # publie le cata
 npm run ops:create-cabinet -- --emulator --name "Cabinet Dupont" --admin-email admin@dupont.fr --plan essentiel
 npm run ops:set-plan -- --emulator --cabinet <id> --plan cabinet            # ou --max-utilisateurs 6
 npm run ops:set-cabinet-status -- --emulator --cabinet <id> --status disabled
+npm run ops:reset-device -- --emulator --cabinet <id> --email admin@dupont.fr        # seul admin qui a perdu son poste ; --yes pour appliquer (hors quota mensuel, audit by « ops »)
+npm run ops:extension-report -- --emulator --days 30 --last 20                      # échecs de l'extension par assureur et étape, réussites = offres « auto » capturées
 ```
 
 ## Catalogue

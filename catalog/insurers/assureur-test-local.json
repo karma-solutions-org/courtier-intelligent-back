@@ -1,0 +1,8 @@
+{
+  "id": "assureur-test-local",
+  "name": "Assureur Test (démo locale)",
+  "logo": null,
+  "extranetUrl": "http://localhost:8090/index.html",
+  "extranetDomains": ["localhost"],
+  "productsSupported": ["auto"]
+}

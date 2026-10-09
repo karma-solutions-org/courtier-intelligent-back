@@ -211,6 +211,12 @@ export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
     if (target === "besoin_valide") {
       throw new HttpsError("failed-precondition", "Le besoin se valide depuis l'onglet Besoin du dossier.", { reason: "use_validate_need" });
     }
+    // Proposition et réponse de l'assuré : uniquement par propositions-* (email, `proposal`, `outcome`).
+    if (from === "proposition_envoyee" || ["proposition_envoyee", "souscrit", "refuse"].includes(target)) {
+      throw new HttpsError("failed-precondition", "La proposition et la réponse de l'assuré se gèrent depuis l'onglet Proposition.", {
+        reason: "use_proposal",
+      });
+    }
     if (!isTransitionAllowed(from, target)) {
       throw new HttpsError("failed-precondition", `Transition interdite : « ${from} » vers « ${target} ».`, {
         reason: "invalid_transition",
@@ -269,3 +275,4 @@ export const assigner = onCall(CALLABLE_OPTIONS, async request => {
 });
 
 export { enregistrerBesoin, validerBesoin } from "./besoin.callable";
+export { decider } from "./decision.callable";

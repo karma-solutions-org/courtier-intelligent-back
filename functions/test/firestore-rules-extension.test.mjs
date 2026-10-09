@@ -168,6 +168,13 @@ describe("Extension : ce qu'elle écrit", () => {
     await assertFails(getDoc(doc(ext(), 'extensionReports/r1')));
   });
 
+  it('accepte les codes du remplissage (analyse, mapping, remplissage), toujours fermés', async () => {
+    await assertSucceeds(setDoc(doc(ext(), 'extensionReports/f1'), report({ step: 'analyze', issue: 'no_fields' })));
+    await assertSucceeds(setDoc(doc(ext(), 'extensionReports/f2'), report({ step: 'mapping', issue: 'no_field_mapped' })));
+    await assertSucceeds(setDoc(doc(ext(), 'extensionReports/f3'), report({ step: 'fill', issue: 'fill_failed' })));
+    await assertFails(setDoc(doc(ext(), 'extensionReports/f4'), report({ step: 'fill', issue: 'champ nom refusé' })));
+  });
+
   it('un signalement ne porte aucune donnée client : ni champ en plus, ni texte libre, ni URL complète', async () => {
     await assertFails(setDoc(doc(ext(), 'extensionReports/r2'), report({ clientName: 'Dupont' })));
     await assertFails(setDoc(doc(ext(), 'extensionReports/r3'), report({ issue: 'prime introuvable pour M. Dupont' })));

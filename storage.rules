@@ -37,10 +37,16 @@ service firebase.storage {
         && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png'];
     }
 
-    // Documents des dossiers (carte grise, relevé d'information… : E12). Leurs contrôles de type et de taille
-    // seront posés avec E12 ; d'ici là, accès réservé aux membres du cabinet.
-    match /cabinets/{cabinetId}/dossiers/{dossierId}/documents/{allPaths=**} {
-      allow read, write: if inActiveCabinet(cabinetId);
+    // Documents des dossiers (E12 : carte grise, permis, relevé d'information, autre) : PDF, JPG ou PNG de 10 Mo maximum,
+    // nom de fichier simple, ni remplacés ni supprimés depuis l'app. L'entrée `documents/{id}` est écrite par
+    // documents-enregistrer, qui relit le fichier (voir DOSSIER_DOCUMENT_* dans shared/documents.ts).
+    match /cabinets/{cabinetId}/dossiers/{dossierId}/documents/{fileName} {
+      allow read: if inActiveCabinet(cabinetId);
+      allow create: if inActiveCabinet(cabinetId)
+        && resource == null
+        && fileName.matches('^[A-Za-z0-9_-][A-Za-z0-9._-]{0,199}$')
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png'];
     }
 
     // Tout autre emplacement est refusé : chaque nouveau dossier de fichiers reçoit sa propre règle.

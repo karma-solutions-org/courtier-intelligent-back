@@ -1,5 +1,5 @@
 // ⚠️ Copie générée par scripts/sync-shared.mjs — ne pas modifier ici.
-/** Rôles. Stockés dans les claims `ci_role` et dans cabinets/{t}/members/{uid}.role. */
+/** Rôles. Stockés dans les claims `ci_role` et dans cabinets/{cabinetId}/members/{uid}.role. */
 export type UserRole = 'admin' | 'courtier';
 /** Rôle d'un membre dans son cabinet (identique à UserRole : tout utilisateur appartient à un cabinet). */
 export type CabinetRole = UserRole;

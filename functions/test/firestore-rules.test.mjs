@@ -177,12 +177,12 @@ describe('Droits dans un cabinet', () => {
     await assertFails(updateDoc(doc(adminA(), 'cabinets/A/members/courtier-a'), { role: 'admin' }));
   });
 
-  it("un courtier lit jobs et offres mais ne les écrit pas (functions tarification-*), pas plus qu'une collection inconnue", async () => {
+  it("un courtier lit jobs et offres mais ne les écrit pas (functions tarification-*), pas plus que les documents (documents-*), pas plus qu'une collection inconnue", async () => {
     await assertFails(setDoc(doc(courtierA(), 'cabinets/A/dossiers/d1/quoteJobs/assureur-a'), { status: 'requested' }));
     await assertFails(setDoc(doc(courtierA(), 'cabinets/A/dossiers/d1/offers/assureur-a'), { premiumAnnual: 842, source: 'manual' }));
     await assertSucceeds(getDoc(doc(courtierA(), 'cabinets/A/dossiers/d1/quoteJobs/assureur-a')));
     await assertSucceeds(getDoc(doc(courtierA(), 'cabinets/A/dossiers/d1/offers/assureur-a')));
-    await assertSucceeds(setDoc(doc(courtierA(), 'cabinets/A/dossiers/d1/documents/doc1'), { type: 'carte_grise' }));
+    await assertFails(setDoc(doc(courtierA(), 'cabinets/A/dossiers/d1/documents/doc1'), { type: 'carte_grise' }));
     await assertFails(setDoc(doc(courtierA(), 'cabinets/A/collection-inconnue/x'), { a: 1 }));
     await assertFails(setDoc(doc(courtierA(), 'cabinets/A/counters/dossiers'), { value: 999 }));
   });
@@ -278,7 +278,7 @@ describe('Cabinet au-delà de sa limite après une baisse d’offre', () => {
 describe('Dossiers : écritures réservées aux functions', () => {
   it('un courtier modifie les champs libres du dossier, mais ni son statut, ni ses données, ni son besoin, ni sa référence, ni son assignation', async () => {
     const dossier = doc(courtierA(), 'cabinets/A/dossiers/d1');
-    await assertSucceeds(updateDoc(dossier, { proposal: null }));
+    await assertSucceeds(updateDoc(dossier, { updatedAt: new Date() }));
     for (const forbidden of [
       { status: 'complet' },
       { data: { 'client.firstName': 'X' } },
@@ -287,6 +287,9 @@ describe('Dossiers : écritures réservées aux functions', () => {
       { assignedTo: 'courtier-a' },
       { draft: { sectionIndex: 3 } },
       { needAnalysis: { coverageLevel: 'tous_risques', validatedAt: null } },
+      { decision: { insurerId: 'assureur-a' } },
+      { proposal: null },
+      { outcome: { result: 'souscrit' } },
     ]) {
       await assertFails(updateDoc(dossier, forbidden));
     }
@@ -294,5 +297,59 @@ describe('Dossiers : écritures réservées aux functions', () => {
 
   it('personne ne supprime un dossier', async () => {
     await assertFails(deleteDoc(doc(adminA(), 'cabinets/A/dossiers/d1')));
+  });
+});
+
+describe('Assurés : contrôles des écritures du client', () => {
+  const valid = (uid = 'courtier-a') => ({
+    type: 'pro',
+    civilite: null,
+    firstName: 'Jeanne',
+    lastName: 'Martin',
+    companyName: 'Martin SARL',
+    siret: '12345678901234',
+    birthDate: null,
+    email: 'jeanne@martin.fr',
+    phone: '06 12 34 56 78',
+    address: { street: '1 rue de la Paix', postalCode: '75002', city: 'Paris', country: 'FR' },
+    createdBy: uid,
+    createdAt: serverTimestamp(),
+  });
+  const assure = (db, cabinet = 'A') => doc(db, `cabinets/${cabinet}/assures/as1`);
+
+  it('un membre crée un assuré valide, le lit et le modifie', async () => {
+    await assertSucceeds(setDoc(assure(courtierA()), valid()));
+    await assertSucceeds(getDoc(assure(adminA())));
+    await assertSucceeds(updateDoc(assure(courtierA()), { phone: '0700000000', updatedAt: serverTimestamp() }));
+  });
+
+  it("l'auteur et la date de création sont ceux de la requête", async () => {
+    await assertFails(setDoc(assure(courtierA()), valid('admin-a')));
+    await assertFails(setDoc(assure(courtierA()), { ...valid(), createdAt: Timestamp.fromMillis(0) }));
+  });
+
+  it('les champs inconnus et les formats invalides sont refusés', async () => {
+    await assertFails(setDoc(assure(courtierA()), { ...valid(), role: 'admin' }));
+    await assertFails(setDoc(assure(courtierA()), { ...valid(), type: 'entreprise' }));
+    await assertFails(setDoc(assure(courtierA()), { ...valid(), email: 'pas-un-email' }));
+    await assertFails(setDoc(assure(courtierA()), { ...valid(), siret: '1234' }));
+    await assertFails(setDoc(assure(courtierA()), { ...valid(), type: 'particulier' }));
+    await assertFails(setDoc(assure(courtierA()), { ...valid(), lastName: 'x'.repeat(101) }));
+    await assertFails(setDoc(assure(courtierA()), { ...valid(), address: { postalCode: '7500' } }));
+  });
+
+  it("une modification ne change ni l'auteur ni la date de création, et personne ne supprime un assuré", async () => {
+    await assertSucceeds(setDoc(assure(courtierA()), valid()));
+    await assertFails(updateDoc(assure(courtierA()), { createdBy: 'admin-a', updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(assure(courtierA()), { createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(assure(courtierA()), { email: 'invalide', updatedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(assure(adminA())));
+  });
+
+  it("un autre cabinet ne lit ni n'écrit les assurés", async () => {
+    await assertFails(setDoc(assure(adminB(), 'A'), valid('admin-b')));
+    await assertSucceeds(setDoc(assure(courtierA()), valid()));
+    await assertFails(getDoc(assure(adminB(), 'A')));
+    await assertFails(updateDoc(assure(adminB(), 'A'), { phone: '0700000000', updatedAt: serverTimestamp() }));
   });
 });

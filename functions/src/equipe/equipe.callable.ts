@@ -6,6 +6,7 @@ import { CLAIM_CABINET_ID, INVITATION_TTL_DAYS, MAIL_COLLECTION, CALLABLE_OPTION
 import { escapeHtml } from "../core/html.utils";
 import { assertSeatAvailable, getSeatUsage, graceUpdate, lockSeats } from "../core/seats.utils";
 import { writeAudit } from "../core/audit.utils";
+import { completeDeviceReset, deviceResetUpdate } from "../core/device.utils";
 import { invitationPath, invitationsPath, memberPath, cabinetPath } from "../core/firestore-paths";
 import { FALLBACK_LIMITS, type CabinetRole } from "../shared/index.js";
 
@@ -72,6 +73,8 @@ export const inviter = onCall(CALLABLE_OPTIONS, async request => {
       html:
         `<p>Vous êtes invité à rejoindre le cabinet <strong>${cabinetName}</strong> sur Courtier Intelligent.</p>` +
         `<p><a href="${link}">Accepter l'invitation</a></p>` +
+        `<p><strong>Important :</strong> connectez-vous ou créez votre compte avec cette adresse email, ` +
+        `<strong>${escapeHtml(email)}</strong>. L'invitation ne peut pas être acceptée depuis un autre compte.</p>` +
         `<p>Ce lien expire dans ${INVITATION_TTL_DAYS} jours.</p>`,
     },
   });
@@ -109,7 +112,9 @@ export const accepterInvitation = onCall(CALLABLE_OPTIONS, async request => {
       throw new HttpsError("deadline-exceeded", "Cette invitation a expiré.");
     }
     if (invitation.get("email") !== user.email?.toLowerCase()) {
-      throw new HttpsError("permission-denied", "Cette invitation a été envoyée à une autre adresse email.");
+      throw new HttpsError("permission-denied", "Cette invitation a été envoyée à une autre adresse email.", {
+        reason: "wrong_email",
+      });
     }
     const invitedRole = invitation.get("role") as UserRole;
     tx.set(db.doc(memberPath(cabinetId, uid)), {
@@ -178,7 +183,7 @@ export const activerMembre = onCall(CALLABLE_OPTIONS, async request => {
     // Désactivation : la place libérée peut ramener un cabinet en dépassement dans sa limite.
     if (status === "disabled" && member.get("status") === "active") {
       const usage = await getSeatUsage(cabinetId, tx);
-      const grace = graceUpdate(usage.activeMembers - 1, usage.maxUtilisateurs, usage.graceEndsAt);
+      const grace = graceUpdate(usage.activeMembers - 1, usage.maxUtilisateurs, usage.graceEndsAt, usage.delaiGraceJours);
       // Rien à écrire quand le cabinet n'était pas en dépassement : Firestore refuse une mise à jour vide.
       if (Object.keys(grace).length > 0) {
         tx.update(db.doc(cabinetPath(cabinetId)), grace);
@@ -223,6 +228,14 @@ const currentMonth = () => new Date().toISOString().substring(0, 7);
 export const reinitialiserAppareil = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid: adminUid } = await assertCabinetAdmin(request);
   const memberUid = requireString(request.data?.uid, "uid");
+  // Un admin ne libère pas son propre appareil : un autre admin le fait, ou le support (ops/reset-device).
+  if (memberUid === adminUid) {
+    throw new HttpsError(
+      "permission-denied",
+      "Vous ne pouvez pas réinitialiser votre propre appareil. Demandez-le à un autre administrateur du cabinet ou au support.",
+      { reason: "self_reset" },
+    );
+  }
   const month = currentMonth();
 
   const db = admin.firestore();
@@ -245,11 +258,7 @@ export const reinitialiserAppareil = onCall(CALLABLE_OPTIONS, async request => {
     }
     tx.update(cabinetRef, { deviceResets: { month, count: used + 1 } });
     // L'appareil et la session sont supprimés : l'ancien appareil perd l'accès immédiatement.
-    tx.update(memberRef, {
-      device: FieldValue.delete(),
-      session: FieldValue.delete(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    tx.update(memberRef, deviceResetUpdate());
     return { refused: false as const, remaining: quota - used - 1 };
   });
 
@@ -267,7 +276,6 @@ export const reinitialiserAppareil = onCall(CALLABLE_OPTIONS, async request => {
       { reason: "device_reset_quota" },
     );
   }
-  await admin.auth().revokeRefreshTokens(memberUid);
-  await writeAudit(cabinetId, { type: "appareil_reinitialise", uid: memberUid, by: adminUid, data: { month } });
+  await completeDeviceReset(cabinetId, memberUid, adminUid, { month });
   return { success: true, remaining: result.remaining };
 });

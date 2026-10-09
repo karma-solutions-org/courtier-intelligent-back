@@ -4,6 +4,8 @@
   "limits": {
     "maxUtilisateurs": 15,
     "resetsAppareilParMois": 8,
-    "appelsIaParMois": 5000
+    "appelsIaParMois": 5000,
+    "maxAppareilsParUtilisateur": 1,
+    "delaiGraceJours": 14
   }
 }

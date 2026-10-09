@@ -49,11 +49,11 @@ service cloud.firestore {
     // enregistrée dans la session de l'app par la function sessions-ouvrirExtension. Elle n'a donc jamais les droits
     // de l'app, et perd les siens dès que la session de l'app disparaît (fermée, remplacée, appareil réinitialisé,
     // membre désactivé, cabinet désactivé).
-    function ciExtActive(t) {
-      let member = get(/databases/$(database)/documents/cabinets/$(t)/members/$(request.auth.uid)).data;
-      let cabinet = get(/databases/$(database)/documents/cabinets/$(t)).data;
+    function ciExtActive(cabinetId) {
+      let member = get(/databases/$(database)/documents/cabinets/$(cabinetId)/members/$(request.auth.uid)).data;
+      let cabinet = get(/databases/$(database)/documents/cabinets/$(cabinetId)).data;
       return request.auth != null
-        && request.auth.token.get('ci_cabinet_id', null) == t
+        && request.auth.token.get('ci_cabinet_id', null) == cabinetId
         && cabinet.get('active', false) == true
         && (cabinet.get('graceEndsAt', null) == null
             || request.time < cabinet.graceEndsAt
@@ -116,8 +116,9 @@ service cloud.firestore {
         // L'origine seule (jamais le chemin ni les paramètres de l'URL), ou vide si elle est inconnue.
         && request.resource.data.origin is string
         && request.resource.data.origin.matches('^(https://[a-zA-Z0-9.:-]{1,200}|http://localhost(:[0-9]+)?)?$')
-        && request.resource.data.step in ['detect', 'extract', 'confirm', 'write']
-        && request.resource.data.issue in ['premium_not_found', 'ai_unavailable', 'ai_unusable', 'capture_rejected', 'offer_write_failed']
+        && request.resource.data.step in ['analyze', 'mapping', 'fill', 'detect', 'extract', 'confirm', 'write']
+        && request.resource.data.issue in ['premium_not_found', 'ai_unavailable', 'ai_unusable', 'capture_rejected', 'offer_write_failed',
+                                           'no_fields', 'no_field_mapped', 'memory_invalidated', 'fill_failed', 'job_update_failed']
         && request.resource.data.at == request.time;
       allow read, update, delete: if false;
     }
@@ -181,23 +182,64 @@ service cloud.firestore {
 
       // ⚠️ Pas de joker {document=**} ici : il s'appliquerait aussi au cabinet,
       // aux membres et à l'historique, et Firestore autorise dès qu'UNE règle autorise.
+      // Assurés : écrits par l'app (saisie libre), donc contrôlés ici — mêmes formats que shared/assure-format.ts.
+      // La détection des doublons reste un avertissement côté app : les règles ne peuvent pas interroger la collection.
+      // Pas de suppression : un assuré est rattaché à ses dossiers.
       match /assures/{assureId} {
-        allow read, write: if inCabinet(cabinetId);
+        function assureOptString(d, key, max) {
+          return d.get(key, null) == null || (d[key] is string && d[key].size() <= max);
+        }
+        function assureOptMatch(d, key, pattern) {
+          return d.get(key, null) == null || (d[key] is string && d[key].matches(pattern));
+        }
+        function assureAssureValid(d) {
+          return d.keys().hasOnly(['type', 'civilite', 'firstName', 'lastName', 'companyName', 'siret', 'birthDate', 'email', 'phone', 'address', 'createdBy', 'createdAt', 'updatedAt'])
+            && d.keys().hasAll(['type', 'firstName', 'lastName', 'createdBy'])
+            && d.type in ['particulier', 'pro']
+            && d.firstName is string && d.firstName.size() <= 100
+            && d.lastName is string && d.lastName.size() <= 100
+            && (d.firstName.size() > 0 || d.lastName.size() > 0 || d.get('companyName', null) != null)
+            && (d.get('civilite', null) == null || d.civilite in ['M.', 'Mme'])
+            && assureOptString(d, 'companyName', 200)
+            && assureOptMatch(d, 'siret', '[0-9]{14}')
+            && (d.type == 'pro' || d.get('siret', null) == null)
+            && assureOptMatch(d, 'birthDate', '[0-9]{4}-[0-9]{2}-[0-9]{2}')
+            && assureOptString(d, 'email', 254) && assureOptMatch(d, 'email', '[^ @]+@[^ @]+[.][^ @]{2,}')
+            && assureOptString(d, 'phone', 30)
+            && (d.get('address', null) == null || (d.address is map
+              && d.address.keys().hasOnly(['street', 'postalCode', 'city', 'country'])
+              && assureOptString(d.address, 'street', 200)
+              && assureOptMatch(d.address, 'postalCode', '[0-9]{5}')
+              && assureOptString(d.address, 'city', 100)
+              && assureOptString(d.address, 'country', 2)));
+        }
+
+        allow read: if inCabinet(cabinetId);
+        allow create: if inCabinet(cabinetId)
+          && assureAssureValid(request.resource.data)
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdAt == request.time
+          && !request.resource.data.keys().hasAny(['updatedAt']);
+        allow update: if inCabinet(cabinetId)
+          && assureAssureValid(request.resource.data)
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdBy', 'createdAt'])
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
       }
 
       match /dossiers/{dossierId} {
         allow read: if inCabinet(cabinetId);
-        // Création, données, besoin, statut, assignation et référence passent par les functions dossiers-* :
+        // Création, données, besoin, décision, proposition, issue, statut, assignation et référence passent par les functions :
         // elles appliquent la machine à états, la complétude et la numérotation.
         allow create, delete: if false;
         allow update: if inCabinet(cabinetId)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['reference', 'completeness', 'createdAt', 'createdBy', 'status', 'assignedTo', 'data', 'draft', 'assureId', 'productId', 'needAnalysis']);
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['reference', 'completeness', 'createdAt', 'createdBy', 'status', 'assignedTo', 'data', 'draft', 'assureId', 'productId', 'needAnalysis', 'decision', 'proposal', 'outcome']);
 
         // Jobs de tarification, offres, documents : lus par le cabinet. Jobs et offres sont écrits par les functions
-        // tarification-* (besoin validé, assureur activé, offre contrôlée) et par l'extension (voir plus bas).
+        // tarification-* (besoin validé, assureur activé, offre contrôlée) et par l'extension (voir plus bas) ;
+        // les documents uniquement par les functions (documents-enregistrer, documents-analyser, tarification-saisirOffre).
         match /{collection}/{docId} {
           allow read: if inCabinet(cabinetId) && collection in ['quoteJobs', 'offers', 'documents'];
-          allow write: if inCabinet(cabinetId) && collection == 'documents';
         }
 
         // ── Extension : jobs et offres (voir ciExtActive). Écriture limitée au statut du job et aux offres automatiques.
