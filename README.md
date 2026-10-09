@@ -81,13 +81,13 @@ Ce que l'extension apprend d'un formulaire d'extranet est partagé par **tous le
 
 ### `ia-proxy`
 
-Aucune clé d'IA dans l'extension. La clé est un **secret des Cloud Functions** :
+Aucune clé d'IA dans l'extension. L'IA est **Gemini** ; sa clé est un **secret des Cloud Functions**, à créer dans chaque projet avant le premier déploiement (sinon le déploiement s'arrête) :
 
 ```bash
-firebase functions:secrets:set ANTHROPIC_API_KEY --project aibs-partenaire-testing
+firebase functions:secrets:set GEMINI_API_KEY --project aibs-partenaire-testing
 ```
 
-Le modèle est imposé côté serveur (`IA_MODEL` dans `core/config.ts`), les messages bornés (20 messages, 30 000 caractères chacun, 2 000 tokens en sortie), le contenu n'est ni journalisé ni conservé. Limite : `limits.appelsIaParMois` de l'offre (200 / 1000 / 5000), compteur `cabinets/{id}/usage/ia-AAAA-MM`, un appel réservé avant l'envoi et remboursé si le service d'IA échoue. `npm run ops:set-plan -- … --appels-ia 500` l'ajuste par cabinet.
+Les modèles sont imposés côté serveur (`GEMINI_MODELS` dans `core/config.ts`) et essayés **dans l'ordre** : un modèle introuvable, surchargé (429), en panne (5xx), trop lent ou dont la réponse est vide passe la main au suivant ; une clé refusée (401/403) arrête tout de suite. L'appel ne compte qu'une fois dans le quota, et il est rendu si aucun modèle ne répond. L'extension envoie toujours `{ system, messages, maxTokens }` et reçoit `{ text }` : le proxy traduit vers `generateContent`. Les messages sont bornés (20 messages, 30 000 caractères chacun, 2 000 tokens en sortie), le contenu n'est ni journalisé ni conservé. Limite : `limits.appelsIaParMois` de l'offre (200 / 1000 / 5000), compteur `cabinets/{id}/usage/ia-AAAA-MM`, un appel réservé avant l'envoi et remboursé si le service d'IA échoue. `npm run ops:set-plan -- … --appels-ia 500` l'ajuste par cabinet.
 
 ## Scripts ops
 

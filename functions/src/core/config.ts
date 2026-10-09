@@ -36,8 +36,14 @@ export const MAIL_COLLECTION = "MailCourtierIntelligent";
  */
 export const EXTENSION_APP_SESSION_MAX_AGE_MS = 3 * 60 * 1000;
 
-/** Modèle d'IA utilisé par `ia-proxy` : choisi côté serveur, jamais par l'extension. */
-export const IA_MODEL = "claude-haiku-5-5";
+/**
+ * Modèles Gemini utilisés par `ia-proxy`, dans l'ordre : si l'un échoue (introuvable, surchargé, en panne, réponse vide),
+ * on essaie le suivant. Choisis côté serveur, jamais par l'extension.
+ */
+export const GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest"];
+
+/** API Gemini (remplacée par un faux service dans les emulators : `IA_UPSTREAM_URL`). */
+export const GEMINI_API_URL = "https://generativelanguage.googleapis.com";
 
 /** Durée de validité d'une invitation. */
 export const INVITATION_TTL_DAYS = 7;

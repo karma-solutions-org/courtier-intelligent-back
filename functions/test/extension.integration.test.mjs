@@ -18,21 +18,32 @@ const db = admin.firestore();
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // ── Faux service d'IA : enregistre ce qu'il reçoit ─────────────────────────────
+// Il imite l'API Gemini (`/v1beta/models/<modèle>:generateContent`) ; chaque modèle peut avoir son propre statut.
 const upstreamRequests = [];
 let upstreamStatus = 200;
+/** Statut renvoyé pour un modèle donné (repli sur le modèle suivant), sinon `upstreamStatus`. */
+let upstreamStatusByModel = {};
+/** Réponse 200 sans texte (bloquée par le filtre de sécurité, ou coupée). */
+let upstreamEmptyModels = [];
 const upstream = http.createServer((request, response) => {
   let body = '';
   request.on('data', chunk => (body += chunk));
   request.on('end', () => {
-    upstreamRequests.push({ headers: request.headers, body: JSON.parse(body || '{}') });
-    response.writeHead(upstreamStatus, { 'content-type': 'application/json' });
+    const model = decodeURIComponent(/\/v1beta\/models\/([^:]+):generateContent$/.exec(request.url)?.[1] ?? '');
+    upstreamRequests.push({ model, headers: request.headers, body: JSON.parse(body || '{}') });
+    const status = upstreamStatusByModel[model] ?? upstreamStatus;
+    response.writeHead(status, { 'content-type': 'application/json' });
+    if (status !== 200) return response.end(JSON.stringify({ error: { code: status, message: 'boom' } }));
+    const parts = upstreamEmptyModels.includes(model) ? [] : [{ text: 'canonicalPath: ' }, { text: 'client.lastName' }];
     response.end(
-      upstreamStatus === 200
-        ? JSON.stringify({ content: [{ type: 'text', text: 'canonicalPath: client.lastName' }], usage: { input_tokens: 42, output_tokens: 7 } })
-        : JSON.stringify({ error: 'boom' }),
+      JSON.stringify({
+        candidates: [{ content: { role: 'model', parts }, finishReason: parts.length ? 'STOP' : 'SAFETY' }],
+        usageMetadata: { promptTokenCount: 42, candidatesTokenCount: 7 },
+      }),
     );
   });
 });
+const MODELS = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-flash-latest'];
 
 let cabinetId;
 let adminUid;
@@ -198,7 +209,7 @@ describe('ia-proxy', () => {
     upstreamRequests.length = 0;
   });
 
-  it("transmet à l'IA avec la clé du serveur, le modèle imposé et des tailles bornées", async () => {
+  it("transmet à Gemini avec la clé du serveur, le premier modèle imposé et des tailles bornées", async () => {
     const result = await ask(extToken, { system: 'Tu associes des champs.', maxTokens: 999_999, model: 'un-autre-modele', apiKey: 'pirate' });
 
     assert.equal(result.data.text, 'canonicalPath: client.lastName');
@@ -206,11 +217,46 @@ describe('ia-proxy', () => {
     assert.equal(result.data.remaining, 2);
 
     const sent = upstreamRequests.at(-1);
-    assert.equal(sent.headers['x-api-key'], 'cle-de-test', 'la clé vient du serveur');
-    assert.equal(sent.body.model, 'claude-haiku-5-5', "le modèle n'est pas choisi par l'extension");
-    assert.equal(sent.body.max_tokens, 2000, 'plafonné');
-    assert.equal(sent.body.system, 'Tu associes des champs.');
-    assert.deepEqual(Object.keys(sent.body).sort(), ['max_tokens', 'messages', 'model', 'system']);
+    assert.equal(sent.headers['x-goog-api-key'], 'cle-de-test', 'la clé vient du serveur');
+    assert.equal(sent.model, MODELS[0], "le modèle n'est pas choisi par l'extension");
+    assert.equal(sent.body.generationConfig.maxOutputTokens, 2000, 'plafonné');
+    assert.deepEqual(sent.body.systemInstruction, { parts: [{ text: 'Tu associes des champs.' }] });
+    assert.deepEqual(sent.body.contents, [{ role: 'user', parts: [{ text: 'Quel champ correspond à « Nom » ?' }] }]);
+    assert.deepEqual(Object.keys(sent.body).sort(), ['contents', 'generationConfig', 'systemInstruction']);
+  });
+
+  it('passe au modèle suivant quand un modèle est introuvable, surchargé ou renvoie une réponse vide, sans compter deux fois', async () => {
+    const before = await iaCalls();
+    upstreamRequests.length = 0;
+    upstreamStatusByModel = { [MODELS[0]]: 404 };
+    upstreamEmptyModels = [MODELS[1]];
+    const result = await ask(extToken);
+    upstreamStatusByModel = {};
+    upstreamEmptyModels = [];
+
+    assert.equal(result.data.text, 'canonicalPath: client.lastName');
+    assert.deepEqual(upstreamRequests.map(r => r.model), MODELS, 'les modèles sont essayés dans l’ordre');
+    assert.equal(await iaCalls(), before + 1, 'un seul appel décompté');
+
+    upstreamRequests.length = 0;
+    upstreamStatusByModel = { [MODELS[0]]: 429 };
+    assert.ok((await ask(extToken)).data);
+    upstreamStatusByModel = {};
+    assert.deepEqual(upstreamRequests.map(r => r.model), MODELS.slice(0, 2), 'le premier qui répond l’emporte');
+    // Ces deux appels sont rendus pour ne pas fausser les tests de quota qui suivent.
+    await db.doc(`cabinets/${cabinetId}/usage/ia-${new Date().toISOString().substring(0, 7)}`).set({ calls: before }, { merge: true });
+  });
+
+  it("n'essaie pas les autres modèles quand la clé est refusée, et rembourse l'appel", async () => {
+    const before = await iaCalls();
+    upstreamRequests.length = 0;
+    upstreamStatus = 403;
+    const failed = await ask(extToken);
+    upstreamStatus = 200;
+
+    assert.equal(failed.error?.details?.reason, 'ia_upstream');
+    assert.equal(upstreamRequests.length, 1);
+    assert.equal(await iaCalls(), before);
   });
 
   it('refuse les demandes mal formées, sans consommer de quota', async () => {
@@ -233,9 +279,12 @@ describe('ia-proxy', () => {
 
   it("rembourse l'appel quand le service d'IA est en panne", async () => {
     const before = await iaCalls();
+    upstreamRequests.length = 0;
     upstreamStatus = 500;
     const failed = await ask(extToken);
     upstreamStatus = 200;
+
+    assert.deepEqual(upstreamRequests.map(r => r.model), MODELS, 'tous les modèles ont été essayés');
 
     assert.equal(failed.error?.status, 'UNAVAILABLE');
     assert.equal(failed.error.details?.reason, 'ia_upstream');
@@ -253,7 +302,7 @@ describe('ia-proxy', () => {
     assert.equal(refused[0].error.status, 'RESOURCE_EXHAUSTED');
     assert.equal(refused[0].error.details?.reason, 'ia_quota');
     assert.equal(await iaCalls(), 3);
-    assert.equal(upstreamRequests.filter(r => r.body.model).length >= 3, true);
+    assert.equal(upstreamRequests.filter(r => r.body.contents).length >= 3, true);
   });
 
   it("le quota repart à zéro le mois suivant, et dépend de l'offre du cabinet", async () => {
