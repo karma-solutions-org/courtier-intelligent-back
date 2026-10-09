@@ -1,6 +1,10 @@
 rules_version = '2';
 
 // ⚠️ Même avertissement que firestore.rules : projet de test partagé, ne pas déployer seules.
+//
+// Attention : quand plusieurs blocs `match` visent le même fichier, Storage accorde l'accès dès que l'UN d'eux
+// l'autorise. Il n'y a donc PAS de règle générale sur `cabinets/{id}/**` : elle annulerait les restrictions du logo
+// et des devis. Chaque dossier de fichiers a sa règle, et tout le reste est refusé.
 service firebase.storage {
   match /b/{bucket}/o {
     // Membre d'un cabinet actif, depuis l'appareil de sa session en cours.
@@ -21,9 +25,24 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
-    // Autres fichiers du cabinet (documents des dossiers, devis…).
-    match /cabinets/{cabinetId}/{allPaths=**} {
+    // Devis joint à une offre saisie à la main (E9-5) : PDF, JPG ou PNG de 10 Mo maximum, nom de fichier simple.
+    // Un devis envoyé n'est ni remplacé ni supprimé : une nouvelle saisie envoie un nouveau fichier
+    // (voir QUOTE_DOCUMENT_TYPES et QUOTE_DOCUMENT_MAX_BYTES dans shared/pricing.ts).
+    match /cabinets/{cabinetId}/dossiers/{dossierId}/devis/{fileName} {
+      allow read: if inActiveCabinet(cabinetId);
+      allow create: if inActiveCabinet(cabinetId)
+        && resource == null
+        && fileName.matches('^[A-Za-z0-9_-][A-Za-z0-9._-]{0,199}$')
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png'];
+    }
+
+    // Documents des dossiers (carte grise, relevé d'information… : E12). Leurs contrôles de type et de taille
+    // seront posés avec E12 ; d'ici là, accès réservé aux membres du cabinet.
+    match /cabinets/{cabinetId}/dossiers/{dossierId}/documents/{allPaths=**} {
       allow read, write: if inActiveCabinet(cabinetId);
     }
+
+    // Tout autre emplacement est refusé : chaque nouveau dossier de fichiers reçoit sa propre règle.
   }
 }

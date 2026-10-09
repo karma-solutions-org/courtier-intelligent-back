@@ -1,4 +1,5 @@
 import * as admin from "firebase-admin";
+import { Timestamp } from "firebase-admin/firestore";
 import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import { CLAIM_CABINET_ID, CLAIM_ROLE, LEGACY_CLAIM_SESSION_ID, UserRole } from "./config";
 import { cabinetPath, memberPath } from "./firestore-paths";
@@ -36,10 +37,11 @@ export function tokenAuthTime(request: CallableRequest): number {
  *
  * Par défaut, exige aussi que l'appelant soit l'appareil de la session en cours :
  * les functions appliquent la même règle « un seul appareil » que Firestore.
+ * `extension: true` : l'appelant est l'extension Chrome (sa connexion est liée à la session de l'app).
  */
 export async function getActiveMembership(
   request: CallableRequest,
-  { requireSession = true }: { requireSession?: boolean } = {},
+  { requireSession = true, extension = false }: { requireSession?: boolean; extension?: boolean } = {},
 ): Promise<Membership> {
   const uid = assertSignedIn(request);
   const cabinetId = request.auth?.token[CLAIM_CABINET_ID] as string | undefined;
@@ -56,8 +58,27 @@ export async function getActiveMembership(
   if (!member.exists || member.get("status") !== "active") {
     throw new HttpsError("permission-denied", "Accès au cabinet refusé.");
   }
-  if (requireSession && member.get("session.authTime") !== tokenAuthTime(request)) {
-    throw new HttpsError("permission-denied", "Session expirée ou ouverte sur un autre appareil. Reconnectez-vous.");
+  // Cabinet au-delà de sa limite d'utilisateurs une fois le délai de grâce écoulé : accès admin seul.
+  const graceEndsAt = cabinet.get("graceEndsAt") as Timestamp | undefined;
+  if (graceEndsAt && graceEndsAt.toMillis() < Date.now() && member.get("role") !== "admin") {
+    throw new HttpsError(
+      "permission-denied",
+      "Votre cabinet dépasse la limite d'utilisateurs de son offre : seuls les administrateurs ont accès pour le moment.",
+    );
+  }
+  if (requireSession) {
+    // L'app et l'extension ont chacune leur connexion : celle de l'extension est enregistrée par
+    // `sessions-ouvrirExtension` et disparaît avec la session de l'app.
+    const expected = member.get(extension ? "session.extensionAuthTime" : "session.authTime");
+    if (expected !== tokenAuthTime(request)) {
+      throw new HttpsError(
+        "permission-denied",
+        extension
+          ? "Session de l'extension expirée ou fermée. Reconnectez-vous dans l'extension."
+          : "Session expirée ou ouverte sur un autre appareil. Reconnectez-vous.",
+        extension ? { reason: "extension_session_closed" } : undefined,
+      );
+    }
   }
   return { uid, cabinetId, role: member.get("role") as UserRole };
 }

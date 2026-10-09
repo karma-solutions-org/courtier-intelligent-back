@@ -14,12 +14,21 @@
     "use-test": "firebase use test",
     "sync-shared": "node scripts/sync-shared.mjs",
     "list-vpc": "node -e \"\"",
-    "test": "cd .. && npx --yes firebase-tools@15.32.1 emulators:exec --only firestore --project demo-courtier-intelligent \"node --test functions/test/firestore-rules.test.mjs\"",
+    "test": "cd .. && npx --yes firebase-tools@15.32.1 emulators:exec --only firestore,storage --project demo-courtier-intelligent \"node --test --test-concurrency=1 functions/test/firestore-rules.test.mjs functions/test/firestore-rules-extension.test.mjs functions/test/storage-rules.test.mjs\"",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:emulator": "node --test test/firestore-rules.test.mjs"
+    "test:emulator": "node --test test/firestore-rules.test.mjs",
+    "test:unit": "tsc && node --test test/catalog.test.mjs test/limits.test.mjs test/questionnaire.test.mjs test/need.test.mjs test/form-memory.test.mjs test/memories-select.test.mjs",
+    "catalog:validate": "tsc && node lib/ops/validate-catalog.js",
+    "ops:seed-catalog": "tsc && node lib/ops/seed-catalog.js",
+    "ops:preview-questionnaire": "tsc && node lib/ops/preview-questionnaire.js",
+    "ops:create-cabinet": "tsc && node lib/ops/create-cabinet.js",
+    "ops:set-plan": "tsc && node lib/ops/set-plan.js",
+    "ops:set-cabinet-status": "tsc && node lib/ops/set-cabinet-status.js",
+    "test:integration": "tsc && cd .. && npx --yes firebase-tools@15.32.1 emulators:exec --only functions,auth,firestore --project demo-courtier-intelligent \"node --test functions/test/callables.integration.test.mjs functions/test/dossiers.integration.test.mjs functions/test/besoin.integration.test.mjs functions/test/extension.integration.test.mjs functions/test/memoires.integration.test.mjs functions/test/tarification.integration.test.mjs\"",
+    "ops:memories": "tsc && node lib/ops/memories.js"
   },
   "dependencies": {
     "firebase-admin": "^13.10.0",

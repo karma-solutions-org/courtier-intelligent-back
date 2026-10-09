@@ -36,6 +36,14 @@ export const DOSSIER_TRANSITIONS: Record<DossierStatus, DossierStatus[]> = {
   sans_suite: [],
 };
 
+/** Une transition de statut est-elle autorisée par la machine à états ? */
+export function isTransitionAllowed(from: DossierStatus, to: DossierStatus): boolean {
+  return DOSSIER_TRANSITIONS[from].includes(to);
+}
+
+/** Tant que le dossier est dans l'un de ces statuts, ses informations restent modifiables. */
+export const EDITABLE_DOSSIER_STATUSES: DossierStatus[] = ['brouillon', 'complet', 'besoin_valide'];
+
 export const DOSSIER_STATUS_LABELS: Record<DossierStatus, string> = {
   brouillon: 'Brouillon',
   complet: 'Complet',

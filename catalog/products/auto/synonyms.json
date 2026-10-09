@@ -1,0 +1,13 @@
+{
+  "RC": ["responsabilité civile", "garantie obligatoire", "rc circulation", "tiers"],
+  "DR": ["défense recours", "protection juridique", "défense pénale", "recours suite à accident"],
+  "BDG": ["bris de glace", "bris de vitres", "vitrage", "pare-brise", "glaces"],
+  "VOL": ["vol", "vol du véhicule", "vol et tentative de vol"],
+  "INC": ["incendie", "incendie et explosion", "incendie forces de la nature"],
+  "DTC": ["tous risques", "dommages collision", "dommages tous accidents", "dommages tous collisions"],
+  "CAT": ["catastrophes naturelles", "catnat", "événements climatiques", "tempête grêle neige"],
+  "ASS": ["assistance", "dépannage", "remorquage", "assistance 0 km"],
+  "GDC": ["garantie conducteur", "dommages corporels du conducteur", "protection du conducteur"],
+  "VRP": ["véhicule de remplacement", "véhicule de prêt", "voiture de courtoisie"],
+  "EQP": ["équipements", "objets transportés", "effets personnels", "contenu du véhicule"]
+}

@@ -20,8 +20,19 @@ export interface Cabinet {
   email?: string | null;
   logoPath?: string | null;
   active: boolean;
-  /** Nombre d'utilisateurs autorisés (admin compris) selon l'offre : écrit uniquement côté serveur. */
-  maxUtilisateurs: number;
+  /** Offre souscrite (`plans/{planId}`) : écrite uniquement côté serveur. */
+  planId: string;
+  /** Surcharge des limites de l'offre pour ce cabinet (ex. 6 sièges au lieu de 3). Serveur uniquement. */
+  overrides?: Partial<PlanLimits> | null;
+  /** Limites effectives = offre + surcharge (voir `computeEffectiveLimits`), recalculées à chaque changement. */
+  limits: PlanLimits;
+  /**
+   * Présent quand le cabinet dépasse sa limite de sièges (baisse d'offre) : fin du délai de grâce,
+   * après quoi seuls les admins accèdent au cabinet.
+   */
+  graceEndsAt?: TimestampLike | null;
+  /** Réinitialisations d'appareil consommées durant le mois `month` (« AAAA-MM »). */
+  deviceResets?: { month: string; count: number } | null;
   ownerUid: string;
   enabledInsurers: string[];
   enabledProducts: string[];
@@ -34,12 +45,23 @@ export interface Member {
   displayName: string | null;
   role: CabinetRole;
   status: MemberStatus;
+  /** Appareil lié au compte : lui seul peut se connecter, jusqu'à réinitialisation par un admin. */
+  device?: BoundDevice | null;
   /** Session de l'appareil connecté : un seul appareil à la fois. */
-  session?: MemberSession | null;
+  session?: Session | null;
   createdAt?: TimestampLike;
 }
 
-export interface MemberSession {
+export interface BoundDevice {
+  /** Identifiant généré par l'app et conservé dans IndexedDB. */
+  id: string;
+  /** Description lisible (ex. « Chrome · Windows »). */
+  label: string | null;
+  boundAt?: TimestampLike;
+}
+
+/** Session ouverte par `sessions-ouvrir`, dans `members/{uid}.session`. */
+export interface Session {
   /** Identifiant de l'appareil (informatif). */
   id: string;
   /**
@@ -51,6 +73,32 @@ export interface MemberSession {
   ouverteLe?: TimestampLike;
   /** Dernier signal de vie de l'appareil. */
   lastSeen?: TimestampLike;
+  /**
+   * Connexion de l'extension Chrome du même appareil : `auth_time` de SON jeton (posé par `sessions-ouvrirExtension`).
+   * Il disparaît avec la session de l'app : fermée, remplacée ou membre désactivé, l'extension perd l'accès aussitôt.
+   */
+  extensionAuthTime?: number;
+  extensionOpenedAt?: TimestampLike;
+}
+
+/** cabinets/{t}/auditLog/{id} : écrit uniquement par les Cloud Functions, lu par les admins. */
+export type AuditLogType =
+  | 'connexion'
+  | 'connexion_refusee_appareil'
+  | 'appareil_lie'
+  | 'extension_connexion'
+  | 'appareil_reinitialise'
+  | 'reinitialisation_refusee_quota';
+
+export interface AuditLogEntry {
+  id: string;
+  type: AuditLogType;
+  /** Utilisateur concerné. */
+  uid: string;
+  /** Utilisateur à l'origine de l'action (admin pour une réinitialisation). */
+  by: string;
+  at?: TimestampLike;
+  data?: Record<string, unknown>;
 }
 
 export interface Invitation {
@@ -60,6 +108,24 @@ export interface Invitation {
   status: InvitationStatus;
   invitedBy: string;
   expiresAt: TimestampLike;
+}
+
+// ── Offres ─────────────────────────────────────────────────────────────────
+/** Limites d'un cabinet. */
+export interface PlanLimits {
+  /** Utilisateurs autorisés, admin compris. */
+  maxUtilisateurs: number;
+  /** Réinitialisations d'appareil autorisées par mois. */
+  resetsAppareilParMois: number;
+  /** Appels à l'IA (fonction `ia-proxy`, tous les utilisateurs du cabinet) autorisés par mois. */
+  appelsIaParMois: number;
+}
+
+/** plans/{planId} : catalogue des offres, publié par `seed-catalog`. */
+export interface Plan {
+  id: string;
+  name: string;
+  limits: PlanLimits;
 }
 
 // ── Catalogue ──────────────────────────────────────────────────────────────
@@ -103,6 +169,12 @@ export interface Product {
   guaranteeCatalog: Guarantee[];
 }
 
+/** guaranteeSynonyms/{productId} : formulations d'un assureur → code du référentiel (ex. « vitrage » → BDG). */
+export interface GuaranteeSynonyms {
+  id: string; // productId
+  synonyms: Record<string, string[]>; // code → formulations
+}
+
 export interface Insurer {
   id: string;
   name: string;
@@ -117,14 +189,19 @@ export interface Assure {
   id: string;
   type: 'particulier' | 'pro';
   civilite?: 'M.' | 'Mme' | null;
+  /** Prénom et nom du contact (de l'assuré lui-même pour un particulier). */
   firstName: string;
   lastName: string;
+  /** Raison sociale et SIRET (14 chiffres) : assuré professionnel. */
+  companyName?: string | null;
+  siret?: string | null;
   birthDate?: string | null;
   email?: string | null;
   phone?: string | null;
   address?: { street?: string | null; postalCode?: string | null; city?: string | null; country?: string | null };
   createdBy: string;
   createdAt?: TimestampLike;
+  updatedAt?: TimestampLike;
 }
 
 export type CoverageLevel = 'tiers' | 'tiers_plus' | 'tous_risques';
@@ -152,13 +229,28 @@ export interface Dossier {
   decision: { insurerId: string; justification: string; decidedBy: string; decidedAt?: TimestampLike } | null;
   proposal: { sentAt?: TimestampLike; sentTo: string } | null;
   outcome: { result: 'souscrit' | 'refuse' | 'sans_suite'; contractNumber?: string | null; effectiveDate?: string | null } | null;
+  /** Où le courtier s'est arrêté dans le questionnaire : la reprise du brouillon s'y replace exactement. */
+  draft?: { sectionIndex: number } | null;
+  createdBy?: string;
   createdAt?: TimestampLike;
   updatedAt?: TimestampLike;
 }
 
+/** Types d'événements de l'historique d'un dossier (cabinets/{t}/dossiers/{d}/events). */
+export type DossierEventType =
+  | 'created'
+  | 'data_updated'
+  | 'status_changed'
+  | 'assigned'
+  | 'need_updated'
+  | 'note'
+  | 'pricing_requested'
+  | 'pricing_completed'
+  | 'offer_entered';
+
 export interface DossierEvent {
   id: string;
-  type: string;
+  type: DossierEventType | string;
   by: string;
   at?: TimestampLike;
   data?: Record<string, unknown>;
@@ -183,6 +275,9 @@ export interface QuoteJob {
   totalSteps: number | null;
   error: string | null;
   attempts: number;
+  /** Référence du dossier (copiée à la création du job) : affichée dans le side panel de l'extension. */
+  dossierReference?: string | null;
+  requestedAt?: TimestampLike;
   updatedAt?: TimestampLike;
 }
 
@@ -214,27 +309,89 @@ export interface Offer {
   source: 'auto' | 'manual';
   gaps: OfferGap[];
   score: number | null;
+  /** Saisie manuelle : courtier qui a saisi l'offre, et devis joint (`documents/{id}`). */
+  enteredBy?: string | null;
+  documentId?: string | null;
   capturedAt?: TimestampLike;
 }
 
+/** cabinets/{t}/dossiers/{d}/documents/{id} : écrit par les functions (devis joint à une offre saisie à la main). */
+export interface DossierDocument {
+  id: string;
+  type: 'devis' | string;
+  storagePath: string;
+  fileName: string | null;
+  insurerId?: string | null;
+  ocrFields: unknown[];
+  status: 'uploaded' | string;
+  uploadedBy: string;
+  createdAt?: TimestampLike;
+}
+
+// ── Signalements de l'extension (AUCUNE donnée client) ─────────────────────
+/** Étape de la capture du tarif où le problème est survenu. */
+export const EXTENSION_REPORT_STEPS = ['detect', 'extract', 'confirm', 'write'] as const;
+export type ExtensionReportStep = (typeof EXTENSION_REPORT_STEPS)[number];
+
+/** Codes fermés : un texte libre pourrait contenir une donnée client, un code jamais. */
+export const EXTENSION_REPORT_ISSUES = [
+  /** Page de résultat probable, mais aucune prime lue (ni dans le DOM ni par l'IA). */
+  'premium_not_found',
+  /** L'IA n'a pas répondu (panne, quota du cabinet). */
+  'ai_unavailable',
+  /** Réponse de l'IA inutilisable (pas de JSON, ou aucun montant présent sur la page). */
+  'ai_unusable',
+  /** Le courtier a refusé le tarif lu (montant faux, mauvaise page). */
+  'capture_rejected',
+  /** L'écriture de l'offre a échoué. */
+  'offer_write_failed',
+] as const;
+export type ExtensionReportIssue = (typeof EXTENSION_REPORT_ISSUES)[number];
+
+/** extensionReports/{id} : créé par l'extension, lu seulement par les opérateurs (console). */
+export interface ExtensionReport {
+  id: string;
+  insurerId: string;
+  /** Origine de l'extranet (« https://extranet.assureur-a.fr »), jamais l'URL complète (elle peut porter des paramètres). */
+  origin: string;
+  step: ExtensionReportStep;
+  issue: ExtensionReportIssue;
+  at?: TimestampLike;
+}
+
 // ── Mémoire partagée des formulaires (AUCUNE donnée client) ────────────────
+/** Types de champs d'un extranet (analyse du DOM par l'extension). */
+export const FORM_FIELD_KINDS = ['text', 'number', 'date', 'select', 'radio', 'checkbox', 'textarea', 'autocomplete'] as const;
+export type FormFieldKind = (typeof FORM_FIELD_KINDS)[number];
+
 export interface FormMemoryField {
+  /** Identifiant du champ dans le formulaire (type + nom/id/libellé) : STRUCTURE, jamais une valeur saisie. */
   fieldKey: string;
   label: string | null;
-  type: string;
+  type: FormFieldKind;
   order: number;
+  /** Chemin canonique associé, ou null : « ce champ n'a pas d'équivalent » est lui aussi appris. */
   canonicalPath: CanonicalPath | null;
   confidence: number;
 }
 
-/** formMemories/{memoryKey} */
+/**
+ * formMemories/{memoryKey} : ce que l'extension a appris d'un formulaire d'extranet, partagé par tous les cabinets.
+ * `memoryKey` = sha256(`${origin}|${formFingerprint}`) en hexadécimal, tronqué à 32 caractères.
+ * Écrit uniquement par les functions `memoires-*` (structure validée) ; lu par l'extension.
+ */
 export interface FormMemory {
   id: string;
-  origin: string; // ex. "extranet.assureur-a.fr"
+  /** Origine de l'extranet, ex. « https://extranet.assureur-a.fr ». */
+  origin: string;
   formFingerprint: string;
   version: number;
   fields: FormMemoryField[];
+  /** Nombre de fois où la mémoire a servi à remplir un formulaire. */
   hits: number;
+  /** Signalements d'échec (par des cabinets distincts) ; à 2, la mémoire est invalidée et réapprise. */
+  failures?: number;
+  invalidatedAt?: TimestampLike | null;
   lastUsedAt?: TimestampLike;
   createdAt?: TimestampLike;
 }

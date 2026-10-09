@@ -31,7 +31,95 @@ service cloud.firestore {
         && request.auth.token.ci_cabinet_id == cabinetId
         && cabinetDoc(cabinetId).active == true
         && memberDoc(cabinetId).status == 'active'
-        && memberDoc(cabinetId).session.authTime == request.auth.token.auth_time;
+        && memberDoc(cabinetId).session.authTime == request.auth.token.auth_time
+        && withinSeatLimit(cabinetId);
+    }
+
+    // Cabinet au-delà de sa limite d'utilisateurs (baisse d'offre) : une fois le délai de grâce écoulé
+    // (graceEndsAt), seuls les admins gardent l'accès.
+    function withinSeatLimit(cabinetId) {
+      return cabinetDoc(cabinetId).get('graceEndsAt', null) == null
+        || request.time < cabinetDoc(cabinetId).graceEndsAt
+        || request.auth.token.ci_role == 'admin';
+    }
+
+
+    // ── Extension Chrome ────────────────────────────────────────────────────
+    // L'extension se connecte avec le compte de l'app, mais son jeton a SA propre heure de connexion (auth_time),
+    // enregistrée dans la session de l'app par la function sessions-ouvrirExtension. Elle n'a donc jamais les droits
+    // de l'app, et perd les siens dès que la session de l'app disparaît (fermée, remplacée, appareil réinitialisé,
+    // membre désactivé, cabinet désactivé).
+    function ciExtActive(t) {
+      let member = get(/databases/$(database)/documents/cabinets/$(t)/members/$(request.auth.uid)).data;
+      let cabinet = get(/databases/$(database)/documents/cabinets/$(t)).data;
+      return request.auth != null
+        && request.auth.token.get('ci_cabinet_id', null) == t
+        && cabinet.get('active', false) == true
+        && (cabinet.get('graceEndsAt', null) == null
+            || request.time < cabinet.graceEndsAt
+            || request.auth.token.get('ci_role', null) == 'admin')
+        && member.get('status', null) == 'active'
+        && member.get('session', null) != null
+        && member.session.get('extensionAuthTime', null) == request.auth.token.auth_time;
+    }
+
+    function ciExtAny() {
+      return request.auth != null
+        && request.auth.token.get('ci_cabinet_id', null) != null
+        && ciExtActive(request.auth.token.ci_cabinet_id);
+    }
+
+    // Jobs de tarification de l'extension : seul le statut et la progression sont modifiables.
+    // Offre capturée par l'extension (E10) : au moins une prime, types et tailles contrôlés
+    // (le contenu des listes est normalisé par les functions).
+    function ciExtOfferValid(offer) {
+      return (offer.premiumAnnual is number || offer.premiumMonthly is number)
+        && (offer.premiumAnnual == null || (offer.premiumAnnual is number && offer.premiumAnnual >= 0))
+        && (offer.premiumMonthly == null || (offer.premiumMonthly is number && offer.premiumMonthly >= 0))
+        && (offer.quoteNumber == null || (offer.quoteNumber is string && offer.quoteNumber.size() <= 60))
+        && offer.deductibles is map && offer.deductibles.size() <= 20
+        && offer.guarantees is list && offer.guarantees.size() <= 60
+        && offer.exclusions is list && offer.exclusions.size() <= 30
+        && offer.capturedAt == request.time;
+    }
+
+    function ciExtJobUpdate() {
+      return request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'currentStep', 'totalSteps', 'error', 'attempts', 'missingFields', 'updatedAt'])
+        && request.resource.data.status in ['analyzing', 'needs_info', 'filling', 'awaiting_submit', 'captured', 'failed'];
+    }
+
+    // La requête du side panel : « mes jobs en cours », tous dossiers confondus.
+    match /{path=**}/quoteJobs/{insurerId} {
+      allow read: if ciExtAny() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // ── Mémoire partagée des formulaires (structure seulement, AUCUNE donnée client).
+    // Partagée entre tous les cabinets, lue par l'extension. Écrite UNIQUEMENT par les functions memoires-*,
+    // qui valident à la lettre chaque champ (les règles ne peuvent pas contrôler le contenu d'une liste) :
+    // un cabinet ne peut donc ni y déposer une valeur, ni fausser la mémoire des autres.
+    match /formMemories/{memoryKey} {
+      allow read: if ciExtAny();
+      allow write: if false;
+    }
+
+    // ── Signalements de l'extension (AUCUNE donnée client) : création seule.
+    match /extensionReports/{reportId} {
+      // Codes fermés (voir EXTENSION_REPORT_ISSUES dans shared/models.ts) : un texte libre pourrait porter une donnée client.
+      allow create: if ciExtAny()
+        && request.resource.data.keys().hasOnly(['insurerId', 'origin', 'step', 'issue', 'at'])
+        && request.resource.data.keys().hasAll(['insurerId', 'origin', 'step', 'issue', 'at'])
+        && request.resource.data.insurerId is string
+        && request.resource.data.insurerId.size() > 0
+        && request.resource.data.insurerId.size() <= 100
+        // L'origine seule (jamais le chemin ni les paramètres de l'URL), ou vide si elle est inconnue.
+        && request.resource.data.origin is string
+        && request.resource.data.origin.matches('^(https://[a-zA-Z0-9.:-]{1,200}|http://localhost(:[0-9]+)?)?$')
+        && request.resource.data.step in ['detect', 'extract', 'confirm', 'write']
+        && request.resource.data.issue in ['premium_not_found', 'ai_unavailable', 'ai_unusable', 'capture_rejected', 'offer_write_failed']
+        && request.resource.data.at == request.time;
+      allow read, update, delete: if false;
     }
 
     // ── Catalogue global (écrit par les Cloud Functions uniquement) ────────
@@ -43,18 +131,28 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if false;
     }
+    match /guaranteeSynonyms/{productId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /plans/{planId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
 
     // ── Données d'un cabinet ──────────────────────────────────────────────
     match /cabinets/{cabinetId} {
       allow read: if inCabinet(cabinetId);
       // L'admin ne modifie que les informations du cabinet :
-      // jamais active, ownerUid ni maxUtilisateurs (la limite de l'offre).
+      // jamais active, ownerUid, planId, overrides, limits, graceEndsAt ni deviceResets (offre et quotas).
       allow update: if inCabinet(cabinetId) && hasRole(['admin'])
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['name', 'orias', 'address', 'phone', 'email', 'logoPath']);
+          .hasOnly(['name', 'orias', 'address', 'phone', 'email', 'logoPath', 'enabledInsurers', 'enabledProducts']);
 
       // Membres : écrits par les Cloud Functions, sauf le signal de vie de sa propre session.
       match /members/{uid} {
+        // L'extension relit sa propre fiche pour savoir si sa session est toujours ouverte.
+        allow get: if request.auth.uid == uid && ciExtActive(cabinetId);
         allow read: if inCabinet(cabinetId);
         allow update: if request.auth != null
           && request.auth.uid == uid
@@ -65,6 +163,12 @@ service cloud.firestore {
           && request.resource.data.session.lastSeen == request.time;
       }
       match /invitations/{invitationId} {
+        allow read: if inCabinet(cabinetId) && hasRole(['admin']);
+        allow write: if false;
+      }
+
+      // Journal des connexions et des appareils : lu par les admins, écrit par les Cloud Functions.
+      match /auditLog/{entryId} {
         allow read: if inCabinet(cabinetId) && hasRole(['admin']);
         allow write: if false;
       }
@@ -82,16 +186,41 @@ service cloud.firestore {
       }
 
       match /dossiers/{dossierId} {
-        allow read, write: if inCabinet(cabinetId);
+        allow read: if inCabinet(cabinetId);
+        // Création, données, besoin, statut, assignation et référence passent par les functions dossiers-* :
+        // elles appliquent la machine à états, la complétude et la numérotation.
+        allow create, delete: if false;
+        allow update: if inCabinet(cabinetId)
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['reference', 'completeness', 'createdAt', 'createdBy', 'status', 'assignedTo', 'data', 'draft', 'assureId', 'productId', 'needAnalysis']);
 
-        // Jobs de tarification, offres, documents.
+        // Jobs de tarification, offres, documents : lus par le cabinet. Jobs et offres sont écrits par les functions
+        // tarification-* (besoin validé, assureur activé, offre contrôlée) et par l'extension (voir plus bas).
         match /{collection}/{docId} {
-          allow read, write: if inCabinet(cabinetId) && collection in ['quoteJobs', 'offers', 'documents'];
+          allow read: if inCabinet(cabinetId) && collection in ['quoteJobs', 'offers', 'documents'];
+          allow write: if inCabinet(cabinetId) && collection == 'documents';
+        }
+
+        // ── Extension : jobs et offres (voir ciExtActive). Écriture limitée au statut du job et aux offres automatiques.
+        match /quoteJobs/{insurerId} {
+          allow get, list: if ciExtActive(cabinetId) && resource.data.ownerUid == request.auth.uid;
+          allow update: if ciExtActive(cabinetId) && resource.data.ownerUid == request.auth.uid && ciExtJobUpdate();
+        }
+
+        match /offers/{insurerId} {
+          allow create, update: if ciExtActive(cabinetId)
+            && get(/databases/$(database)/documents/cabinets/$(cabinetId)/dossiers/$(dossierId)/quoteJobs/$(insurerId)).data.ownerUid == request.auth.uid
+            && request.resource.data.source == 'auto'
+            && request.resource.data.keys().hasOnly(['quoteNumber', 'premiumAnnual', 'premiumMonthly', 'deductibles',
+                                                     'guarantees', 'exclusions', 'source', 'capturedAt'])
+            && ciExtOfferValid(request.resource.data);
         }
 
         // Historique non modifiable.
         match /events/{eventId} {
-          allow read, create: if inCabinet(cabinetId);
+          allow read: if inCabinet(cabinetId);
+          // Les événements du dossier sont écrits par les functions ; seule une note est ajoutée depuis l'app.
+          allow create: if inCabinet(cabinetId)
+            && request.resource.data.type == 'note' && request.resource.data.by == request.auth.uid;
           allow update, delete: if false;
         }
       }

@@ -4,9 +4,10 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { assertSignedIn, assertCabinetAdmin, requireEmail, requireString, setCabinetClaims } from "../core/auth.utils";
 import { CLAIM_CABINET_ID, INVITATION_TTL_DAYS, MAIL_COLLECTION, CALLABLE_OPTIONS, CABINET_ROLES, UserRole } from "../core/config";
 import { escapeHtml } from "../core/html.utils";
-import { assertSeatAvailable, getSeatUsage, lockSeats } from "../core/seats.utils";
+import { assertSeatAvailable, getSeatUsage, graceUpdate, lockSeats } from "../core/seats.utils";
+import { writeAudit } from "../core/audit.utils";
 import { invitationPath, invitationsPath, memberPath, cabinetPath } from "../core/firestore-paths";
-import type { CabinetRole } from "../shared/index.js";
+import { FALLBACK_LIMITS, type CabinetRole } from "../shared/index.js";
 
 function requireCabinetRole(value: unknown): CabinetRole {
   if (!CABINET_ROLES.includes(value as CabinetRole)) {
@@ -174,6 +175,15 @@ export const activerMembre = onCall(CALLABLE_OPTIONS, async request => {
       assertSeatAvailable(usage, usage.activeMembers + usage.pendingInvitations + 1);
       lockSeats(tx, cabinetId);
     }
+    // Désactivation : la place libérée peut ramener un cabinet en dépassement dans sa limite.
+    if (status === "disabled" && member.get("status") === "active") {
+      const usage = await getSeatUsage(cabinetId, tx);
+      const grace = graceUpdate(usage.activeMembers - 1, usage.maxUtilisateurs, usage.graceEndsAt);
+      // Rien à écrire quand le cabinet n'était pas en dépassement : Firestore refuse une mise à jour vide.
+      if (Object.keys(grace).length > 0) {
+        tx.update(db.doc(cabinetPath(cabinetId)), grace);
+      }
+    }
     tx.update(ref, {
       status,
       updatedAt: FieldValue.serverTimestamp(),
@@ -201,4 +211,63 @@ export const annulerInvitation = onCall(CALLABLE_OPTIONS, async request => {
   }
   await ref.update({ status: "cancelled", cancelledAt: FieldValue.serverTimestamp() });
   return { success: true };
+});
+
+/** Mois en cours (« AAAA-MM », UTC) : période du quota de réinitialisations. */
+const currentMonth = () => new Date().toISOString().substring(0, 7);
+
+/**
+ * L'admin réinitialise l'appareil lié d'un membre (poste perdu ou changé) : le prochain appareil
+ * avec lequel il se connecte devient le sien. Limité par mois selon l'offre du cabinet.
+ */
+export const reinitialiserAppareil = onCall(CALLABLE_OPTIONS, async request => {
+  const { cabinetId, uid: adminUid } = await assertCabinetAdmin(request);
+  const memberUid = requireString(request.data?.uid, "uid");
+  const month = currentMonth();
+
+  const db = admin.firestore();
+  const cabinetRef = db.doc(cabinetPath(cabinetId));
+  const memberRef = db.doc(memberPath(cabinetId, memberUid));
+
+  const result = await db.runTransaction(async tx => {
+    const [cabinet, member] = await Promise.all([tx.get(cabinetRef), tx.get(memberRef)]);
+    if (!member.exists) {
+      throw new HttpsError("not-found", "Membre introuvable.");
+    }
+    if (!member.get("device")) {
+      throw new HttpsError("failed-precondition", "Aucun appareil n'est lié à ce membre.");
+    }
+    const quota =
+      (cabinet.get("limits.resetsAppareilParMois") as number | undefined) ?? FALLBACK_LIMITS.resetsAppareilParMois;
+    const used = cabinet.get("deviceResets.month") === month ? (cabinet.get("deviceResets.count") as number) : 0;
+    if (used >= quota) {
+      return { refused: true as const, quota };
+    }
+    tx.update(cabinetRef, { deviceResets: { month, count: used + 1 } });
+    // L'appareil et la session sont supprimés : l'ancien appareil perd l'accès immédiatement.
+    tx.update(memberRef, {
+      device: FieldValue.delete(),
+      session: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return { refused: false as const, remaining: quota - used - 1 };
+  });
+
+  if (result.refused) {
+    await writeAudit(cabinetId, {
+      type: "reinitialisation_refusee_quota",
+      uid: memberUid,
+      by: adminUid,
+      data: { quota: result.quota, month },
+    });
+    throw new HttpsError(
+      "resource-exhausted",
+      `Quota atteint : ${result.quota} réinitialisation(s) d'appareil par mois pour votre offre. ` +
+        "Réessayez le mois prochain ou changez d'offre.",
+      { reason: "device_reset_quota" },
+    );
+  }
+  await admin.auth().revokeRefreshTokens(memberUid);
+  await writeAudit(cabinetId, { type: "appareil_reinitialise", uid: memberUid, by: adminUid, data: { month } });
+  return { success: true, remaining: result.remaining };
 });

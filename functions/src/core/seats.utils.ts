@@ -1,13 +1,15 @@
 import * as admin from "firebase-admin";
 import { FieldValue, Timestamp, Transaction } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
-import { DEFAULT_MAX_UTILISATEURS } from "./config";
+import { FALLBACK_LIMITS, GRACE_PERIOD_DAYS } from "../shared/index.js";
 import { cabinetPath, invitationsPath } from "./firestore-paths";
 
 export interface SeatUsage {
   maxUtilisateurs: number;
   activeMembers: number;
   pendingInvitations: number;
+  /** Fin du délai de grâce si le cabinet dépasse sa limite (baisse d'offre). */
+  graceEndsAt: Timestamp | null;
 }
 
 /**
@@ -28,10 +30,29 @@ export async function getSeatUsage(cabinetId: string, tx?: Transaction): Promise
     : await Promise.all([cabinetRef.get(), activeMembersQuery.get(), pendingInvitationsQuery.get()]);
 
   return {
-    maxUtilisateurs: (cabinet.get("maxUtilisateurs") as number | undefined) ?? DEFAULT_MAX_UTILISATEURS,
+    maxUtilisateurs: (cabinet.get("limits.maxUtilisateurs") as number | undefined) ?? FALLBACK_LIMITS.maxUtilisateurs,
     activeMembers: members.size,
     pendingInvitations: invitations.size,
+    graceEndsAt: (cabinet.get("graceEndsAt") as Timestamp | undefined) ?? null,
   };
+}
+
+/**
+ * Champs du cabinet à écrire pour tenir à jour le délai de grâce : ouvert quand les membres actifs
+ * dépassent la limite (il n'est jamais prolongé s'il court déjà), fermé dès qu'ils rentrent dans la limite.
+ */
+export function graceUpdate(
+  activeMembers: number,
+  maxUtilisateurs: number,
+  current: Timestamp | null,
+): { graceEndsAt: Timestamp | FieldValue } | Record<string, never> {
+  if (activeMembers <= maxUtilisateurs) {
+    return current ? { graceEndsAt: FieldValue.delete() } : {};
+  }
+  if (current) {
+    return {};
+  }
+  return { graceEndsAt: Timestamp.fromMillis(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000) };
 }
 
 /**

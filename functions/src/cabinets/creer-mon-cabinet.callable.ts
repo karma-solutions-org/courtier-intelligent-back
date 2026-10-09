@@ -1,9 +1,7 @@
-import * as admin from "firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { assertSignedIn, requireString, setCabinetClaims } from "../core/auth.utils";
-import { CALLABLE_OPTIONS, CLAIM_CABINET_ID, DEFAULT_MAX_UTILISATEURS } from "../core/config";
-import { memberPath, cabinetPath } from "../core/firestore-paths";
+import { assertSignedIn, requireString } from "../core/auth.utils";
+import { createCabinet } from "../core/cabinet.utils";
+import { CALLABLE_OPTIONS, CLAIM_CABINET_ID } from "../core/config";
 
 /**
  * Inscription d'un nouveau cabinet : appelée juste après la création du compte.
@@ -19,33 +17,7 @@ export const creerMonCabinet = onCall(CALLABLE_OPTIONS, async request => {
 
   const name = requireString(request.data?.name, "nom du cabinet", 120);
   const orias = typeof request.data?.orias === "string" ? request.data.orias.trim().substring(0, 20) : null;
-  const user = await admin.auth().getUser(uid);
 
-  const db = admin.firestore();
-  const cabinetRef = db.collection("cabinets").doc();
-  const cabinetId = cabinetRef.id;
-
-  await db.runTransaction(async tx => {
-    tx.set(db.doc(cabinetPath(cabinetId)), {
-      name,
-      orias,
-      active: true,
-      // Limite d'utilisateurs (admin compris) : modifiable uniquement côté serveur.
-      maxUtilisateurs: DEFAULT_MAX_UTILISATEURS,
-      ownerUid: uid,
-      enabledInsurers: [],
-      enabledProducts: [],
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    tx.set(db.doc(memberPath(cabinetId, uid)), {
-      email: user.email ?? null,
-      displayName: user.displayName ?? null,
-      role: "admin",
-      status: "active",
-      createdAt: FieldValue.serverTimestamp(),
-    });
-  });
-
-  await setCabinetClaims(uid, cabinetId, "admin");
+  const cabinetId = await createCabinet({ name, orias, ownerUid: uid });
   return { cabinetId };
 });

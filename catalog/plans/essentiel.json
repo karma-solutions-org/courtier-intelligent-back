@@ -1,0 +1,9 @@
+{
+  "id": "essentiel",
+  "name": "Essentiel",
+  "limits": {
+    "maxUtilisateurs": 3,
+    "resetsAppareilParMois": 2,
+    "appelsIaParMois": 200
+  }
+}

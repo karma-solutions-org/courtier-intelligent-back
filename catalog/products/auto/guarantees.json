@@ -1,0 +1,13 @@
+[
+  { "code": "RC", "label": "Responsabilité civile", "type": "included" },
+  { "code": "DR", "label": "Défense pénale et recours", "type": "included" },
+  { "code": "BDG", "label": "Bris de glace", "type": "deductible" },
+  { "code": "VOL", "label": "Vol", "type": "deductible" },
+  { "code": "INC", "label": "Incendie", "type": "deductible" },
+  { "code": "DTC", "label": "Dommages tous accidents", "type": "deductible" },
+  { "code": "CAT", "label": "Catastrophes naturelles et technologiques", "type": "included" },
+  { "code": "ASS", "label": "Assistance et dépannage", "type": "included" },
+  { "code": "GDC", "label": "Garantie du conducteur", "type": "limit" },
+  { "code": "VRP", "label": "Véhicule de remplacement", "type": "limit" },
+  { "code": "EQP", "label": "Équipements et objets transportés", "type": "limit" }
+]

@@ -1,0 +1,9 @@
+{
+  "id": "reseau",
+  "name": "Réseau",
+  "limits": {
+    "maxUtilisateurs": 15,
+    "resetsAppareilParMois": 8,
+    "appelsIaParMois": 5000
+  }
+}
