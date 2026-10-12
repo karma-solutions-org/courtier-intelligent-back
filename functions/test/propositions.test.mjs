@@ -64,7 +64,7 @@ describe("buildProposalEmail", () => {
     const link = dossierLink("https://app.exemple.fr/", "d1");
     assert.equal(link, "https://app.exemple.fr/espace/dossiers/d1");
     const { html } = buildReminderEmail({ cabinetName: "C", reference: "D-1", assureName: "A", sentTo: "a@b.fr", daysSinceSent: 8, link });
-    assert.ok(html.includes('<a href="https://app.exemple.fr/espace/dossiers/d1">Ouvrir le dossier</a>'));
+    assert.match(html, /<a href="https:\/\/app\.exemple\.fr\/espace\/dossiers\/d1"[^>]*>Ouvrir le dossier<\/a>/);
   });
 
   it("relance : pas de lien sans adresse de l'app", () => {

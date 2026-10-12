@@ -4,6 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { assertSignedIn, assertCabinetAdmin, requireEmail, requireString, setCabinetClaims } from "../core/auth.utils";
 import { CLAIM_CABINET_ID, INVITATION_TTL_DAYS, MAIL_COLLECTION, CALLABLE_OPTIONS, CABINET_ROLES, UserRole } from "../core/config";
 import { escapeHtml } from "../core/html.utils";
+import { buildInvitationEmail } from "./invitation-email";
 import { assertSeatAvailable, getSeatUsage, graceUpdate, lockSeats } from "../core/seats.utils";
 import { writeAudit } from "../core/audit.utils";
 import { completeDeviceReset, deviceResetUpdate } from "../core/device.utils";
@@ -68,15 +69,7 @@ export const inviter = onCall(CALLABLE_OPTIONS, async request => {
   const link = `${appUrl.replace(/\/$/, "")}/invitation?cabinet=${cabinetId}&invitation=${invitation.id}`;
   await db.collection(MAIL_COLLECTION).add({
     to: email,
-    message: {
-      subject: `Invitation à rejoindre ${cabinetName} sur Courtier Intelligent`,
-      html:
-        `<p>Vous êtes invité à rejoindre le cabinet <strong>${cabinetName}</strong> sur Courtier Intelligent.</p>` +
-        `<p><a href="${link}">Accepter l'invitation</a></p>` +
-        `<p><strong>Important :</strong> connectez-vous ou créez votre compte avec cette adresse email, ` +
-        `<strong>${escapeHtml(email)}</strong>. L'invitation ne peut pas être acceptée depuis un autre compte.</p>` +
-        `<p>Ce lien expire dans ${INVITATION_TTL_DAYS} jours.</p>`,
-    },
+    message: buildInvitationEmail({ cabinetName, email, link, ttlDays: INVITATION_TTL_DAYS }),
   });
 
   return { invitationId: invitation.id };
