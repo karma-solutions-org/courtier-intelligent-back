@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { buildProposalEmail, buildReminderEmail, dossierLink, needsReminder, formatEuros } = require("../lib/propositions/proposition.utils.js");
+const { buildProposalEmail, formatEuros } = require("../lib/propositions/proposition.utils.js");
 const { validateContractNumber, validateEffectiveDate } = require("../lib/shared/index.js");
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -54,33 +54,6 @@ describe("buildProposalEmail", () => {
     assert.equal(formatEuros(300), "300 €");
   });
 
-  it("relance : valeurs échappées", () => {
-    const { html } = buildReminderEmail({ cabinetName: "<C>", reference: null, assureName: "<A>", sentTo: "a@b.fr", daysSinceSent: 8, link: null });
-    assert.ok(!html.includes("<A>") && !html.includes("<C>"));
-    assert.ok(!html.includes("<a href"));
-  });
-
-  it("relance : lien vers le dossier quand l'adresse de l'app est configurée", () => {
-    const link = dossierLink("https://app.exemple.fr/", "d1");
-    assert.equal(link, "https://app.exemple.fr/espace/dossiers/d1");
-    const { html } = buildReminderEmail({ cabinetName: "C", reference: "D-1", assureName: "A", sentTo: "a@b.fr", daysSinceSent: 8, link });
-    assert.match(html, /<a href="https:\/\/app\.exemple\.fr\/espace\/dossiers\/d1"[^>]*>Ouvrir le dossier<\/a>/);
-  });
-
-  it("relance : pas de lien sans adresse de l'app", () => {
-    assert.equal(dossierLink("", "d1"), null);
-    assert.equal(dossierLink("  ", "d1"), null);
-  });
-});
-
-describe("needsReminder", () => {
-  const base = { status: "proposition_envoyee", sentAtMs: NOW - 8 * DAY, lastReminderAtMs: null };
-  it("relance après 7 jours sans relance", () => assert.equal(needsReminder(base, NOW), true));
-  it("pas avant 7 jours", () => assert.equal(needsReminder({ ...base, sentAtMs: NOW - 6 * DAY }, NOW), false));
-  it("pas si relancé il y a moins de 7 jours", () => assert.equal(needsReminder({ ...base, lastReminderAtMs: NOW - 3 * DAY }, NOW), false));
-  it("de nouveau 7 jours après la dernière relance", () => assert.equal(needsReminder({ ...base, sentAtMs: NOW - 20 * DAY, lastReminderAtMs: NOW - 7 * DAY }, NOW), true));
-  it("seulement en « proposition envoyée »", () => assert.equal(needsReminder({ ...base, status: "souscrit" }, NOW), false));
-  it("pas sans date d'envoi", () => assert.equal(needsReminder({ ...base, sentAtMs: null }, NOW), false));
 });
 
 describe("validation de la souscription", () => {

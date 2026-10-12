@@ -99,7 +99,7 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
             sentTo: to,
             sentBy: uid,
           }
-        : { sentAt: FieldValue.serverTimestamp(), sentTo: to, sentBy: uid, reminders: 0, lastReminderAt: null },
+        : { sentAt: FieldValue.serverTimestamp(), sentTo: to, sentBy: uid },
       updatedAt: FieldValue.serverTimestamp(),
     });
     if (!resend) {

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const here = dirname(fileURLToPath(import.meta.url));
-const { buildProposalEmail, buildReminderEmail } = require("../../lib/propositions/proposition.utils.js");
+const { buildProposalEmail } = require("../../lib/propositions/proposition.utils.js");
 const { buildInvitationEmail } = require("../../lib/equipe/invitation-email.js");
 const { escapeHtml } = require("../../lib/core/html.utils.js");
 
@@ -31,15 +31,6 @@ const proposal = buildProposalEmail({
 });
 writeFileSync(join(here, "proposal.html"), page(proposal.subject, proposal.html));
 
-const reminder = buildReminderEmail({
-  cabinetName: "Cabinet Martin & Associés",
-  reference: "D-2026-0042",
-  assureName: "Mme Claire Dubois",
-  sentTo: "claire.dubois@exemple.fr",
-  daysSinceSent: 8,
-  link: "https://app.exemple.fr/espace/dossiers/d42",
-});
-writeFileSync(join(here, "reminder.html"), page(reminder.subject, reminder.html));
 
 const invitation = buildInvitationEmail({
   cabinetName: escapeHtml("Cabinet Martin & Associés"),

@@ -6,8 +6,6 @@ import type { DossierStatus } from './statuses.js';
 /** Statuts où l'onglet Proposition est ouvert (dès qu'une offre est retenue). */
 export const PROPOSAL_DOSSIER_STATUSES: DossierStatus[] = ['decision', 'proposition_envoyee', 'souscrit', 'refuse', 'sans_suite'];
 
-/** Délai sans réponse avant une relance du courtier, et délai minimal entre deux relances (jours). */
-export const PROPOSAL_REMINDER_DAYS = 7;
 
 export const PROPOSAL_MESSAGE_MAX = 2000;
 export const CONTRACT_NUMBER_MAX = 50;

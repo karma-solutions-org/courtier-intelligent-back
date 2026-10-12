@@ -1,6 +1,6 @@
 import { escapeHtml } from "../core/html.utils";
-import { EMAIL_COLORS, emailButton, emailLayout, emailParagraph, sectionTitle } from "../core/email-layout";
-import { PROPOSAL_REMINDER_DAYS, type OfferGuarantee } from "../shared/index.js";
+import { EMAIL_COLORS, emailLayout, emailParagraph, sectionTitle } from "../core/email-layout";
+import type { OfferGuarantee } from "../shared/index.js";
 
 /**
  * Logique pure de la proposition (Epic E14) : contenu des emails et choix des dossiers à relancer.
@@ -28,7 +28,6 @@ export interface ProposalEmailInput {
   message?: string | null;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Montant en euros, au format français (« 1 234,50 € »). */
 export function formatEuros(amount: number): string {
@@ -149,56 +148,6 @@ export function buildProposalEmail(input: ProposalEmailInput): { subject: string
 }
 
 /** Email de relance envoyé au courtier en charge (pas à l'assuré). */
-/** Lien vers la fiche d'un dossier dans l'app (`/espace/dossiers/:id`), ou null sans adresse de l'app configurée. */
-export function dossierLink(appUrl: string, dossierId: string): string | null {
-  const base = appUrl.trim().replace(/\/+$/, "");
-  return base ? `${base}/espace/dossiers/${encodeURIComponent(dossierId)}` : null;
-}
-
-export function buildReminderEmail(input: {
-  cabinetName: string;
-  reference: string | null;
-  assureName: string;
-  sentTo: string;
-  daysSinceSent: number;
-  link: string | null;
-}): { subject: string; html: string } {
-  const reference = input.reference ?? "sans référence";
-  return {
-    subject: `Relance : proposition sans réponse (dossier ${reference})`,
-    html: emailLayout({
-      headerTitle: "Relance : proposition sans réponse",
-      headerSubtitle: `${escapeHtml(input.cabinetName)} — Courtier Intelligent`,
-      body:
-        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px"><tr>` +
-        `<td style="padding:12px 16px;background:#fff6e0;border-left:4px solid ${EMAIL_COLORS.amber};border-radius:0 8px 8px 0;font-size:15px;line-height:23px;color:${EMAIL_COLORS.text}">` +
-        `<p style="margin:0">La proposition du dossier <strong>${escapeHtml(reference)}</strong> (${escapeHtml(input.assureName)}) ` +
-        `a été envoyée à ${escapeHtml(input.sentTo)} il y a ${input.daysSinceSent} jours, sans réponse enregistrée.</p></td></tr></table>` +
-        emailParagraph(
-          "Pensez à relancer l'assuré puis à enregistrer sa réponse (souscrit, refusé ou sans suite) dans l'onglet Proposition du dossier.",
-        ) +
-        (input.link ? emailButton(escapeHtml(input.link), "Ouvrir le dossier") : ""),
-      footer: `${escapeHtml(input.cabinetName)} — Courtier Intelligent`,
-    }),
-  };
-}
-
-export interface ReminderCandidate {
-  status: string;
-  sentAtMs: number | null;
-  lastReminderAtMs: number | null;
-}
-
-/**
- * Faut-il relancer le courtier ? Proposition envoyée depuis plus de `PROPOSAL_REMINDER_DAYS` jours,
- * et aucune relance depuis ce même délai.
- */
-export function needsReminder(candidate: ReminderCandidate, nowMs: number, days = PROPOSAL_REMINDER_DAYS): boolean {
-  if (candidate.status !== "proposition_envoyee" || candidate.sentAtMs === null) return false;
-  const threshold = nowMs - days * DAY_MS;
-  if (candidate.sentAtMs > threshold) return false;
-  return candidate.lastReminderAtMs === null || candidate.lastReminderAtMs <= threshold;
-}
 
 /** Nom affiché d'un assuré (raison sociale pour un professionnel). */
 export function assureDisplayName(assure: { firstName?: string; lastName?: string; companyName?: string | null } | undefined): string {

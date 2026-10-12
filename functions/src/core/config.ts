@@ -1,4 +1,3 @@
-import { defineString } from "firebase-functions/params";
 import type { CabinetRole } from "../shared/index.js";
 
 /** Région des Cloud Functions : l'app Angular doit appeler la même. */
@@ -46,12 +45,6 @@ export const GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite
 /** API Gemini (remplacée par un faux service dans les emulators : `IA_UPSTREAM_URL`). */
 export const GEMINI_API_URL = "https://generativelanguage.googleapis.com";
 
-/**
- * Adresse de l'app (ex. « https://courtier.exemple.fr »), sans « / » final : liens des emails envoyés par les tâches
- * planifiées, qui n'ont pas d'appel de l'app pour la connaître. À définir dans `functions/.env` ou `functions/.env.<projet>`
- * (`APP_URL=https://…`). Vide : les emails partent sans lien. (Les invitations reçoivent l'adresse de l'app appelante.)
- */
-export const APP_URL = defineString("APP_URL", { default: "" });
 
 /** Durée de validité d'une invitation. */
 export const INVITATION_TTL_DAYS = 7;

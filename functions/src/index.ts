@@ -22,8 +22,6 @@ export * as offres from "./offres/offres.trigger";
 // ── Propositions (Epic E14) : envoi de la proposition à l'assuré, réponse (souscrit, refusé, sans suite) ──
 export * as propositions from "./propositions/propositions.callable";
 
-// ── Tâches planifiées (Epic E14) : relances des propositions, invitations expirées, délai de grâce ──
-export * as taches from "./taches/taches.scheduler";
 
 // ── Documents (Epic E12) : documents du dossier et lecture automatique (OCR) par l'IA ─────────────
 export * as documents from "./documents/documents.callable";

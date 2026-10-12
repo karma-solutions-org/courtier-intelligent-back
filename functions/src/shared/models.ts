@@ -237,7 +237,7 @@ export interface Dossier {
   completeness: { ok: boolean; missing: CanonicalPath[] };
   needAnalysis: NeedAnalysis | null;
   decision: { insurerId: string; justification: string; decidedBy: string; decidedAt?: TimestampLike } | null;
-  /** Proposition envoyée à l'assuré (écrite uniquement par `propositions-envoyer`, relances par `taches-quotidiennes`). */
+  /** Proposition envoyée à l'assuré (écrite uniquement par `propositions-envoyer`). */
   proposal: DossierProposal | null;
   /** Issue de la proposition (écrite uniquement par `propositions-enregistrerReponse`). */
   outcome: DossierOutcome | null;
@@ -253,8 +253,6 @@ export interface DossierProposal {
   sentTo: string;
   sentBy?: string;
   /** Nombre de relances envoyées au courtier en charge. */
-  reminders?: number;
-  lastReminderAt?: TimestampLike | null;
 }
 
 export type DossierOutcomeResult = 'souscrit' | 'refuse' | 'sans_suite';
@@ -281,7 +279,6 @@ export type DossierEventType =
   | 'offer_entered'
   | 'decision_made'
   | 'proposal_sent'
-  | 'proposal_reminder'
   | 'outcome_recorded';
 
 export interface DossierEvent {

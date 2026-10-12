@@ -89,15 +89,6 @@ firebase functions:secrets:set GEMINI_API_KEY --project aibs-partenaire-testing
 
 Les modèles sont imposés côté serveur (`GEMINI_MODELS` dans `core/config.ts`) et essayés **dans l'ordre** : un modèle introuvable, surchargé (429), en panne (5xx), trop lent ou dont la réponse est vide passe la main au suivant ; une clé refusée (401/403) arrête tout de suite. L'appel ne compte qu'une fois dans le quota, et il est rendu si aucun modèle ne répond. L'extension envoie toujours `{ system, messages, maxTokens }` et reçoit `{ text }` : le proxy traduit vers `generateContent`. Les messages sont bornés (20 messages, 30 000 caractères chacun, 2 000 tokens en sortie), le contenu n'est ni journalisé ni conservé. Limite : `limits.appelsIaParMois` de l'offre (200 / 1000 / 5000), compteur `cabinets/{id}/usage/ia-AAAA-MM`, un appel réservé avant l'envoi et remboursé si le service d'IA échoue. `npm run ops:set-plan -- … --appels-ia 500` l'ajuste par cabinet.
 
-### Adresse de l'app (`APP_URL`)
-
-Les emails envoyés par les tâches planifiées (relance d'une proposition sans réponse, `taches-*`) contiennent un lien vers le dossier (`<APP_URL>/espace/dossiers/<id>`). Le serveur ne connaît pas l'adresse de l'app : c'est un paramètre des functions, à définir par projet dans `functions/.env` ou `functions/.env.<projet>` (ex. `functions/.env.aibs-partenaire-testing`) :
-
-```bash
-APP_URL=https://courtier.exemple.fr
-```
-
-Sans `APP_URL` (valeur vide par défaut), les emails partent sans lien. Les invitations ne s'en servent pas : elles reçoivent l'adresse de l'app qui les envoie.
 
 ## Scripts ops
 
