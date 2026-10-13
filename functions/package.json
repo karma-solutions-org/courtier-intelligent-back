@@ -13,14 +13,14 @@
     "logs": "firebase functions:log",
     "use-test": "firebase use test",
     "sync-shared": "node scripts/sync-shared.mjs",
-    "list-vpc": "node -e \"\"",
+    "list-vpc": "node -e \"require('./lib/vpc-functions').VPC_FUNCTIONS.forEach(n => console.log(n.toLowerCase().replace(/_/g, '-')))\"",
     "test": "cd .. && npx --yes firebase-tools@15.32.1 emulators:exec --only firestore,storage --project demo-courtier-intelligent \"node --test --test-concurrency=1 functions/test/firestore-rules.test.mjs functions/test/firestore-rules-extension.test.mjs functions/test/storage-rules.test.mjs\"",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:emulator": "node --test test/firestore-rules.test.mjs",
-    "test:unit": "tsc && node --test test/catalog.test.mjs test/limits.test.mjs test/questionnaire.test.mjs test/need.test.mjs test/form-memory.test.mjs test/memories-select.test.mjs test/comparison.test.mjs test/propositions.test.mjs",
+    "test:unit": "tsc && node --test test/catalog.test.mjs test/limits.test.mjs test/questionnaire.test.mjs test/need.test.mjs test/form-memory.test.mjs test/memories-select.test.mjs test/comparison.test.mjs test/propositions.test.mjs test/recherche.test.mjs",
     "catalog:validate": "tsc && node lib/ops/validate-catalog.js",
     "ops:seed-catalog": "tsc && node lib/ops/seed-catalog.js",
     "ops:preview-questionnaire": "tsc && node lib/ops/preview-questionnaire.js",
@@ -32,9 +32,11 @@
     "ops:reset-device": "tsc && node lib/ops/reset-device.js",
     "ops:extension-report": "tsc && node lib/ops/extension-report.js",
     "ops:discovered-questions": "tsc && node lib/ops/discovered-questions.js",
-    "ops:migrate-sans-suite": "tsc && node lib/ops/migrate-sans-suite.js"
+    "ops:migrate-sans-suite": "tsc && node lib/ops/migrate-sans-suite.js",
+    "ops:reindex-elastic": "tsc && node lib/ops/reindex-elastic.js"
   },
   "dependencies": {
+    "@elastic/elasticsearch": "^9.4.2",
     "firebase-admin": "^13.10.0",
     "firebase-functions": "^7.4.0"
   },

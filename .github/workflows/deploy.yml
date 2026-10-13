@@ -54,6 +54,20 @@ jobs:
           service_account: **github-action-deploy@aibs-part.iam.gserviceaccount.com
           project_id: **aibs-part
 
+      # Identifiants Elasticsearch (functions recherche-*) : ajoutés au fichier d'environnement du projet, dans le
+      # runner seulement (jamais commités). Tant que la clé de production n'existe pas, la recherche reste inactive
+      # en production (les triggers journalisent l'erreur, aucune écriture n'est bloquée).
+      - name: Elasticsearch credentials
+        env:
+          ELASTIC_CLOUD_ID: ${{ secrets.ELASTIC_CLOUD_ID }}
+          ELASTIC_API_KEY: ${{ secrets.ELASTIC_API_KEY_PROD }}
+        run: |
+          if [ -z "$ELASTIC_CLOUD_ID" ] || [ -z "$ELASTIC_API_KEY" ]; then
+            echo "::warning::Secrets ELASTIC_CLOUD_ID / ELASTIC_API_KEY_PROD absents : la recherche Elasticsearch ne fonctionnera pas en production."
+            exit 0
+          fi
+          printf '\nELASTIC_CLOUD_ID=%s\nELASTIC_API_KEY=%s\n' "$ELASTIC_CLOUD_ID" "$ELASTIC_API_KEY" >> .env.aibs-part
+
       - name: Deploy
         run: npx --yes "firebase-tools@$FIREBASE_TOOLS_VERSION" deploy --project aibs-part --only functions --non-interactive --force
 

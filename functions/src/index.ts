@@ -38,6 +38,9 @@ export * as assureurs from "./assureurs/assureurs.callable";
 // ── Produits propres à un cabinet (admin) : questionnaire et garanties saisis par le cabinet ─────────────
 export * as produits from "./produits/produits.callable";
 
+// ── Recherche Elasticsearch (clients, dossiers) : triggers d'indexation et recherche — passent par le VPC partagé ──
+export * as recherche from "./recherche/recherche";
+
 // ── Champs découverts sur les extranets : ajoutés automatiquement au questionnaire ─────────────
 export * as champs from "./champs/champs.callable";
 

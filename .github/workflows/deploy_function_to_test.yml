@@ -60,6 +60,19 @@ jobs:
           service_account: github-action@aibs-partenaire-testing.iam.gserviceaccount.com
           project_id: aibs-partenaire-testing
 
+      # Identifiants Elasticsearch (functions recherche-*) : ajoutés au fichier d'environnement du projet, dans le
+      # runner seulement (jamais commités). Passés par l'environnement, jamais interpolés dans le script.
+      - name: Elasticsearch credentials
+        env:
+          ELASTIC_CLOUD_ID: ${{ secrets.ELASTIC_CLOUD_ID }}
+          ELASTIC_API_KEY: ${{ secrets.ELASTIC_API_KEY_TEST }}
+        run: |
+          if [ -z "$ELASTIC_CLOUD_ID" ] || [ -z "$ELASTIC_API_KEY" ]; then
+            echo "::warning::Secrets ELASTIC_CLOUD_ID / ELASTIC_API_KEY_TEST absents : la recherche Elasticsearch ne fonctionnera pas."
+            exit 0
+          fi
+          printf '\nELASTIC_CLOUD_ID=%s\nELASTIC_API_KEY=%s\n' "$ELASTIC_CLOUD_ID" "$ELASTIC_API_KEY" >> .env.aibs-partenaire-testing
+
       - name: Deploy
         run: npx --yes "firebase-tools@$FIREBASE_TOOLS_VERSION" deploy --project aibs-partenaire-testing --only "functions:courtier-intelligent:$FUNCTION_NAME" --non-interactive
 
