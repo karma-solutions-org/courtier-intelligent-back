@@ -156,6 +156,8 @@ export interface Question {
   visibleIf?: { path: CanonicalPath; equals: string | number | boolean };
   /** Demande un niveau de connaissance (connu / inconnu / déclaré inconnu). */
   withKnowledge?: boolean;
+  /** Exigé par au moins un extranet : « le client ne sait pas » ne suffit pas, un chiffre est attendu. */
+  mustBeKnown?: boolean;
   /** Question ajoutée automatiquement : l'extranet (et l'assureur) où le champ a été découvert. */
   discoveredOn?: { insurerId: string | null; origin: string; fieldKey: string }[];
 }

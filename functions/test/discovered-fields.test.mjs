@@ -87,3 +87,35 @@ describe('Champs découverts', () => {
     assert.equal(added.length, 1, 'même sens : fusionnés dans le même signalement');
   });
 });
+
+describe('Exigences des extranets', () => {
+  const { applyInsurerRequirements, computeMissing } = require('../lib/shared/index.js');
+  const schema = [
+    {
+      title: 'Historique',
+      questions: [
+        { canonicalPath: 'insuranceHistory.bonusMalus', label: 'Bonus-malus', type: 'number', required: false, withKnowledge: true },
+        { canonicalPath: 'driver.profession', label: 'Profession', type: 'text', required: false },
+      ],
+    },
+  ];
+
+  it('rend obligatoires les champs exigés, et exige un chiffre pour une question à niveau de connaissance', () => {
+    const { schema: next, changed } = applyInsurerRequirements(schema, ['insuranceHistory.bonusMalus', 'driver.profession']);
+    assert.equal(changed, true);
+    assert.deepEqual(next[0].questions.map(q => [q.required, q.mustBeKnown]), [[true, true], [true, undefined]]);
+    assert.equal(applyInsurerRequirements(next, ['insuranceHistory.bonusMalus']).changed, false, 'déjà appliqué');
+  });
+
+  it('« le client ne sait pas » ne suffit plus pour un chiffre exigé', () => {
+    const { schema: next } = applyInsurerRequirements(schema, ['insuranceHistory.bonusMalus']);
+    const unknown = { 'insuranceHistory.bonusMalus': { value: null, knowledge: 'DECLARED_UNKNOWN' } };
+    assert.deepEqual(computeMissing(next, unknown), ['insuranceHistory.bonusMalus']);
+    assert.deepEqual(computeMissing(next, { 'insuranceHistory.bonusMalus': { value: 0.85, knowledge: 'KNOWN' } }), []);
+  });
+
+  it('un champ découvert obligatoire sur l’extranet crée une question obligatoire', () => {
+    const { added } = mergeDiscoveredFields(SCHEMA, [field('Kilométrage annuel', { required: true })], A);
+    assert.equal(added[0].required, true);
+  });
+});

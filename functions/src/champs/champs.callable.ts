@@ -6,7 +6,10 @@ import { CALLABLE_OPTIONS } from "../core/config";
 import { insurerPath, productPath } from "../core/firestore-paths";
 import { looksLikePersonalData, memoryKey } from "../core/form-memory.utils";
 import {
+  applyInsurerRequirements,
   DISCOVERED_MAX_FIELDS_PER_REPORT,
+  isCanonicalPath,
+  REQUIRED_PATHS_MAX,
   FORM_FIELD_KINDS,
   mergeDiscoveredFields,
   type DiscoveredFieldInput,
@@ -44,6 +47,7 @@ function validateFields(raw: unknown): DiscoveredFieldInput[] {
       name: text(f.name, 100),
       section: text(f.section, 120),
       options,
+      required: f.required === true,
     });
   }
   return fields;
@@ -62,8 +66,11 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
   const fingerprint = request.data?.formFingerprint;
   if (typeof origin !== "string" || !ORIGIN.test(origin)) throw new HttpsError("invalid-argument", "Origine invalide.");
   if (typeof fingerprint !== "string" || !FINGERPRINT.test(fingerprint)) throw new HttpsError("invalid-argument", "Empreinte invalide.");
-  const fields = validateFields(request.data?.fields);
-  if (!fields.length) return { added: 0 };
+  const fields = validateFields(request.data?.fields ?? []);
+  const requiredPaths = Array.isArray(request.data?.requiredPaths)
+    ? [...new Set((request.data.requiredPaths as unknown[]).filter((p): p is string => typeof p === "string" && isCanonicalPath(p)))].slice(0, REQUIRED_PATHS_MAX)
+    : [];
+  if (!fields.length && !requiredPaths.length) return { added: 0 };
 
   const db = admin.firestore();
   const insurer = await db.doc(insurerPath(insurerId)).get();
@@ -84,8 +91,15 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
       const schema = product.get("questionnaireSchema") as QuestionnaireSection[] | undefined;
       if (!product.exists || !Array.isArray(schema)) return null;
       const merged = mergeDiscoveredFields(schema, fields, { insurerId, origin });
+      // Exigences de l'extranet : questions obligatoires (et chiffre exigé), retenues aussi pour les republications du catalogue.
+      const required = applyInsurerRequirements(merged.schema, requiredPaths);
+      merged.schema = required.schema;
       if (merged.added.length || JSON.stringify(merged.schema) !== JSON.stringify(schema)) {
-        tx.update(product.ref, { questionnaireSchema: merged.schema, questionnaireUpdatedAt: FieldValue.serverTimestamp() });
+        tx.update(product.ref, {
+          questionnaireSchema: merged.schema,
+          questionnaireUpdatedAt: FieldValue.serverTimestamp(),
+          ...(requiredPaths.length ? { insurerRequiredPaths: FieldValue.arrayUnion(...requiredPaths) } : {}),
+        });
       }
       return merged;
     });

@@ -28,11 +28,13 @@ export function isQuestionVisible(question: Question, data: CanonicalData): bool
  * Le champ est-il renseigné ? Rien n'est inventé : `null`, absent et chaîne vide = non renseigné,
  * mais `0` et `false` sont des réponses. « L'assuré ne sait pas » est une réponse ; « inconnu » (pas encore su) n'en est pas une.
  */
-export function isAnswered(value: CanonicalValue | undefined): boolean {
+export function isAnswered(value: CanonicalValue | undefined, question?: Pick<Question, 'mustBeKnown'>): boolean {
   if (value === undefined || value === null) return false;
   if (typeof value === 'string') return value.trim() !== '';
   if (isKnownValue(value)) {
-    return value.knowledge === 'DECLARED_UNKNOWN' || (value.knowledge === 'KNOWN' && value.value !== null);
+    const known = value.knowledge === 'KNOWN' && value.value !== null;
+    // Exigé par un extranet : « le client ne sait pas » ne permet pas de tarifer.
+    return known || (!question?.mustBeKnown && value.knowledge === 'DECLARED_UNKNOWN');
   }
   return true;
 }
@@ -40,7 +42,7 @@ export function isAnswered(value: CanonicalValue | undefined): boolean {
 /** Champs obligatoires et visibles qui ne sont pas renseignés. */
 export function computeMissing(schema: QuestionnaireSection[], data: CanonicalData): CanonicalPath[] {
   return questionsOf(schema)
-    .filter(q => q.required && isQuestionVisible(q, data) && !isAnswered(valueAt(data, q.canonicalPath)))
+    .filter(q => q.required && isQuestionVisible(q, data) && !isAnswered(valueAt(data, q.canonicalPath), q))
     .map(q => q.canonicalPath);
 }
 

@@ -22,6 +22,8 @@ export interface DiscoveredFieldInput {
   name: string | null;
   section: string | null;
   options: QuestionChoice[];
+  /** Obligatoire sur l'extranet (astérisque, attribut required…) : la question le sera aussi. */
+  required?: boolean;
 }
 
 /** Texte comparable : minuscules, sans accents ni ponctuation, espaces simples. */
@@ -107,7 +109,7 @@ export function findSameQuestion(schema: QuestionnaireSection[], label: string):
   return null;
 }
 
-/** Question créée pour un champ découvert : toujours facultative, elle ne bloque jamais un dossier. */
+/** Question créée pour un champ découvert : obligatoire si l'extranet l'exige, facultative sinon. */
 export function questionFromField(
   field: DiscoveredFieldInput,
   source: { insurerId: string | null; origin: string },
@@ -120,7 +122,7 @@ export function questionFromField(
     canonicalPath: path,
     label: cleanLabel(field.label),
     type,
-    required: false,
+    required: field.required === true,
     ...(type === 'choice' ? { choices: usableChoices(field.options) } : {}),
     discoveredOn: [{ insurerId: source.insurerId, origin: source.origin, fieldKey: field.fieldKey.slice(0, 200) }],
   };
@@ -158,6 +160,8 @@ export function mergeDiscoveredFields(
     const same = findSameQuestion(sections, field.label);
     if (same) {
       mapping[field.fieldKey] = same.canonicalPath;
+      // Un autre extranet l'exige : la question découverte devient obligatoire.
+      if (same.discoveredOn && field.required) same.required = true;
       if (same.discoveredOn && !same.discoveredOn.some(s => s.origin === source.origin && s.fieldKey === field.fieldKey)) {
         same.discoveredOn = [...same.discoveredOn, { ...source, fieldKey: field.fieldKey }].slice(-20);
       }
@@ -175,4 +179,30 @@ export function mergeDiscoveredFields(
     mapping[field.fieldKey] = question.canonicalPath;
   }
   return { schema: sections, added, mapping };
+}
+
+/** Plafond des chemins exigés dans un signalement. */
+export const REQUIRED_PATHS_MAX = 60;
+
+/**
+ * Exigences d'un extranet : chaque question dont le champ est obligatoire sur l'extranet le devient dans l'application,
+ * et une question à niveau de connaissance n'accepte plus « le client ne sait pas » (un chiffre est attendu).
+ * Pure ; `changed` dit s'il y a quelque chose à enregistrer. Jamais l'inverse : une exigence ne se retire pas ici.
+ */
+export function applyInsurerRequirements(
+  schema: QuestionnaireSection[],
+  requiredPaths: readonly string[],
+): { schema: QuestionnaireSection[]; changed: boolean } {
+  const wanted = new Set(requiredPaths);
+  let changed = false;
+  const next = schema.map(section => ({
+    ...section,
+    questions: section.questions.map(question => {
+      if (!wanted.has(question.canonicalPath)) return question;
+      const updated = { ...question, required: true, ...(question.withKnowledge ? { mustBeKnown: true } : {}) };
+      if (updated.required !== question.required || updated.mustBeKnown !== question.mustBeKnown) changed = true;
+      return updated;
+    }),
+  }));
+  return { schema: next, changed };
 }

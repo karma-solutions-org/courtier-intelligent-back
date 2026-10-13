@@ -1,6 +1,6 @@
 import * as admin from "firebase-admin";
 import { parseArgs } from "node:util";
-import type { QuestionnaireSection } from "../shared/index.js";
+import { applyInsurerRequirements, type QuestionnaireSection } from "../shared/index.js";
 import { loadCatalog } from "./catalog";
 import { fail, initOps, run } from "./ops.utils";
 
@@ -40,7 +40,13 @@ run(async () => {
     if (!document.path.startsWith("products/")) continue;
     const published = await db.doc(document.path).get();
     const discovered = ((published.get("questionnaireSchema") as QuestionnaireSection[] | undefined) ?? []).filter(s => s.discovered);
-    const data = document.data as { questionnaireSchema?: QuestionnaireSection[] };
+    const data = document.data as { questionnaireSchema?: QuestionnaireSection[]; insurerRequiredPaths?: string[] };
+    // Exigences apprises des extranets (champs obligatoires) : réappliquées au questionnaire republié.
+    const requiredPaths = (published.get("insurerRequiredPaths") as string[] | undefined) ?? [];
+    if (requiredPaths.length && data.questionnaireSchema) {
+      data.questionnaireSchema = applyInsurerRequirements(data.questionnaireSchema, requiredPaths).schema;
+      data.insurerRequiredPaths = requiredPaths;
+    }
     if (discovered.length && data.questionnaireSchema) {
       data.questionnaireSchema = [...data.questionnaireSchema.filter(s => !s.discovered), ...discovered];
       console.log(`${document.path} : ${discovered[0].questions.length} question(s) découverte(s) conservée(s).`);
