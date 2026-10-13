@@ -36,6 +36,11 @@ export const decider = onCall(CALLABLE_OPTIONS, async request => {
     if (!dossier.exists) {
       throw new HttpsError("not-found", "Dossier introuvable.");
     }
+    if (dossier.get("deletedAt")) {
+      throw new HttpsError("failed-precondition", "Ce dossier est dans la corbeille : restaurez-le pour le modifier.", {
+        reason: "dossier_deleted",
+      });
+    }
     if (!offer.exists) {
       throw new HttpsError("not-found", "Offre introuvable pour cet assureur.");
     }

@@ -12,7 +12,6 @@ import {
   dossiersPath,
   memberPath,
   cabinetPath,
-  productPath,
 } from "../core/firestore-paths";
 import {
   computeCompleteness,
@@ -24,6 +23,7 @@ import {
   type CanonicalData,
   type DossierStatus,
   type QuestionnaireSection,
+  productDocPath,
 } from "../shared/index.js";
 
 const MAX_PATCH_FIELDS = 100;
@@ -67,14 +67,19 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
   const reference = await db.runTransaction(async tx => {
     const [assure, product, cabinet, counter] = await Promise.all([
       tx.get(db.doc(assurePath(cabinetId, assureId))),
-      tx.get(db.doc(productPath(productId))),
+      tx.get(db.doc(productDocPath(cabinetId, productId))),
       tx.get(db.doc(cabinetPath(cabinetId))),
       tx.get(counterRef),
     ]);
     if (!assure.exists) {
       throw new HttpsError("not-found", "Assuré introuvable.");
     }
-    if (!product.exists || product.get("active") !== true) {
+    if (assure.get("deletedAt")) {
+      throw new HttpsError("failed-precondition", "Ce client est dans la corbeille : restaurez-le pour lui créer un dossier.", {
+        reason: "assure_deleted",
+      });
+    }
+    if (!product.exists || product.get("active") !== true || product.get("archived") === true) {
       throw new HttpsError("not-found", "Produit introuvable ou inactif.");
     }
     const enabled = (cabinet.get("enabledProducts") as string[] | undefined) ?? [];
@@ -141,11 +146,16 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
     if (!dossier.exists) {
       throw new HttpsError("not-found", "Dossier introuvable.");
     }
+    if (dossier.get("deletedAt")) {
+      throw new HttpsError("failed-precondition", "Ce dossier est dans la corbeille : restaurez-le pour le modifier.", {
+        reason: "dossier_deleted",
+      });
+    }
     const status = dossier.get("status") as DossierStatus;
     if (!EDITABLE_DOSSIER_STATUSES.includes(status)) {
       throw new HttpsError("failed-precondition", "Ce dossier n'est plus modifiable.", { reason: "not_editable" });
     }
-    const { questionnaireSchema: schema } = await loadProduct(tx, dossier.get("productId"));
+    const { questionnaireSchema: schema } = await loadProduct(tx, cabinetId, dossier.get("productId"));
 
     for (const [path, value] of entries) {
       const question = questionFor(schema, path);
@@ -207,6 +217,11 @@ export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
     if (!dossier.exists) {
       throw new HttpsError("not-found", "Dossier introuvable.");
     }
+    if (dossier.get("deletedAt")) {
+      throw new HttpsError("failed-precondition", "Ce dossier est dans la corbeille : restaurez-le pour le modifier.", {
+        reason: "dossier_deleted",
+      });
+    }
     const from = dossier.get("status") as DossierStatus;
     if (target === "besoin_valide") {
       throw new HttpsError("failed-precondition", "La couverture se valide depuis l'étape Couverture du dossier.", { reason: "use_validate_need" });
@@ -222,7 +237,7 @@ export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
         reason: "invalid_transition",
       });
     }
-    const { questionnaireSchema: schema } = await loadProduct(tx, dossier.get("productId"));
+    const { questionnaireSchema: schema } = await loadProduct(tx, cabinetId, dossier.get("productId"));
     const completeness = computeCompleteness(schema, dossier.get("data") as CanonicalData);
     if (target === "complet" && !completeness.ok) {
       throw new HttpsError(
@@ -257,6 +272,11 @@ export const assigner = onCall(CALLABLE_OPTIONS, async request => {
     const [dossier, member] = await Promise.all([tx.get(ref), tx.get(db.doc(memberPath(cabinetId, assignee)))]);
     if (!dossier.exists) {
       throw new HttpsError("not-found", "Dossier introuvable.");
+    }
+    if (dossier.get("deletedAt")) {
+      throw new HttpsError("failed-precondition", "Ce dossier est dans la corbeille : restaurez-le pour le modifier.", {
+        reason: "dossier_deleted",
+      });
     }
     if (role !== "admin" && dossier.get("assignedTo") !== uid) {
       throw new HttpsError("permission-denied", "Seul un administrateur ou le courtier en charge peut réassigner ce dossier.");

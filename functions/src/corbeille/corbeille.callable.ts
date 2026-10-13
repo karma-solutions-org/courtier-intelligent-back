@@ -33,6 +33,15 @@ async function existing(ref: admin.firestore.DocumentReference) {
   return snapshot;
 }
 
+/** Écrit des mises à jour par lots (un lot Firestore est limité à 500 écritures). */
+async function updateInChunks(updates: { ref: admin.firestore.DocumentReference; data: admin.firestore.UpdateData<admin.firestore.DocumentData> }[]) {
+  for (let i = 0; i < updates.length; i += 400) {
+    const batch = admin.firestore().batch();
+    for (const { ref, data } of updates.slice(i, i + 400)) batch.update(ref, data);
+    await batch.commit();
+  }
+}
+
 /** Dossiers rattachés au client (tous, y compris ceux déjà dans la corbeille). */
 function dossiersOf(cabinetId: string, assureId: string) {
   return admin.firestore().collection(dossiersPath(cabinetId)).where("assureId", "==", assureId).get();
@@ -49,18 +58,19 @@ export const supprimer = onCall(CALLABLE_OPTIONS, async request => {
     return { ok: true };
   }
 
-  const batch = admin.firestore().batch();
   const mark = { deletedAt: FieldValue.serverTimestamp(), deletedBy: uid };
-  batch.update(ref, mark);
+  const updates: Parameters<typeof updateInChunks>[0] = [];
   if (kind === "assure") {
     const dossiers = await dossiersOf(cabinetId, id);
     for (const dossier of dossiers.docs) {
       if (!dossier.get("deletedAt")) {
-        batch.update(dossier.ref, { ...mark, deletedWith: id });
+        updates.push({ ref: dossier.ref, data: { ...mark, deletedWith: id } });
       }
     }
   }
-  await batch.commit();
+  // Le client en dernier : s'il est marqué, tous ses dossiers le sont déjà.
+  updates.push({ ref, data: mark });
+  await updateInChunks(updates);
   return { ok: true };
 });
 
@@ -84,16 +94,15 @@ export const restaurer = onCall(CALLABLE_OPTIONS, async request => {
     return { ok: true };
   }
 
-  const batch = admin.firestore().batch();
-  batch.update(ref, unmark);
   // Les dossiers partis avec le client reviennent avec lui (pas ceux supprimés un par un avant).
   const dossiers = await dossiersOf(cabinetId, id);
+  const updates: Parameters<typeof updateInChunks>[0] = [{ ref, data: unmark }];
   for (const dossier of dossiers.docs) {
     if (dossier.get("deletedWith") === id) {
-      batch.update(dossier.ref, unmark);
+      updates.push({ ref: dossier.ref, data: unmark });
     }
   }
-  await batch.commit();
+  await updateInChunks(updates);
   return { ok: true };
 });
 
@@ -119,8 +128,14 @@ export const supprimerDefinitivement = onCall({ ...CALLABLE_OPTIONS, timeoutSeco
     await removeDossier(id);
     return { ok: true };
   }
-  // Un client part avec tous ses dossiers : aucun dossier ne doit rester sans client.
+  // Un client part avec tous ses dossiers : aucun dossier ne doit rester sans client. Un dossier encore actif
+  // (hors corbeille) bloque la suppression : il ne doit jamais disparaître sans être passé par la corbeille.
   const dossiers = await dossiersOf(cabinetId, id);
+  if (dossiers.docs.some(dossier => !dossier.get("deletedAt"))) {
+    throw new HttpsError("failed-precondition", "Ce client a un dossier actif : mettez-le d'abord dans la corbeille.", {
+      reason: "assure_has_active_dossiers",
+    });
+  }
   for (const dossier of dossiers.docs) {
     await removeDossier(dossier.id);
   }

@@ -32,6 +32,12 @@ export * as assures from "./assures/assures-documents.callable";
 // ── Corbeille : clients et dossiers supprimés, restaurables (admin) ─────────────
 export * as corbeille from "./corbeille/corbeille.callable";
 
+// ── Assureurs propres à un cabinet (admin) : en plus du catalogue global ─────────────
+export * as assureurs from "./assureurs/assureurs.callable";
+
+// ── Produits propres à un cabinet (admin) : questionnaire et garanties saisis par le cabinet ─────────────
+export * as produits from "./produits/produits.callable";
+
 // ── Champs découverts sur les extranets : ajoutés automatiquement au questionnaire ─────────────
 export * as champs from "./champs/champs.callable";
 

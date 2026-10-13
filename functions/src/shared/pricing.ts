@@ -23,7 +23,10 @@ export function canLaunchQuoteJob(job: Pick<QuoteJob, 'status'> | null | undefin
 /** Assureurs proposés pour un produit : ceux qui le tarifent, parmi ceux activés par le cabinet (aucun choix = tous). */
 export function insurersForProduct(insurers: Insurer[], productId: string, enabledInsurers: string[]): Insurer[] {
   return insurers.filter(
-    insurer => insurer.productsSupported.includes(productId) && (enabledInsurers.length === 0 || enabledInsurers.includes(insurer.id)),
+    insurer =>
+      !insurer.archived &&
+      insurer.productsSupported.includes(productId) &&
+      (enabledInsurers.length === 0 || enabledInsurers.includes(insurer.id)),
   );
 }
 

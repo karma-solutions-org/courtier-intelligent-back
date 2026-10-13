@@ -4,7 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { addEvent, loadProduct } from "../core/dossier.utils";
-import { cabinetPath, documentsPath, dossierPath, insurerPath, offerPath, quoteJobPath } from "../core/firestore-paths";
+import { cabinetPath, documentsPath, dossierPath, offerPath, quoteJobPath } from "../core/firestore-paths";
 import {
   buildJobQuoteData,
   canLaunchQuoteJob,
@@ -23,6 +23,7 @@ import {
   type ManualOfferInput,
   type MissingField,
   type QuoteJobStatus,
+  insurerDocPath,
 } from "../shared/index.js";
 
 const MAX_ANSWERS = 100;
@@ -36,6 +37,11 @@ async function loadPricingDossier(tx: Transaction, cabinetId: string, dossierId:
   if (!dossier.exists) {
     throw new HttpsError("not-found", "Dossier introuvable.");
   }
+  if (dossier.get("deletedAt")) {
+    throw new HttpsError("failed-precondition", "Ce dossier est dans la corbeille : restaurez-le pour le modifier.", {
+      reason: "dossier_deleted",
+    });
+  }
   const status = dossier.get("status") as DossierStatus;
   if (!PRICING_DOSSIER_STATUSES.includes(status) || !dossier.get("needAnalysis.validatedAt")) {
     throw new HttpsError("failed-precondition", "Validez la couverture souhaitée avant de lancer une tarification.", {
@@ -48,8 +54,8 @@ async function loadPricingDossier(tx: Transaction, cabinetId: string, dossierId:
 /** L'assureur doit tarifer le produit du dossier et être activé par le cabinet (aucun choix = tous). */
 async function loadPricingInsurer(tx: Transaction, cabinetId: string, insurerId: string, productId: string): Promise<DocumentSnapshot> {
   const db = admin.firestore();
-  const [insurer, cabinet] = await Promise.all([tx.get(db.doc(insurerPath(insurerId))), tx.get(db.doc(cabinetPath(cabinetId)))]);
-  if (!insurer.exists) {
+  const [insurer, cabinet] = await Promise.all([tx.get(db.doc(insurerDocPath(cabinetId, insurerId))), tx.get(db.doc(cabinetPath(cabinetId)))]);
+  if (!insurer.exists || insurer.get("archived") === true) {
     throw new HttpsError("not-found", "Assureur introuvable.");
   }
   const supported = (insurer.get("productsSupported") as string[] | undefined) ?? [];
@@ -90,7 +96,7 @@ export const lancer = onCall(CALLABLE_OPTIONS, async request => {
     const dossier = await loadPricingDossier(tx, cabinetId, dossierId);
     const insurer = await loadPricingInsurer(tx, cabinetId, insurerId, dossier.get("productId"));
     const job = await tx.get(jobRef);
-    const { questionnaireSchema } = await loadProduct(tx, dossier.get("productId"));
+    const { questionnaireSchema } = await loadProduct(tx, cabinetId, dossier.get("productId"));
 
     if (!canLaunchQuoteJob(job.exists ? { status: job.get("status") as QuoteJobStatus } : null)) {
       throw new HttpsError(
@@ -142,7 +148,7 @@ export const completer = onCall(CALLABLE_OPTIONS, async request => {
     if (!job.exists || job.get("status") !== "needs_info") {
       throw new HttpsError("failed-precondition", "Cette tarification n'attend pas d'informations.", { reason: "not_waiting_info" });
     }
-    const { questionnaireSchema: schema } = await loadProduct(tx, dossier.get("productId"));
+    const { questionnaireSchema: schema } = await loadProduct(tx, cabinetId, dossier.get("productId"));
 
     // Seuls les champs demandés par l'extension sont acceptés, et tous doivent être renseignés.
     const fields = new Map(((job.get("missingFields") as MissingField[] | undefined) ?? []).map(f => [f.canonicalPath as string, f]));
@@ -193,7 +199,7 @@ export const saisirOffre = onCall(CALLABLE_OPTIONS, async request => {
     const dossier = await loadPricingDossier(tx, cabinetId, dossierId);
     await loadPricingInsurer(tx, cabinetId, insurerId, dossier.get("productId"));
     const [job, previous] = await Promise.all([tx.get(jobRef), tx.get(offerRef)]);
-    const { guaranteeCatalog } = await loadProduct(tx, dossier.get("productId"));
+    const { guaranteeCatalog } = await loadProduct(tx, cabinetId, dossier.get("productId"));
 
     const problems = validateManualOffer(received, guaranteeCatalog.map(g => g.code));
     if (problems.length) {

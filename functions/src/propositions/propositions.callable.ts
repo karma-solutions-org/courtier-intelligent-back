@@ -4,7 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireEmail, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS, MAIL_COLLECTION } from "../core/config";
 import { addEvent } from "../core/dossier.utils";
-import { assurePath, cabinetPath, dossierPath, insurerPath, offerPath } from "../core/firestore-paths";
+import { assurePath, cabinetPath, dossierPath, offerPath } from "../core/firestore-paths";
 import {
   isTransitionAllowed,
   PROPOSAL_MESSAGE_MAX,
@@ -12,6 +12,7 @@ import {
   validateEffectiveDate,
   type DossierOutcomeResult,
   type DossierStatus,
+  insurerDocPath,
 } from "../shared/index.js";
 import { assureDisplayName, buildProposalEmail } from "./proposition.utils";
 
@@ -37,6 +38,11 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
     if (!dossier.exists) {
       throw new HttpsError("not-found", "Dossier introuvable.");
     }
+    if (dossier.get("deletedAt")) {
+      throw new HttpsError("failed-precondition", "Ce dossier est dans la corbeille : restaurez-le pour le modifier.", {
+        reason: "dossier_deleted",
+      });
+    }
     const from = dossier.get("status") as DossierStatus;
     const decision = dossier.get("decision") as { insurerId: string; justification: string } | null;
     if (from !== "decision" && from !== "proposition_envoyee") {
@@ -51,7 +57,7 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
       tx.get(db.doc(cabinetPath(cabinetId))),
       tx.get(db.doc(assurePath(cabinetId, dossier.get("assureId")))),
       tx.get(db.doc(offerPath(cabinetId, dossierId, decision.insurerId))),
-      tx.get(db.doc(insurerPath(decision.insurerId))),
+      tx.get(db.doc(insurerDocPath(cabinetId, decision.insurerId))),
     ]);
     if (!offer.exists) {
       throw new HttpsError("failed-precondition", "L'offre retenue est introuvable.");
@@ -139,6 +145,11 @@ export const enregistrerReponse = onCall(CALLABLE_OPTIONS, async request => {
     const dossier = await tx.get(ref);
     if (!dossier.exists) {
       throw new HttpsError("not-found", "Dossier introuvable.");
+    }
+    if (dossier.get("deletedAt")) {
+      throw new HttpsError("failed-precondition", "Ce dossier est dans la corbeille : restaurez-le pour le modifier.", {
+        reason: "dossier_deleted",
+      });
     }
     const from = dossier.get("status") as DossierStatus;
     if (from !== "proposition_envoyee" || !isTransitionAllowed(from, result)) {

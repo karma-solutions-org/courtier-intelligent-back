@@ -183,6 +183,10 @@ export interface Product {
   active: boolean;
   questionnaireSchema: QuestionnaireSection[];
   guaranteeCatalog: Guarantee[];
+  /** Produit créé par le cabinet (voir cabinet-products.ts), absent du catalogue global. */
+  custom?: boolean;
+  /** Produit du cabinet retiré : caché des listes, gardé pour ses dossiers. */
+  archived?: boolean;
 }
 
 /** guaranteeSynonyms/{productId} : formulations d'un assureur → code du référentiel (ex. « vitrage » → BDG). */
@@ -198,6 +202,10 @@ export interface Insurer {
   extranetUrl: string;
   extranetDomains: string[];
   productsSupported: string[];
+  /** Assureur ajouté par le cabinet (voir cabinet-insurers.ts), absent du catalogue global. */
+  custom?: boolean;
+  /** Assureur du cabinet retiré : caché des listes, gardé pour l'historique des dossiers. */
+  archived?: boolean;
 }
 
 // ── Assuré & dossier ───────────────────────────────────────────────────────

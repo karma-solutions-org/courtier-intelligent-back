@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
-import { documentsPath, dossierPath, productPath } from "../core/firestore-paths";
+import { documentsPath, dossierPath } from "../core/firestore-paths";
 import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, reserveIaCall } from "../core/gemini.utils";
 import {
   buildOcrPrompt,
@@ -16,6 +16,7 @@ import {
   parseOcrResponse,
   type DossierDocumentType,
   type QuestionnaireSection,
+  productDocPath,
 } from "../shared/index.js";
 
 const MAX_OCR_OUTPUT_TOKENS = 2_000;
@@ -41,6 +42,11 @@ export const enregistrer = onCall(CALLABLE_OPTIONS, async request => {
   const dossier = await db.doc(dossierPath(cabinetId, dossierId)).get();
   if (!dossier.exists) {
     throw new HttpsError("not-found", "Dossier introuvable.");
+  }
+  if (dossier.get("deletedAt")) {
+    throw new HttpsError("failed-precondition", "Ce dossier est dans la corbeille : restaurez-le pour le modifier.", {
+      reason: "dossier_deleted",
+    });
   }
 
   const [exists] = await admin.storage().bucket().file(storagePath).exists();
@@ -102,7 +108,7 @@ export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY],
     throw new HttpsError("failed-precondition", "Emplacement du document invalide.");
   }
 
-  const product = await db.doc(productPath(dossier.get("productId") as string)).get();
+  const product = await db.doc(productDocPath(cabinetId, dossier.get("productId") as string)).get();
   const schema = (product.get("questionnaireSchema") as QuestionnaireSection[] | undefined) ?? [];
   const questions = ocrQuestions(schema, type);
   if (!questions.length) {

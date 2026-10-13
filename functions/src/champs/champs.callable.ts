@@ -3,7 +3,6 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
-import { insurerPath, productPath } from "../core/firestore-paths";
 import { looksLikePersonalData, memoryKey } from "../core/form-memory.utils";
 import {
   applyInsurerRequirements,
@@ -15,6 +14,10 @@ import {
   type DiscoveredFieldInput,
   type FormMemoryField,
   type QuestionnaireSection,
+  isCabinetInsurerId,
+  insurerDocPath,
+  isCabinetProductId,
+  productDocPath,
 } from "../shared/index.js";
 
 const ORIGIN = /^https:\/\/[a-z0-9]([a-z0-9.-]{0,198}[a-z0-9])?(:\d{1,5})?$|^http:\/\/localhost(:\d{1,5})?$/;
@@ -60,7 +63,7 @@ function validateFields(raw: unknown): DiscoveredFieldInput[] {
  * La mémoire du formulaire apprend ensuite que ce champ correspond à la nouvelle question : l'extension le remplira.
  */
 export const signaler = onCall(CALLABLE_OPTIONS, async request => {
-  await getActiveMembership(request);
+  const { cabinetId } = await getActiveMembership(request);
   const insurerId = requireString(request.data?.insurerId, "assureur", 100);
   const origin = request.data?.origin;
   const fingerprint = request.data?.formFingerprint;
@@ -73,7 +76,8 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
   if (!fields.length && !requiredPaths.length) return { added: 0 };
 
   const db = admin.firestore();
-  const insurer = await db.doc(insurerPath(insurerId)).get();
+  const cabinetInsurer = isCabinetInsurerId(insurerId);
+  const insurer = await db.doc(insurerDocPath(cabinetId, insurerId)).get();
   if (!insurer.exists) throw new HttpsError("not-found", "Assureur introuvable.");
   // Un extranet ne fait évoluer que les produits de son assureur, et seulement depuis l'un de ses domaines.
   const domains = (insurer.get("extranetDomains") as string[] | undefined) ?? [];
@@ -81,13 +85,17 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
   if (!host.startsWith("localhost") && !domains.some(domain => host === domain || host.endsWith(`.${domain}`))) {
     throw new HttpsError("permission-denied", "Cette page n'est pas un extranet de l'assureur.");
   }
-  const productIds = ((insurer.get("productsSupported") as string[] | undefined) ?? []).slice(0, 10);
+  // Un assureur ajouté par un cabinet (domaine saisi par le cabinet) ne complète que les produits de ce cabinet :
+  // jamais le questionnaire commun à tous les cabinets.
+  const productIds = ((insurer.get("productsSupported") as string[] | undefined) ?? [])
+    .filter(productId => !cabinetInsurer || isCabinetProductId(productId))
+    .slice(0, 10);
 
   let added = 0;
   const mapping: Record<string, string> = {};
   for (const productId of productIds) {
     const result = await db.runTransaction(async tx => {
-      const product = await tx.get(db.doc(productPath(productId)));
+      const product = await tx.get(db.doc(productDocPath(cabinetId, productId)));
       const schema = product.get("questionnaireSchema") as QuestionnaireSection[] | undefined;
       if (!product.exists || !Array.isArray(schema)) return null;
       const merged = mergeDiscoveredFields(schema, fields, { insurerId, origin });
@@ -109,7 +117,7 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
   }
 
   // La mémoire du formulaire apprend les nouvelles correspondances (seulement les champs encore sans équivalent).
-  if (Object.keys(mapping).length) {
+  if (Object.keys(mapping).length && !cabinetInsurer) {
     const memoryRef = db.collection("formMemories").doc(memoryKey(origin, fingerprint));
     await db.runTransaction(async tx => {
       const memory = await tx.get(memoryRef);

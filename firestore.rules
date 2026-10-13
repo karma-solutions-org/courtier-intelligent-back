@@ -180,6 +180,18 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Assureurs propres au cabinet : lus par l'app et l'extension du cabinet, écrits par les functions assureurs-*.
+      match /insurers/{insurerId} {
+        allow read: if inCabinet(cabinetId) || ciExtActive(cabinetId);
+        allow write: if false;
+      }
+
+      // Produits propres au cabinet : lus par l'app du cabinet, écrits par les functions produits-* et champs-signaler.
+      match /products/{productId} {
+        allow read: if inCabinet(cabinetId);
+        allow write: if false;
+      }
+
       // ⚠️ Pas de joker {document=**} ici : il s'appliquerait aussi au cabinet,
       // aux membres et à l'historique, et Firestore autorise dès qu'UNE règle autorise.
       // Assurés : écrits par l'app (saisie libre), donc contrôlés ici — mêmes formats que shared/assure-format.ts.

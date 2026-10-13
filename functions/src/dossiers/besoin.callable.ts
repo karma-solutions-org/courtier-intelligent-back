@@ -44,13 +44,18 @@ export const enregistrerBesoin = onCall(CALLABLE_OPTIONS, async request => {
     if (!dossier.exists) {
       throw new HttpsError("not-found", "Dossier introuvable.");
     }
+    if (dossier.get("deletedAt")) {
+      throw new HttpsError("failed-precondition", "Ce dossier est dans la corbeille : restaurez-le pour le modifier.", {
+        reason: "dossier_deleted",
+      });
+    }
     const status = dossier.get("status") as DossierStatus;
     if (!NEED_STATUSES.includes(status)) {
       throw new HttpsError("failed-precondition", "La couverture souhaitée se renseigne une fois le dossier complet, et avant la tarification.", {
         reason: "need_not_editable",
       });
     }
-    const { guaranteeCatalog } = await loadProduct(tx, dossier.get("productId"));
+    const { guaranteeCatalog } = await loadProduct(tx, cabinetId, dossier.get("productId"));
     const problems = validateNeed(received, guaranteeCatalog.map(g => g.code));
     if (problems.length) {
       throw new HttpsError("invalid-argument", problems.join(" "));
@@ -95,6 +100,11 @@ export const validerBesoin = onCall(CALLABLE_OPTIONS, async request => {
     const dossier = await tx.get(ref);
     if (!dossier.exists) {
       throw new HttpsError("not-found", "Dossier introuvable.");
+    }
+    if (dossier.get("deletedAt")) {
+      throw new HttpsError("failed-precondition", "Ce dossier est dans la corbeille : restaurez-le pour le modifier.", {
+        reason: "dossier_deleted",
+      });
     }
     const from = dossier.get("status") as DossierStatus;
     if (from === "besoin_valide") {

@@ -1,12 +1,16 @@
 import * as admin from "firebase-admin";
 import { FieldValue, Transaction } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
-import { dossierPath, productPath } from "./firestore-paths";
-import type { DossierEventType, Product } from "../shared/index.js";
+import { dossierPath } from "./firestore-paths";
+import { productDocPath, type DossierEventType, type Product } from "../shared/index.js";
 
 /** Produit d'un dossier (questionnaire et référentiel des garanties) : la référence pour valider ce qui est enregistré. */
-export async function loadProduct(tx: Transaction, productId: string): Promise<Pick<Product, "questionnaireSchema" | "guaranteeCatalog">> {
-  const product = await tx.get(admin.firestore().doc(productPath(productId)));
+export async function loadProduct(
+  tx: Transaction,
+  cabinetId: string,
+  productId: string,
+): Promise<Pick<Product, "questionnaireSchema" | "guaranteeCatalog">> {
+  const product = await tx.get(admin.firestore().doc(productDocPath(cabinetId, productId)));
   if (!product.exists || !product.get("questionnaireSchema")) {
     throw new HttpsError("failed-precondition", "Produit introuvable : le catalogue n'est pas publié.");
   }

@@ -27,7 +27,7 @@ run(async () => {
     const target = await db.runTransaction(async tx => {
       const dossier = await tx.get(document.ref);
       if (dossier.get("status") !== "sans_suite") return null;
-      const { questionnaireSchema: schema } = await loadProduct(tx, dossier.get("productId"));
+      const { questionnaireSchema: schema } = await loadProduct(tx, cabinetId, dossier.get("productId"));
       const completeness = computeCompleteness(schema, dossier.get("data") as CanonicalData);
       const outcome = dossier.get("outcome") as { result?: string } | null;
       const proposalSent = !!dossier.get("proposal");

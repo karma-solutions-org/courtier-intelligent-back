@@ -2,8 +2,11 @@ import * as admin from "firebase-admin";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions/v2";
 import { REGION_ID } from "../core/config";
-import { dossierPath, productPath } from "../core/firestore-paths";
-import { analyzeOffer, type ComparableOffer, type ComparisonNeed, type Guarantee } from "../shared/index.js";
+import { dossierPath } from "../core/firestore-paths";
+import { analyzeOffer, type ComparableOffer, type ComparisonNeed, type Guarantee,
+  productDocPath,
+  isCabinetProductId,
+} from "../shared/index.js";
 
 /**
  * Analyse d'une offre (Epic E13) à chaque écriture, qu'elle vienne de l'extension ou d'une saisie manuelle :
@@ -27,11 +30,12 @@ export const onWrite = onDocumentWritten(
     if (!dossier.exists) return;
     const productId = dossier.get("productId") as string;
     const [product, synonymsDoc] = await Promise.all([
-      db.doc(productPath(productId)).get(),
-      db.doc(`guaranteeSynonyms/${productId}`).get(),
+      db.doc(productDocPath(cabinetId, productId)).get(),
+      // Un produit du cabinet n'a pas de synonymes publiés : ses garanties se reconnaissent à leur libellé.
+      isCabinetProductId(productId) ? Promise.resolve(null) : db.doc(`guaranteeSynonyms/${productId}`).get(),
     ]);
     const catalog = (product.get("guaranteeCatalog") as Guarantee[] | undefined) ?? [];
-    const synonyms = (synonymsDoc.get("synonyms") as Record<string, string[]> | undefined) ?? {};
+    const synonyms = (synonymsDoc?.get("synonyms") as Record<string, string[]> | undefined) ?? {};
     const need = (dossier.get("needAnalysis") as ComparisonNeed | null) ?? null;
 
     const offer = after.data() as ComparableOffer & { gaps?: unknown; score?: unknown };
