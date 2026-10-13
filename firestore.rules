@@ -193,7 +193,7 @@ service cloud.firestore {
           return d.get(key, null) == null || (d[key] is string && d[key].matches(pattern));
         }
         function assureAssureValid(d) {
-          return d.keys().hasOnly(['type', 'civilite', 'firstName', 'lastName', 'companyName', 'siret', 'birthDate', 'email', 'phone', 'address', 'createdBy', 'createdAt', 'updatedAt'])
+          return d.keys().hasOnly(['type', 'civilite', 'firstName', 'lastName', 'companyName', 'siret', 'birthDate', 'email', 'phone', 'address', 'createdBy', 'createdAt', 'updatedAt', 'deletedAt', 'deletedBy'])
             && d.keys().hasAll(['type', 'firstName', 'lastName', 'createdBy'])
             && d.type in ['particulier', 'pro']
             && d.firstName is string && d.firstName.size() <= 100
@@ -219,10 +219,10 @@ service cloud.firestore {
           && assureAssureValid(request.resource.data)
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.createdAt == request.time
-          && !request.resource.data.keys().hasAny(['updatedAt']);
+          && !request.resource.data.keys().hasAny(['updatedAt', 'deletedAt', 'deletedBy']);
         allow update: if inCabinet(cabinetId)
           && assureAssureValid(request.resource.data)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdBy', 'createdAt'])
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdBy', 'createdAt', 'deletedAt', 'deletedBy'])
           && request.resource.data.updatedAt == request.time;
         allow delete: if false;
 
@@ -238,7 +238,7 @@ service cloud.firestore {
         // elles appliquent la machine à états, la complétude et la numérotation.
         allow create, delete: if false;
         allow update: if inCabinet(cabinetId)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['reference', 'completeness', 'createdAt', 'createdBy', 'status', 'assignedTo', 'data', 'draft', 'assureId', 'productId', 'needAnalysis', 'decision', 'proposal', 'outcome']);
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['reference', 'completeness', 'createdAt', 'createdBy', 'status', 'assignedTo', 'data', 'draft', 'assureId', 'productId', 'needAnalysis', 'decision', 'proposal', 'outcome', 'deletedAt', 'deletedBy', 'deletedWith']);
 
         // Jobs de tarification, offres, documents : lus par le cabinet. Jobs et offres sont écrits par les functions
         // tarification-* (besoin validé, assureur activé, offre contrôlée) et par l'extension (voir plus bas) ;

@@ -140,8 +140,9 @@ export interface MergeResult {
  * Ajoute au questionnaire les champs découverts sur un extranet. Pure (testée sans Firestore) :
  * - un champ technique ou marketing est ignoré ;
  * - un champ dont le libellé correspond à une question existante n'en crée pas d'autre : il est rattaché à celle-ci
- *   (et, pour une question déjà découverte ailleurs, l'extranet est ajouté à ses sources) ;
- * - sinon une question facultative est créée dans la section « Questions des assureurs », dans la limite de
+ *   (et, pour une question déjà découverte ailleurs, l'extranet est ajouté à ses sources) ; si l'extranet l'exige,
+ *   elle devient obligatoire, et elle le reste même si un autre extranet la propose en facultatif ;
+ * - sinon une question (obligatoire ou facultative comme sur l'extranet) est créée dans la section « Questions des assureurs », dans la limite de
  *   DISCOVERED_MAX_QUESTIONS.
  */
 export function mergeDiscoveredFields(
@@ -160,8 +161,11 @@ export function mergeDiscoveredFields(
     const same = findSameQuestion(sections, field.label);
     if (same) {
       mapping[field.fieldKey] = same.canonicalPath;
-      // Un autre extranet l'exige : la question découverte devient obligatoire.
-      if (same.discoveredOn && field.required) same.required = true;
+      // L'extranet l'exige : la question existante devient obligatoire. Un champ facultatif ne retire jamais l'exigence.
+      if (field.required) {
+        same.required = true;
+        if (same.withKnowledge) same.mustBeKnown = true;
+      }
       if (same.discoveredOn && !same.discoveredOn.some(s => s.origin === source.origin && s.fieldKey === field.fieldKey)) {
         same.discoveredOn = [...same.discoveredOn, { ...source, fieldKey: field.fieldKey }].slice(-20);
       }

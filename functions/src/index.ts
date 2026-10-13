@@ -29,6 +29,9 @@ export * as documents from "./documents/documents.callable";
 // ── Pièces des clients : CIN / Kbis lus à la création du client, puis rangés avec sa fiche ─────────────
 export * as assures from "./assures/assures-documents.callable";
 
+// ── Corbeille : clients et dossiers supprimés, restaurables (admin) ─────────────
+export * as corbeille from "./corbeille/corbeille.callable";
+
 // ── Champs découverts sur les extranets : ajoutés automatiquement au questionnaire ─────────────
 export * as champs from "./champs/champs.callable";
 

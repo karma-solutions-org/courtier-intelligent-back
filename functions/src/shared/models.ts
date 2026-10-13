@@ -218,6 +218,9 @@ export interface Assure {
   createdBy: string;
   createdAt?: TimestampLike;
   updatedAt?: TimestampLike;
+  /** Corbeille (écrit par les functions corbeille-*) : présent tant que le client est supprimé. */
+  deletedAt?: TimestampLike | null;
+  deletedBy?: string | null;
 }
 
 export type CoverageLevel = 'tiers' | 'tiers_plus' | 'tous_risques';
@@ -252,6 +255,11 @@ export interface Dossier {
   createdBy?: string;
   createdAt?: TimestampLike;
   updatedAt?: TimestampLike;
+  /** Corbeille (écrit par les functions corbeille-*) : présent tant que le dossier est supprimé. */
+  deletedAt?: TimestampLike | null;
+  deletedBy?: string | null;
+  /** Client avec lequel le dossier est parti dans la corbeille (il revient avec lui). */
+  deletedWith?: string | null;
 }
 
 export interface DossierProposal {
