@@ -225,6 +225,11 @@ service cloud.firestore {
           && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdBy', 'createdAt'])
           && request.resource.data.updatedAt == request.time;
         allow delete: if false;
+
+        // Pièces du client (CIN, Kbis) : écrites uniquement par la function assures-rattacherPiece.
+        match /documents/{documentId} {
+          allow read: if inCabinet(cabinetId);
+        }
       }
 
       match /dossiers/{dossierId} {

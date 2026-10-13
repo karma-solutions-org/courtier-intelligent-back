@@ -30,7 +30,8 @@
     "test:integration": "tsc && cd .. && npx --yes firebase-tools@15.32.1 emulators:exec --only functions,auth,firestore --project demo-courtier-intelligent \"node --test functions/test/callables.integration.test.mjs functions/test/dossiers.integration.test.mjs functions/test/besoin.integration.test.mjs functions/test/extension.integration.test.mjs functions/test/memoires.integration.test.mjs functions/test/tarification.integration.test.mjs\"",
     "ops:memories": "tsc && node lib/ops/memories.js",
     "ops:reset-device": "tsc && node lib/ops/reset-device.js",
-    "ops:extension-report": "tsc && node lib/ops/extension-report.js"
+    "ops:extension-report": "tsc && node lib/ops/extension-report.js",
+    "ops:discovered-questions": "tsc && node lib/ops/discovered-questions.js"
   },
   "dependencies": {
     "firebase-admin": "^13.10.0",

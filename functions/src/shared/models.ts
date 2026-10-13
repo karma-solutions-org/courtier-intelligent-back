@@ -156,11 +156,15 @@ export interface Question {
   visibleIf?: { path: CanonicalPath; equals: string | number | boolean };
   /** Demande un niveau de connaissance (connu / inconnu / déclaré inconnu). */
   withKnowledge?: boolean;
+  /** Question ajoutée automatiquement : l'extranet (et l'assureur) où le champ a été découvert. */
+  discoveredOn?: { insurerId: string | null; origin: string; fieldKey: string }[];
 }
 
 export interface QuestionnaireSection {
   title: string;
   questions: Question[];
+  /** Section des questions ajoutées automatiquement depuis les extranets : conservée par seed-catalog. */
+  discovered?: boolean;
 }
 
 export type GuaranteeType = 'included' | 'limit' | 'deductible';

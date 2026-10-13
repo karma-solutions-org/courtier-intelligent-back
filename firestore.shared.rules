@@ -574,9 +574,7 @@ service cloud.firestore {
     // Comportement inchange pour TOUTES les autres collections.
     match /{collection}/{document=**} {
       allow read, write: if request.auth != null
-        && !collection.matches('freelance.*')
-        // Courtier Intelligent : collections protégées par leurs propres règles (plus bas).
-        && !(collection in ['cabinets', 'products', 'insurers', 'MailCourtierIntelligent']);
+        && !collection.matches('freelance.*');
     }
 
     match /UsersPaie/{docRef} {
@@ -631,7 +629,7 @@ service cloud.firestore {
     // ════════════════════════════════════════════════════════════════════
     // Freelance Platform (Solution Groupe)
     // Les ecritures metier passent par les Cloud Functions (Admin SDK, qui
-    // contourne les Rules) : la plupart des collections sont en `write: if false`.
+    // contourne les Rules) : la plupart des collections sont en write: if false.
     // ════════════════════════════════════════════════════════════════════
 
     function freelanceIsSignedIn() {
@@ -678,11 +676,12 @@ service cloud.firestore {
       allow delete: if freelanceIsAdmin();
     }
 
-    match /freelanceMissions/{missionId} {
+            match /freelanceMissions/{missionId} {
       allow read: if freelanceIsAdmin()
         || (freelanceIsFreelance() && resource.data.freelanceId == request.auth.uid);
       allow create: if freelanceIsFreelance()
         && request.resource.data.freelanceId == request.auth.uid
+        && get(/databases/$(database)/documents/freelanceProfiles/$(request.auth.uid)).data.verificationStatus == 'valide'
         && request.resource.data.keys().hasOnly(freelanceMissionCreateKeys())
         && request.resource.data.status == 'deposee'
         && request.resource.data.correctionCyclesUsed == 0
@@ -697,6 +696,11 @@ service cloud.firestore {
             && resource.data.status in ['deposee', 'en_developpement']
             && request.resource.data.status == 'en_recette');
       allow delete: if freelanceIsAdmin();
+    }
+
+    match /freelanceMissionAccess/{missionId} {
+      allow read: if freelanceIsAdmin();
+      allow write: if false;
     }
          match /freelanceMissionAccess/{missionId} {
       allow read: if freelanceIsAdmin();
@@ -801,7 +805,7 @@ service cloud.firestore {
     // Courtier Intelligent (source : courtier-intelligent-back/firestore.rules)
     // Fonctions préfixées « ci » ; claims ci_cabinet_id / ci_role ; session liée à auth_time.
     // ════════════════════════════════════════════════════════════════════
-database}/documents {
+
 
     // Claims préfixés « ci_ » pour ne jamais hériter des droits des autres applications.
     function ciSignedIn() { return request.auth != null; }
@@ -830,9 +834,8 @@ database}/documents {
     // Cabinet au-delà de sa limite d'utilisateurs (baisse d'offre) : une fois le délai de grâce écoulé
     // (graceEndsAt), seuls les admins gardent l'accès.
     function ciWithinSeatLimit(cabinetId) {
-      let cabinet = get(/databases/$(database)/documents/cabinets/$(cabinetId)).data;
-      return cabinet.get('graceEndsAt', null) == null
-        || request.time < cabinet.graceEndsAt
+      return ciCabinetDoc(cabinetId).get('graceEndsAt', null) == null
+        || request.time < ciCabinetDoc(cabinetId).graceEndsAt
         || request.auth.token.ci_role == 'admin';
     }
 
@@ -1022,17 +1025,17 @@ database}/documents {
 
       match /dossiers/{dossierId} {
         allow read: if ciInCabinet(cabinetId);
-        // Création, données, besoin, statut, assignation et référence passent par les functions dossiers-* :
+        // Création, données, besoin, décision, proposition, issue, statut, assignation et référence passent par les functions :
         // elles appliquent la machine à états, la complétude et la numérotation.
         allow create, delete: if false;
         allow update: if ciInCabinet(cabinetId)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['reference', 'completeness', 'createdAt', 'createdBy', 'status', 'assignedTo', 'data', 'draft', 'assureId', 'productId', 'needAnalysis']);
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['reference', 'completeness', 'createdAt', 'createdBy', 'status', 'assignedTo', 'data', 'draft', 'assureId', 'productId', 'needAnalysis', 'decision', 'proposal', 'outcome']);
 
         // Jobs de tarification, offres, documents : lus par le cabinet. Jobs et offres sont écrits par les functions
-        // tarification-* (besoin validé, assureur activé, offre contrôlée) et par l'extension (voir plus bas).
+        // tarification-* (besoin validé, assureur activé, offre contrôlée) et par l'extension (voir plus bas) ;
+        // les documents uniquement par les functions (documents-enregistrer, documents-analyser, tarification-saisirOffre).
         match /{collection}/{docId} {
           allow read: if ciInCabinet(cabinetId) && collection in ['quoteJobs', 'offers', 'documents'];
-          // Documents : écrits uniquement par les functions (documents-enregistrer, documents-analyser, tarification-saisirOffre).
         }
 
         // ── Extension : jobs et offres (voir ciExtActive). Écriture limitée au statut du job et aux offres automatiques.

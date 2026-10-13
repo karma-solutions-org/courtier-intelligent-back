@@ -20,7 +20,7 @@ const FONT = "font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-s
 
 /** Titre de section (« Garanties incluses »). */
 export const sectionTitle = (title: string) =>
-  `<h3 style="margin:24px 0 10px;${FONT};font-size:15px;line-height:20px;color:${EMAIL_COLORS.navy}">${title}</h3>`;
+  `<h3 style="margin:28px 0 10px;${FONT};font-size:14px;line-height:20px;font-weight:bold;color:${EMAIL_COLORS.navy}">${title}</h3>`;
 
 /** Paragraphe de texte courant. */
 export const emailParagraph = (html: string) =>
@@ -39,7 +39,7 @@ export function emailButton(href: string, label: string, color: string = EMAIL_C
 }
 
 /**
- * Enveloppe complète : bandeau marine (titre + sous-titre), corps blanc, pied gris.
+ * Enveloppe complète, sobre : en-tête blanc (titre + sous-titre) souligné d'un filet, corps blanc, pied gris.
  * `headerTitle`, `headerSubtitle`, `body` et `footer` sont du HTML déjà échappé.
  */
 export function emailLayout(parts: { headerTitle: string; headerSubtitle?: string; body: string; footer?: string }): string {
@@ -47,20 +47,18 @@ export function emailLayout(parts: { headerTitle: string; headerSubtitle?: strin
   return (
     `<div style="margin:0;padding:0;background:${c.bg}">` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${c.bg}"><tr><td align="center" style="padding:24px 12px">` +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;border-collapse:separate;background:#ffffff;border:1px solid ${c.line};border-radius:12px">` +
-    // Bandeau marine
-    `<tr><td bgcolor="${c.navy}" style="padding:22px 28px;background:${c.navy};background-image:linear-gradient(135deg,${c.navy} 0%,${c.navy2} 65%,${c.blue} 100%);border-radius:12px 12px 0 0">` +
-    `<p style="margin:0;${FONT};font-size:20px;line-height:26px;font-weight:bold;color:#ffffff">${parts.headerTitle}</p>` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;border-collapse:separate;background:#ffffff;border:1px solid ${c.line};border-radius:6px">` +
+    // En-tête : nom de l'expéditeur, filet marine
+    `<tr><td style="padding:26px 32px 18px;border-bottom:2px solid ${c.navy}">` +
+    `<p style="margin:0;${FONT};font-size:18px;line-height:24px;font-weight:bold;color:${c.navy}">${parts.headerTitle}</p>` +
     (parts.headerSubtitle
-      ? `<p style="margin:4px 0 0;${FONT};font-size:13px;line-height:18px;color:#c7d3f0">${parts.headerSubtitle}</p>`
+      ? `<p style="margin:2px 0 0;${FONT};font-size:13px;line-height:18px;color:${c.muted}">${parts.headerSubtitle}</p>`
       : "") +
     `</td></tr>` +
-    // Liseré d'accent
-    `<tr><td height="4" style="height:4px;line-height:4px;font-size:0;background:${c.blue};background-image:linear-gradient(90deg,${c.blue},#0e9f8e)">&nbsp;</td></tr>` +
     // Corps
-    `<tr><td style="padding:28px 28px 12px;${FONT};font-size:15px;line-height:23px;color:${c.text}">${parts.body}</td></tr>` +
+    `<tr><td style="padding:28px 32px 12px;${FONT};font-size:15px;line-height:23px;color:${c.text}">${parts.body}</td></tr>` +
     (parts.footer
-      ? `<tr><td style="padding:16px 28px 24px;border-top:1px solid ${c.line};${FONT};font-size:12px;line-height:18px;color:${c.muted}">${parts.footer}</td></tr>`
+      ? `<tr><td style="padding:18px 32px 26px;background:#fafbfd;border-radius:0 0 6px 6px;border-top:1px solid ${c.line};${FONT};font-size:12px;line-height:18px;color:${c.muted}">${parts.footer}</td></tr>`
       : "") +
     `</table>` +
     `</td></tr></table></div>`

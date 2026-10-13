@@ -18,7 +18,7 @@
       { "canonicalPath": "vehicle.registration", "label": "Immatriculation", "type": "text", "required": true },
       { "canonicalPath": "vehicle.brand", "label": "Marque", "type": "text", "required": true },
       { "canonicalPath": "vehicle.model", "label": "Modèle", "type": "text", "required": true },
-      { "canonicalPath": "vehicle.version", "label": "Version", "type": "text", "required": false },
+      { "canonicalPath": "vehicle.version", "label": "Version", "type": "text", "required": true },
       {
         "canonicalPath": "vehicle.firstRegistrationDate",
         "label": "Date de première mise en circulation",
@@ -26,6 +26,21 @@
         "required": true
       },
       { "canonicalPath": "vehicle.fiscalPower", "label": "Puissance fiscale (CV)", "type": "number", "required": true },
+      {
+        "canonicalPath": "vehicle.energyType",
+        "label": "Type d'énergie",
+        "type": "choice",
+        "required": true,
+        "choices": [
+          { "value": "essence", "label": "Essence" },
+          { "value": "diesel", "label": "Diesel" },
+          { "value": "hybride", "label": "Hybride" },
+          { "value": "hybride_rechargeable", "label": "Hybride rechargeable" },
+          { "value": "electrique", "label": "Électrique" },
+          { "value": "gpl", "label": "GPL" },
+          { "value": "ethanol", "label": "Superéthanol (E85)" }
+        ]
+      },
       { "canonicalPath": "vehicle.vehicleValue", "label": "Valeur du véhicule (€)", "type": "number", "required": false },
       {
         "canonicalPath": "vehicle.vehicleType",
@@ -60,6 +75,8 @@
           { "value": "voie_publique", "label": "Voie publique" }
         ]
       },
+      { "canonicalPath": "vehicle.parkingPostalCode", "label": "Code postal du lieu de stationnement", "type": "text", "required": true },
+      { "canonicalPath": "vehicle.parkingCity", "label": "Ville du lieu de stationnement", "type": "text", "required": true },
       { "canonicalPath": "vehicle.purchaseDate", "label": "Date d'achat", "type": "date", "required": false }
     ]
   },
@@ -79,6 +96,26 @@
           { "value": "B", "label": "Permis B" },
           { "value": "A", "label": "Permis A (moto)" },
           { "value": "AAC", "label": "Conduite accompagnée" }
+        ]
+      },
+      {
+        "canonicalPath": "driver.socioProfessionalCategory",
+        "label": "Catégorie socio-professionnelle",
+        "type": "choice",
+        "required": true,
+        "choices": [
+          { "value": "salarie_prive", "label": "Salarié du secteur privé" },
+          { "value": "fonctionnaire", "label": "Fonctionnaire / agent public" },
+          { "value": "cadre", "label": "Cadre" },
+          { "value": "artisan_commercant", "label": "Artisan / commerçant" },
+          { "value": "profession_liberale", "label": "Profession libérale" },
+          { "value": "chef_entreprise", "label": "Chef d'entreprise" },
+          { "value": "agriculteur", "label": "Agriculteur" },
+          { "value": "vrp", "label": "VRP / commercial itinérant" },
+          { "value": "etudiant", "label": "Étudiant" },
+          { "value": "retraite", "label": "Retraité" },
+          { "value": "sans_activite", "label": "Sans activité" },
+          { "value": "autre", "label": "Autre" }
         ]
       },
       { "canonicalPath": "driver.profession", "label": "Profession", "type": "text", "required": false }
@@ -146,7 +183,7 @@
         "canonicalPath": "insuranceHistory.nonResponsibleClaimsCount",
         "label": "dont sinistres non responsables",
         "type": "number",
-        "required": false,
+        "required": true,
         "withKnowledge": true
       },
       {

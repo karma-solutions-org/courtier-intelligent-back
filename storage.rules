@@ -49,6 +49,23 @@ service firebase.storage {
         && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png'];
     }
 
+    // Dépôt provisoire d'une pièce de client (CIN, Kbis) avant sa création : propre au courtier qui l'envoie.
+    // Lu par la function assures-lirePiece, puis déplacé avec le client par assures-rattacherPiece.
+    match /cabinets/{cabinetId}/imports/{uid}/{fileName} {
+      allow read: if inActiveCabinet(cabinetId) && request.auth.uid == uid;
+      allow create: if inActiveCabinet(cabinetId)
+        && request.auth.uid == uid
+        && resource == null
+        && fileName.matches('^[A-Za-z0-9_-][A-Za-z0-9._-]{0,199}$')
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png'];
+    }
+
+    // Pièces rangées avec un client : lues par le cabinet, écrites uniquement par les functions.
+    match /cabinets/{cabinetId}/assures/{assureId}/documents/{fileName} {
+      allow read: if inActiveCabinet(cabinetId);
+    }
+
     // Tout autre emplacement est refusé : chaque nouveau dossier de fichiers reçoit sa propre règle.
   }
 }

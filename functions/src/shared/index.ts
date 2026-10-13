@@ -13,3 +13,5 @@ export * from './comparison.js';
 export * from './documents.js';
 export * from './proposal.js';
 export * from './assure-format.js';
+export * from './assure-documents.js';
+export * from './discovered-fields.js';

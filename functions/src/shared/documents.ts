@@ -5,7 +5,7 @@ import { CanonicalPath, CanonicalValue, isCanonicalPath } from './canonical-path
 import { Question, QuestionnaireSection } from './models.js';
 import { questionFor, validateAnswer } from './questionnaire.js';
 
-export const DOSSIER_DOCUMENT_TYPES = ['carte_grise', 'permis', 'releve_information', 'autre'] as const;
+export const DOSSIER_DOCUMENT_TYPES = ['carte_grise', 'permis', 'cin', 'releve_information', 'autre'] as const;
 export type DossierDocumentType = (typeof DOSSIER_DOCUMENT_TYPES)[number];
 
 export const DOSSIER_DOCUMENT_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
@@ -21,6 +21,8 @@ export const OCR_MAX_FIELDS = 40;
 export const OCR_PATH_PREFIXES: Record<DossierDocumentType, string[]> = {
   carte_grise: ['vehicle.'],
   permis: ['driver.'],
+  // Pièce d'identité du souscripteur : nom, prénom, date de naissance, numéro, adresse (ancien modèle).
+  cin: ['client.'],
   releve_information: ['insuranceHistory.'],
   autre: [],
 };
@@ -73,8 +75,27 @@ export function ocrQuestions(schema: QuestionnaireSection[], type: DossierDocume
 const DOCUMENT_LABELS: Record<DossierDocumentType, string> = {
   carte_grise: "certificat d'immatriculation (carte grise)",
   permis: 'permis de conduire',
+  cin: "carte nationale d'identité",
   releve_information: "relevé d'information d'assurance auto",
   autre: 'document',
+};
+
+/** Où lire chaque information sur le document (rubriques officielles), et comment traduire ses codes. */
+const DOCUMENT_HINTS: Partial<Record<DossierDocumentType, string[]>> = {
+  carte_grise: [
+    "Rubriques du certificat d'immatriculation français :",
+    "- A : numéro d'immatriculation ; B : date de première immatriculation ; D.1 : marque ;",
+    '- D.2 : type, variante, version (la version commerciale complète, ex. « 1.5 dCi 90 Business ») ; D.3 : dénomination commerciale (modèle) ;',
+    '- J.1 : genre national (VP = voiture, CTTE ou VU = utilitaire, MTL/MTT1/MTT2 = moto) ; P.6 : puissance fiscale (CV) ;',
+    '- P.3 : type de carburant. Codes : ES = essence ; GO = diesel ; EL = électrique ; EE ou EH = hybride (essence ou gazole + électrique non rechargeable) ;',
+    '  EH avec mention rechargeable, ou « PHEV » = hybride rechargeable ; GP, GL, EG = GPL ; FE, FG = superéthanol (E85).',
+  ],
+  cin: [
+    "Carte nationale d'identité : nom (nom de naissance, pas le nom d'usage sauf s'il est seul), prénoms (garder le premier prénom),",
+    "date de naissance, numéro du document (client.nationalId). L'adresse n'est imprimée qu'au verso de l'ancien modèle ; sinon, l'omettre.",
+    "N'extrais jamais l'email ni le téléphone : ils ne figurent pas sur ce document.",
+  ],
+  permis: ["Rubriques du permis de conduire français : 1 nom, 2 prénoms, 3 date de naissance ; au verso, date d'obtention de chaque catégorie (B, A…)."],
 };
 
 /** Consigne envoyée à l'IA : uniquement les champs du questionnaire lisibles sur ce type de document. */
@@ -95,6 +116,7 @@ export function buildOcrPrompt(type: DossierDocumentType, questions: Question[])
   return [
     `Tu lis un ${DOCUMENT_LABELS[type]} joint. Extrais uniquement les champs suivants :`,
     ...fields,
+    ...(DOCUMENT_HINTS[type] ? ['', ...DOCUMENT_HINTS[type]] : []),
     '',
     'Réponds UNIQUEMENT avec un JSON de la forme {"fields":[{"canonicalPath":"...","value":...,"confidence":0.0}]}.',
     'confidence est ta confiance entre 0 et 1. N\'invente jamais : un champ absent, illisible ou incertain est omis.',

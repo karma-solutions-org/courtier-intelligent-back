@@ -47,7 +47,7 @@ export function cabinetLegalMentions(cabinet: ProposalCabinet): string {
   ];
   if (cabinet.address) parts.push(escapeHtml(cabinet.address));
   return (
-    `<p style="margin:12px 0 0;font-size:11px;line-height:16px;color:#8a94a8">${parts.join(" — ")}.<br>` +
+    `<p style="margin:10px 0 0;font-size:11px;line-height:16px;color:#8a94a8">${parts.join(" — ")}.<br>` +
     "Activité soumise au contrôle de l'Autorité de contrôle prudentiel et de résolution (ACPR), " +
     "4 place de Budapest, CS 92459, 75436 Paris Cedex 09.<br>" +
     "Cette proposition est établie sur la base des informations que vous nous avez communiquées ; " +
@@ -60,42 +60,41 @@ export function buildProposalEmail(input: ProposalEmailInput): { subject: string
   const { cabinet } = input;
   const c = EMAIL_COLORS;
 
-  // Carte de l'offre retenue : assureur, prime annuelle en grand, prime mensuelle en dessous.
-  const premiumRows: string[] = [];
-  if (input.premiumAnnual !== null) {
-    premiumRows.push(
-      `<p style="margin:12px 0 0;font-size:12px;line-height:16px;color:${c.muted};text-transform:uppercase;letter-spacing:1px">Prime annuelle :</p>` +
-        `<p style="margin:2px 0 0;font-size:32px;line-height:38px;font-weight:bold;color:${c.green}"><strong>${formatEuros(input.premiumAnnual)}</strong></p>`,
-    );
-  }
-  if (input.premiumMonthly !== null) {
-    premiumRows.push(
-      `<p style="margin:6px 0 0;font-size:14px;line-height:20px;color:${c.text}">Prime mensuelle : <strong>${formatEuros(input.premiumMonthly)}</strong></p>`,
-    );
-  }
+  // Récapitulatif de l'offre : assureur à gauche, prime à droite, sur fond neutre.
+  const premium =
+    input.premiumAnnual !== null
+      ? `<p style="margin:0;font-size:26px;line-height:32px;font-weight:bold;color:${c.navy}">${formatEuros(input.premiumAnnual)}</p>` +
+        `<p style="margin:2px 0 0;font-size:13px;line-height:18px;color:${c.muted}">par an${
+          input.premiumMonthly !== null ? `, soit ${formatEuros(input.premiumMonthly)} par mois` : ""
+        }</p>`
+      : input.premiumMonthly !== null
+        ? `<p style="margin:0;font-size:26px;line-height:32px;font-weight:bold;color:${c.navy}">${formatEuros(input.premiumMonthly)}</p>` +
+          `<p style="margin:2px 0 0;font-size:13px;line-height:18px;color:${c.muted}">par mois</p>`
+        : "";
   const offerCard =
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 6px;border-collapse:separate">` +
-    `<tr><td bgcolor="${c.greenBg}" style="padding:18px 20px;background:${c.greenBg};border:1px solid #bfe5cf;border-left:5px solid ${c.green};border-radius:10px">` +
-    `<p style="margin:0;font-size:12px;line-height:16px;color:${c.green};font-weight:bold;text-transform:uppercase;letter-spacing:1px">Offre retenue${premiumRows.length ? " — Tarif" : ""}</p>` +
-    `<p style="margin:4px 0 0;font-size:20px;line-height:26px;font-weight:bold;color:${c.navy}">${escapeHtml(input.insurerName)}</p>` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 4px;border:1px solid ${c.line};border-radius:6px;border-collapse:separate;background:#fafbfd">` +
+    `<tr><td valign="top" style="padding:18px 20px">` +
+    `<p style="margin:0;font-size:13px;line-height:18px;color:${c.muted}">Offre recommandée</p>` +
+    `<p style="margin:2px 0 0;font-size:18px;line-height:24px;font-weight:bold;color:${c.navy}">${escapeHtml(input.insurerName)}</p>` +
     (input.reference
-      ? `<p style="margin:2px 0 0;font-size:13px;line-height:18px;color:${c.muted}">Dossier ${escapeHtml(input.reference)}</p>`
+      ? `<p style="margin:2px 0 0;font-size:13px;line-height:18px;color:${c.muted}">Dossier n° ${escapeHtml(input.reference)}</p>`
       : "") +
-    premiumRows.join("") +
-    `</td></tr></table>`;
+    `</td>` +
+    (premium ? `<td valign="top" align="right" style="padding:18px 20px;white-space:nowrap">${premium}</td>` : "") +
+    `</tr></table>`;
 
   const cell = (html: string, extra = "") =>
-    `<td style="padding:9px 12px;border-bottom:1px solid ${c.line};font-size:14px;line-height:20px;color:${c.text};${extra}">${html}</td>`;
+    `<td style="padding:10px 0;border-bottom:1px solid ${c.line};font-size:14px;line-height:20px;color:${c.text};${extra}">${html}</td>`;
   const table = (head: [string, string], rows: string[]) =>
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid ${c.line};border-radius:8px;border-collapse:separate">` +
-    `<tr><td style="padding:8px 12px;background:#f6f8fc;font-size:12px;font-weight:bold;color:${c.muted};border-bottom:1px solid ${c.line}">${head[0]}</td>` +
-    `<td style="padding:8px 12px;background:#f6f8fc;font-size:12px;font-weight:bold;color:${c.muted};border-bottom:1px solid ${c.line}">${head[1]}</td></tr>` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">` +
+    `<tr><td style="padding:0 0 6px;font-size:12px;color:${c.muted};border-bottom:1px solid ${c.navy}">${head[0]}</td>` +
+    `<td align="right" style="padding:0 0 6px;font-size:12px;color:${c.muted};border-bottom:1px solid ${c.navy}">${head[1]}</td></tr>` +
     rows.join("") +
     `</table>`;
 
   const deductibles = Object.entries(input.deductibles ?? {}).map(
     ([label, amount]) =>
-      `<tr>${cell(escapeHtml(label === "general" ? "Franchise générale" : label))}${cell(formatEuros(amount), "white-space:nowrap;font-weight:bold")}</tr>`,
+      `<tr>${cell(escapeHtml(label === "general" ? "Franchise générale" : label))}${cell(formatEuros(amount), "text-align:right;white-space:nowrap")}</tr>`,
   );
   const guarantees = input.guarantees
     .filter(g => g.included)
@@ -103,10 +102,7 @@ export function buildProposalEmail(input: ProposalEmailInput): { subject: string
       const details: string[] = [];
       if (g.limit !== null) details.push(`plafond ${formatEuros(g.limit)}`);
       if (g.deductible !== null) details.push(`franchise ${formatEuros(g.deductible)}`);
-      return (
-        `<tr>${cell(`<span style="color:${c.green};font-weight:bold">&#10003;</span>&nbsp; ${escapeHtml(g.label)}`)}` +
-        `${cell(details.length ? details.join(", ") : "Incluse", `color:${c.muted}`)}</tr>`
-      );
+      return `<tr>${cell(escapeHtml(g.label))}${cell(details.length ? details.join(" · ") : "Incluse", `text-align:right;color:${c.muted}`)}</tr>`;
     });
 
   const contact = [
@@ -119,22 +115,19 @@ export function buildProposalEmail(input: ProposalEmailInput): { subject: string
     emailParagraph(`Bonjour ${escapeHtml(input.assureName)},`) +
     (input.message?.trim() ? emailParagraph(paragraph(input.message.trim())) : "") +
     emailParagraph(
-      `Suite à l'étude de votre besoin, ${escapeHtml(cabinet.name)} vous propose l'offre de ` +
-        `<strong>${escapeHtml(input.insurerName)}</strong>` +
-        (input.reference ? ` (dossier ${escapeHtml(input.reference)})` : "") +
-        ".",
+      `Suite à l'étude de votre besoin, nous avons le plaisir de vous proposer l'offre de ` +
+        `<strong>${escapeHtml(input.insurerName)}</strong>, que nous avons retenue pour vous.`,
     ) +
     offerCard +
-    (deductibles.length ? sectionTitle("Franchises") + table(["Franchise", "Montant"], deductibles) : "") +
+    sectionTitle("Notre recommandation") +
+    emailParagraph(paragraph(input.justification)) +
     (guarantees.length ? sectionTitle("Garanties incluses") + table(["Garantie", "Plafond / franchise"], guarantees) : "") +
-    sectionTitle("Pourquoi cette offre") +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
-    `<td style="padding:12px 16px;background:#f6f8fc;border-left:4px solid ${c.blue};border-radius:0 8px 8px 0;font-size:14px;line-height:22px;color:${c.text}">` +
-    `<p style="margin:0">${paragraph(input.justification)}</p></td></tr></table>` +
-    `<p style="margin:22px 0 14px;font-size:15px;line-height:23px;color:${c.text}">Pour donner suite ou pour toute question, répondez simplement à cet email ou contactez-nous.</p>`;
+    (deductibles.length ? sectionTitle("Franchises") + table(["Franchise", "Montant"], deductibles) : "") +
+    `<p style="margin:26px 0 14px;font-size:15px;line-height:23px;color:${c.text}">Pour donner suite à cette proposition ou pour toute question, il vous suffit de répondre à cet email. Nous restons à votre disposition.</p>` +
+    `<p style="margin:0 0 6px;font-size:15px;line-height:23px;color:${c.text}">Bien cordialement,<br><strong>${escapeHtml(cabinet.name)}</strong></p>`;
 
   const footer =
-    `<p style="margin:0;font-size:13px;line-height:19px;color:${c.text}"><strong>${escapeHtml(cabinet.name)}</strong>${contact.length ? `<br>${contact.join("<br>")}` : ""}</p>` +
+    (contact.length ? `<p style="margin:0;font-size:12px;line-height:18px;color:${c.muted}">${contact.join(" · ")}</p>` : "") +
     cabinetLegalMentions(cabinet);
 
   const html = emailLayout({

@@ -26,6 +26,12 @@ export * as propositions from "./propositions/propositions.callable";
 // ── Documents (Epic E12) : documents du dossier et lecture automatique (OCR) par l'IA ─────────────
 export * as documents from "./documents/documents.callable";
 
+// ── Pièces des clients : CIN / Kbis lus à la création du client, puis rangés avec sa fiche ─────────────
+export * as assures from "./assures/assures-documents.callable";
+
+// ── Champs découverts sur les extranets : ajoutés automatiquement au questionnaire ─────────────
+export * as champs from "./champs/champs.callable";
+
 // ── IA : proxy pour l'extension (la clé reste côté serveur) ─────────────────────────────────
 export * as ia from "./ia/ia.callable";
 

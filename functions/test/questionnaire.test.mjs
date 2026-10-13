@@ -33,19 +33,25 @@ const completeData = () => ({
   'vehicle.registration': 'AB-123-CD',
   'vehicle.brand': 'Renault',
   'vehicle.model': 'Clio',
+  'vehicle.version': '1.0 TCe 90 Zen',
   'vehicle.firstRegistrationDate': '2019-05-01',
   'vehicle.fiscalPower': 5,
+  'vehicle.energyType': 'essence',
   'vehicle.vehicleType': 'voiture',
   'vehicle.usage': 'prive',
   'vehicle.parkingType': 'garage_prive',
+  'vehicle.parkingPostalCode': '75002',
+  'vehicle.parkingCity': 'Paris',
   'driver.lastName': 'Dupont',
   'driver.firstName': 'Jean',
   'driver.birthDate': '1985-03-12',
   'driver.licenseDate': '2004-07-01',
   'driver.licenseType': 'B',
+  'driver.socioProfessionalCategory': 'cadre',
   'insuranceHistory.currentlyInsured': false,
   'insuranceHistory.bonusMalus': { value: 0.9, knowledge: 'KNOWN' },
   'insuranceHistory.claimsCount': { value: 0, knowledge: 'KNOWN' },
+  'insuranceHistory.nonResponsibleClaimsCount': { value: 0, knowledge: 'KNOWN' },
   'insuranceHistory.wasTerminated': false,
 });
 
@@ -139,7 +145,7 @@ describe('quoteData', () => {
     assert.equal(quote['vehicle.vehicleValue'], 0);
     assert.equal(quote['insuranceHistory.currentlyInsured'], false);
     assert.equal(quote['client.phone'], null, 'chaîne vide = non renseigné');
-    assert.equal(quote['vehicle.version'], null, 'jamais demandé = null, pas de valeur par défaut');
+    assert.equal(quote['vehicle.purchaseDate'], null, 'jamais demandé = null, pas de valeur par défaut');
   });
 
   it('conserve le niveau de connaissance des champs sensibles', () => {

@@ -1,5 +1,6 @@
 import * as admin from "firebase-admin";
 import { parseArgs } from "node:util";
+import type { QuestionnaireSection } from "../shared/index.js";
 import { loadCatalog } from "./catalog";
 import { fail, initOps, run } from "./ops.utils";
 
@@ -33,6 +34,18 @@ run(async () => {
 
   initOps({ "dry-run": { type: "boolean" } }, USAGE);
   const db = admin.firestore();
+  // Les questions ajoutées automatiquement depuis les extranets (section `discovered`) ne sont pas dans les JSON :
+  // on les reprend du produit publié, sinon chaque publication les effacerait.
+  for (const document of documents) {
+    if (!document.path.startsWith("products/")) continue;
+    const published = await db.doc(document.path).get();
+    const discovered = ((published.get("questionnaireSchema") as QuestionnaireSection[] | undefined) ?? []).filter(s => s.discovered);
+    const data = document.data as { questionnaireSchema?: QuestionnaireSection[] };
+    if (discovered.length && data.questionnaireSchema) {
+      data.questionnaireSchema = [...data.questionnaireSchema.filter(s => !s.discovered), ...discovered];
+      console.log(`${document.path} : ${discovered[0].questions.length} question(s) découverte(s) conservée(s).`);
+    }
+  }
   const batch = db.batch();
   for (const { path, data } of documents) {
     batch.set(db.doc(path), data);

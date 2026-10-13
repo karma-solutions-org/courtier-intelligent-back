@@ -4,6 +4,9 @@
  *
  * RÈGLE ABSOLUE : liste fermée. L'extension ne mappe jamais vers un chemin absent
  * de cette liste ; sans correspondance fiable, le champ reste `null`.
+ *
+ * Seule ouverture : les chemins `extra.<code>` des questions ajoutées au questionnaire à partir des champs
+ * découverts sur les extranets (voir discovered-fields.ts). Ils n'existent que si une question les porte.
  */
 export const CANONICAL_PATHS = [
   // ─── Client ───────────────────────────────────────────────
@@ -29,6 +32,9 @@ export const CANONICAL_PATHS = [
   'vehicle.vehicleType',
   'vehicle.usage',
   'vehicle.parkingType',
+  'vehicle.energyType',
+  'vehicle.parkingPostalCode',
+  'vehicle.parkingCity',
   'vehicle.purchaseDate',
 
   // ─── Conducteur ───────────────────────────────────────────
@@ -38,6 +44,7 @@ export const CANONICAL_PATHS = [
   'driver.licenseDate',
   'driver.licenseType',
   'driver.profession',
+  'driver.socioProfessionalCategory',
   'driver.phone',
 
   // ─── Historique d'assurance ───────────────────────────────
@@ -56,10 +63,24 @@ export const CANONICAL_PATHS = [
   'insuranceHistory.terminationDate',
 ] as const;
 
-export type CanonicalPath = (typeof CANONICAL_PATHS)[number];
+/** Chemin de la liste fermée (identité, véhicule, conducteur, historique). */
+export type FixedCanonicalPath = (typeof CANONICAL_PATHS)[number];
+/** Chemin d'une question ajoutée depuis un champ découvert sur un extranet. */
+export type ExtraCanonicalPath = `extra.${string}`;
+export type CanonicalPath = FixedCanonicalPath | ExtraCanonicalPath;
+
+const EXTRA_PATH = /^extra\.[a-z0-9_]{1,60}$/;
+
+export function isFixedCanonicalPath(path: string): path is FixedCanonicalPath {
+  return (CANONICAL_PATHS as readonly string[]).includes(path);
+}
+
+export function isExtraPath(path: string): path is ExtraCanonicalPath {
+  return EXTRA_PATH.test(path);
+}
 
 export function isCanonicalPath(path: string): path is CanonicalPath {
-  return (CANONICAL_PATHS as readonly string[]).includes(path);
+  return isFixedCanonicalPath(path) || isExtraPath(path);
 }
 
 /**
