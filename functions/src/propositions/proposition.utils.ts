@@ -115,7 +115,7 @@ export function buildProposalEmail(input: ProposalEmailInput): { subject: string
     emailParagraph(`Bonjour ${escapeHtml(input.assureName)},`) +
     (input.message?.trim() ? emailParagraph(paragraph(input.message.trim())) : "") +
     emailParagraph(
-      `Suite à l'étude de votre besoin, nous avons le plaisir de vous proposer l'offre de ` +
+      `Suite à l'étude de votre demande, nous avons le plaisir de vous proposer l'offre de ` +
         `<strong>${escapeHtml(input.insurerName)}</strong>, que nous avons retenue pour vous.`,
     ) +
     offerCard +

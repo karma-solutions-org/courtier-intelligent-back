@@ -41,8 +41,8 @@ describe('validateNeed', () => {
 
   it('refuse des notes trop longues et un besoin qui n’est pas un objet', () => {
     assert.match(validateNeed(need({ notes: 'x'.repeat(2001) }), codes).join(), /Notes/);
-    assert.deepEqual(validateNeed(null, codes), ['Besoin invalide.']);
-    assert.deepEqual(validateNeed([], codes), ['Besoin invalide.']);
+    assert.deepEqual(validateNeed(null, codes), ['Couverture souhaitée invalide.']);
+    assert.deepEqual(validateNeed([], codes), ['Couverture souhaitée invalide.']);
     assert.match(validateNeed(need({ mandatoryGuarantees: 'RC' }), codes).join(), /liste/);
   });
 });

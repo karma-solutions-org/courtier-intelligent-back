@@ -171,13 +171,9 @@ describe('Complétude et machine à états', () => {
     assert.deepEqual(last.data, { from: 'complet', to: 'brouillon', automatic: true });
   });
 
-  it('un dossier « sans suite » est définitif et n’est plus modifiable', async () => {
-    assert.deepEqual((await call('dossiers-changerStatut', adminToken, { dossierId, status: 'sans_suite' })).data, { status: 'sans_suite' });
-    const edit = await call('dossiers-sauvegarder', adminToken, { dossierId, patch: { 'vehicle.brand': 'Peugeot' } });
-    assert.equal(edit.error?.status, 'FAILED_PRECONDITION');
-    assert.equal(edit.error.details?.reason, 'not_editable');
-    const reopen = await call('dossiers-changerStatut', adminToken, { dossierId, status: 'brouillon' });
-    assert.equal(reopen.error?.details?.reason, 'invalid_transition');
+  it('le statut « sans suite » n’existe plus', async () => {
+    const result = await call('dossiers-changerStatut', adminToken, { dossierId, status: 'sans_suite' });
+    assert.equal(result.error?.status, 'INVALID_ARGUMENT');
   });
 });
 

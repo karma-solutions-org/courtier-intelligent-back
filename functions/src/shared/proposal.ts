@@ -4,7 +4,7 @@ import type { DossierStatus } from './statuses.js';
 /** Proposition et suivi (Epic E14) : règles communes à l'app et aux functions. */
 
 /** Statuts où l'onglet Proposition est ouvert (dès qu'une offre est retenue). */
-export const PROPOSAL_DOSSIER_STATUSES: DossierStatus[] = ['decision', 'proposition_envoyee', 'souscrit', 'refuse', 'sans_suite'];
+export const PROPOSAL_DOSSIER_STATUSES: DossierStatus[] = ['decision', 'proposition_envoyee', 'souscrit', 'refuse'];
 
 
 export const PROPOSAL_MESSAGE_MAX = 2000;

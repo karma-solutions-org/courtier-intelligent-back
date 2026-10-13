@@ -102,11 +102,6 @@ describe('Enregistrement du besoin', () => {
     assert.deepEqual(result.data.changed, []);
     assert.equal((await events(dossierId)).length, before);
   });
-
-  it('un dossier sans suite n’a plus de besoin à analyser', async () => {
-    await call('dossiers-changerStatut', token, { dossierId, status: 'sans_suite' });
-    assert.equal((await saveNeed(need({ budgetMax: 1 }))).error?.details?.reason, 'need_not_editable');
-  });
 });
 
 describe('Validation du besoin', () => {

@@ -209,7 +209,7 @@ export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
     }
     const from = dossier.get("status") as DossierStatus;
     if (target === "besoin_valide") {
-      throw new HttpsError("failed-precondition", "Le besoin se valide depuis l'onglet Besoin du dossier.", { reason: "use_validate_need" });
+      throw new HttpsError("failed-precondition", "La couverture se valide depuis l'étape Couverture du dossier.", { reason: "use_validate_need" });
     }
     // Proposition et réponse de l'assuré : uniquement par propositions-* (email, `proposal`, `outcome`).
     if (from === "proposition_envoyee" || ["proposition_envoyee", "souscrit", "refuse"].includes(target)) {
@@ -235,7 +235,7 @@ export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
     tx.update(ref, {
       status: target,
       completeness,
-      // Quitter « besoin validé » annule la validation.
+      // Quitter « couverture validée » annule la validation.
       ...(from === "besoin_valide" && dossier.get("needAnalysis") ? { "needAnalysis.validatedAt": null } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });

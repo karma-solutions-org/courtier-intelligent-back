@@ -38,7 +38,7 @@ async function loadPricingDossier(tx: Transaction, cabinetId: string, dossierId:
   }
   const status = dossier.get("status") as DossierStatus;
   if (!PRICING_DOSSIER_STATUSES.includes(status) || !dossier.get("needAnalysis.validatedAt")) {
-    throw new HttpsError("failed-precondition", "Validez le besoin du client avant de lancer une tarification.", {
+    throw new HttpsError("failed-precondition", "Validez la couverture souhaitée avant de lancer une tarification.", {
       reason: "need_not_validated",
     });
   }

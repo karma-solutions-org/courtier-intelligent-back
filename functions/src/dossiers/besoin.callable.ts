@@ -12,6 +12,7 @@ import {
   isTransitionAllowed,
   normalizeNeed,
   validateNeed,
+  DOSSIER_STATUS_LABELS,
   type DossierStatus,
   type NeedInput,
 } from "../shared/index.js";
@@ -45,7 +46,7 @@ export const enregistrerBesoin = onCall(CALLABLE_OPTIONS, async request => {
     }
     const status = dossier.get("status") as DossierStatus;
     if (!NEED_STATUSES.includes(status)) {
-      throw new HttpsError("failed-precondition", "Le besoin s'analyse une fois le dossier complet, et avant la tarification.", {
+      throw new HttpsError("failed-precondition", "La couverture souhaitée se renseigne une fois le dossier complet, et avant la tarification.", {
         reason: "need_not_editable",
       });
     }
@@ -96,14 +97,17 @@ export const validerBesoin = onCall(CALLABLE_OPTIONS, async request => {
       throw new HttpsError("not-found", "Dossier introuvable.");
     }
     const from = dossier.get("status") as DossierStatus;
+    if (from === "besoin_valide") {
+      return { status: "besoin_valide" };
+    }
     if (!isTransitionAllowed(from, "besoin_valide")) {
-      throw new HttpsError("failed-precondition", `Transition interdite : « ${from} » vers « besoin_valide ».`, {
+      throw new HttpsError("failed-precondition", `Transition interdite : « ${DOSSIER_STATUS_LABELS[from]} » vers « ${DOSSIER_STATUS_LABELS.besoin_valide} ».`, {
         reason: "invalid_transition",
       });
     }
     const need = dossier.get("needAnalysis") as { coverageLevel?: string | null } | null;
     if (!isNeedValidatable(need as never)) {
-      throw new HttpsError("failed-precondition", "Choisissez et enregistrez un niveau de couverture avant de valider le besoin.", {
+      throw new HttpsError("failed-precondition", "Choisissez un niveau de couverture avant de valider.", {
         reason: "need_incomplete",
       });
     }

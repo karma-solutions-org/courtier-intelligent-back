@@ -18,22 +18,20 @@ export const DOSSIER_STATUSES = [
   'proposition_envoyee',
   'souscrit',
   'refuse',
-  'sans_suite',
 ] as const;
 export type DossierStatus = (typeof DOSSIER_STATUSES)[number];
 
 /** Transitions autorisées : toute autre transition est refusée. */
 export const DOSSIER_TRANSITIONS: Record<DossierStatus, DossierStatus[]> = {
-  brouillon: ['complet', 'sans_suite'],
-  complet: ['brouillon', 'besoin_valide', 'sans_suite'],
-  besoin_valide: ['complet', 'tarification', 'sans_suite'],
-  tarification: ['comparaison', 'sans_suite'],
-  comparaison: ['tarification', 'decision', 'sans_suite'],
-  decision: ['comparaison', 'proposition_envoyee', 'sans_suite'],
-  proposition_envoyee: ['souscrit', 'refuse', 'sans_suite'],
+  brouillon: ['complet'],
+  complet: ['brouillon', 'besoin_valide'],
+  besoin_valide: ['complet', 'tarification'],
+  tarification: ['comparaison'],
+  comparaison: ['tarification', 'decision'],
+  decision: ['comparaison', 'proposition_envoyee'],
+  proposition_envoyee: ['souscrit', 'refuse'],
   souscrit: [],
   refuse: [],
-  sans_suite: [],
 };
 
 /** Une transition de statut est-elle autorisée par la machine à états ? */
@@ -47,14 +45,13 @@ export const EDITABLE_DOSSIER_STATUSES: DossierStatus[] = ['brouillon', 'complet
 export const DOSSIER_STATUS_LABELS: Record<DossierStatus, string> = {
   brouillon: 'Brouillon',
   complet: 'Complet',
-  besoin_valide: 'Besoin validé',
+  besoin_valide: 'Couverture validée',
   tarification: 'Tarification',
   comparaison: 'Comparaison',
   decision: 'Décision',
   proposition_envoyee: 'Proposition envoyée',
   souscrit: 'Souscrit',
   refuse: 'Refusé',
-  sans_suite: 'Sans suite',
 };
 
 /** Job de tarification (un par assureur et par dossier). */

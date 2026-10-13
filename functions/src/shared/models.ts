@@ -259,7 +259,7 @@ export interface DossierProposal {
   /** Nombre de relances envoyées au courtier en charge. */
 }
 
-export type DossierOutcomeResult = 'souscrit' | 'refuse' | 'sans_suite';
+export type DossierOutcomeResult = 'souscrit' | 'refuse';
 
 export interface DossierOutcome {
   result: DossierOutcomeResult;

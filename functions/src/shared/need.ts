@@ -49,7 +49,7 @@ const isAmount = (value: unknown): boolean =>
  */
 export function validateNeed(need: unknown, guaranteeCodes: string[]): string[] {
   if (typeof need !== 'object' || need === null || Array.isArray(need)) {
-    return ['Besoin invalide.'];
+    return ['Couverture souhaitée invalide.'];
   }
   const n = need as Record<string, unknown>;
   const problems: string[] = [];

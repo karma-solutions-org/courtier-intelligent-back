@@ -192,8 +192,8 @@ describe('Machine à états', () => {
   });
 
   it('les statuts finaux sont définitifs', () => {
-    for (const final of ['souscrit', 'refuse', 'sans_suite']) {
-      for (const target of ['brouillon', 'complet', 'tarification', 'sans_suite']) {
+    for (const final of ['souscrit', 'refuse']) {
+      for (const target of ['brouillon', 'complet', 'tarification']) {
         assert.equal(isTransitionAllowed(final, target), false, `${final} → ${target}`);
       }
     }

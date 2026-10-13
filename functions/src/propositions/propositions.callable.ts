@@ -15,7 +15,7 @@ import {
 } from "../shared/index.js";
 import { assureDisplayName, buildProposalEmail } from "./proposition.utils";
 
-const OUTCOME_RESULTS: DossierOutcomeResult[] = ["souscrit", "refuse", "sans_suite"];
+const OUTCOME_RESULTS: DossierOutcomeResult[] = ["souscrit", "refuse"];
 
 /**
  * Envoi de la proposition à l'assuré (Epic E14) : email (offre retenue, garanties, justification, mentions du cabinet)

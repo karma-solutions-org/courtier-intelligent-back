@@ -31,7 +31,8 @@
     "ops:memories": "tsc && node lib/ops/memories.js",
     "ops:reset-device": "tsc && node lib/ops/reset-device.js",
     "ops:extension-report": "tsc && node lib/ops/extension-report.js",
-    "ops:discovered-questions": "tsc && node lib/ops/discovered-questions.js"
+    "ops:discovered-questions": "tsc && node lib/ops/discovered-questions.js",
+    "ops:migrate-sans-suite": "tsc && node lib/ops/migrate-sans-suite.js"
   },
   "dependencies": {
     "firebase-admin": "^13.10.0",
