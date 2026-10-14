@@ -120,7 +120,8 @@ export const supprimerDefinitivement = onCall({ ...CALLABLE_OPTIONS, timeoutSeco
   const db = admin.firestore();
   const bucket = admin.storage().bucket();
   const removeDossier = async (dossierId: string) => {
-    await bucket.deleteFiles({ prefix: `${dossierPath(cabinetId, dossierId)}/` });
+    // Fichiers Storage du dossier (documents, devis) : Storage garde ses chemins « cabinets/… », sans préfixe ci_.
+    await bucket.deleteFiles({ prefix: `cabinets/${cabinetId}/dossiers/${dossierId}/` });
     await db.recursiveDelete(db.doc(dossierPath(cabinetId, dossierId)));
   };
 

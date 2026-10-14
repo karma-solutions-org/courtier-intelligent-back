@@ -21,9 +21,9 @@ const ext = (uid = 'courtier-a', cabinet = 'A', role = 'courtier', authTime = EX
 const app = (uid = 'courtier-a', cabinet = 'A', role = 'courtier') =>
   env.authenticatedContext(uid, claims(cabinet, role, APP_AUTH_TIME)).firestore();
 
-const JOB = '/cabinets/A/dossiers/d1/quoteJobs/assureur-a';
-const OTHER_JOB = '/cabinets/A/dossiers/d1/quoteJobs/assureur-b';
-const OFFER = '/cabinets/A/dossiers/d1/offers/assureur-a';
+const JOB = '/ci_cabinets/A/ci_dossiers/d1/ci_quoteJobs/assureur-a';
+const OTHER_JOB = '/ci_cabinets/A/ci_dossiers/d1/ci_quoteJobs/assureur-b';
+const OFFER = '/ci_cabinets/A/ci_dossiers/d1/ci_offers/assureur-a';
 
 before(async () => {
   env = await initializeTestEnvironment({ projectId: 'demo-courtier-intelligent', firestore: { rules: fs.readFileSync(rulesPath, 'utf8') } });
@@ -33,19 +33,19 @@ beforeEach(async () => {
   await env.clearFirestore();
   await env.withSecurityRulesDisabled(async context => {
     const db = context.firestore();
-    await setDoc(doc(db, 'cabinets/A'), { name: 'A', active: true });
-    await setDoc(doc(db, 'cabinets/B'), { name: 'B', active: true });
+    await setDoc(doc(db, 'ci_cabinets/A'), { name: 'A', active: true });
+    await setDoc(doc(db, 'ci_cabinets/B'), { name: 'B', active: true });
     const session = { id: 'appareil', authTime: APP_AUTH_TIME, lastSeen: Timestamp.now(), extensionAuthTime: EXT_AUTH_TIME };
-    await setDoc(doc(db, 'cabinets/A/members/courtier-a'), { role: 'courtier', status: 'active', session });
-    await setDoc(doc(db, 'cabinets/A/members/admin-a'), { role: 'admin', status: 'active', session: { ...session, authTime: APP_AUTH_TIME + 1, extensionAuthTime: EXT_AUTH_TIME + 1 } });
-    await setDoc(doc(db, 'cabinets/B/members/courtier-b'), { role: 'courtier', status: 'active', session });
-    await setDoc(doc(db, 'cabinets/A/dossiers/d1'), { status: 'complet', data: { 'client.lastName': 'Dupont' } });
+    await setDoc(doc(db, 'ci_cabinets/A/ci_members/courtier-a'), { role: 'courtier', status: 'active', session });
+    await setDoc(doc(db, 'ci_cabinets/A/ci_members/admin-a'), { role: 'admin', status: 'active', session: { ...session, authTime: APP_AUTH_TIME + 1, extensionAuthTime: EXT_AUTH_TIME + 1 } });
+    await setDoc(doc(db, 'ci_cabinets/B/ci_members/courtier-b'), { role: 'courtier', status: 'active', session });
+    await setDoc(doc(db, 'ci_cabinets/A/ci_dossiers/d1'), { status: 'complet', data: { 'client.lastName': 'Dupont' } });
     await setDoc(doc(db, JOB), { ownerUid: 'courtier-a', status: 'requested', quoteData: { 'client.lastName': 'Dupont' }, updatedAt: Timestamp.now() });
     await setDoc(doc(db, OTHER_JOB), { ownerUid: 'admin-a', status: 'requested', quoteData: {}, updatedAt: Timestamp.now() });
-    await setDoc(doc(db, 'cabinets/A/assures/a1'), { firstName: 'Jean' });
-    await setDoc(doc(db, 'insurers/assureur-a'), { name: 'Assureur A' });
-    await setDoc(doc(db, 'products/auto'), { name: 'Auto' });
-    await setDoc(doc(db, 'formMemories/m1'), { origin: 'extranet.assureur-a.fr', formFingerprint: 'f', version: 1, fields: [], hits: 0 });
+    await setDoc(doc(db, 'ci_cabinets/A/ci_assures/a1'), { firstName: 'Jean' });
+    await setDoc(doc(db, 'ci_insurers/assureur-a'), { name: 'Assureur A' });
+    await setDoc(doc(db, 'ci_products/auto'), { name: 'Auto' });
+    await setDoc(doc(db, 'ci_formMemories/m1'), { origin: 'extranet.assureur-a.fr', formFingerprint: 'f', version: 1, fields: [], hits: 0 });
   });
 });
 
@@ -60,28 +60,28 @@ describe("Extension : ce qu'elle voit", () => {
   });
 
   it('retrouve « mes jobs » avec la requête du side panel, mais pas ceux des autres', async () => {
-    await assertSucceeds(getDocs(query(collectionGroup(ext(), 'quoteJobs'), where('ownerUid', '==', 'courtier-a'))));
-    await assertFails(getDocs(query(collectionGroup(ext(), 'quoteJobs'), where('ownerUid', '==', 'admin-a'))));
-    await assertFails(getDocs(collectionGroup(ext(), 'quoteJobs')));
+    await assertSucceeds(getDocs(query(collectionGroup(ext(), 'ci_quoteJobs'), where('ownerUid', '==', 'courtier-a'))));
+    await assertFails(getDocs(query(collectionGroup(ext(), 'ci_quoteJobs'), where('ownerUid', '==', 'admin-a'))));
+    await assertFails(getDocs(collectionGroup(ext(), 'ci_quoteJobs')));
   });
 
   it("n'accède ni aux dossiers, ni aux assurés, ni au cabinet, ni à l'historique", async () => {
-    await assertFails(getDoc(doc(ext(), 'cabinets/A/dossiers/d1')));
-    await assertFails(getDoc(doc(ext(), 'cabinets/A/assures/a1')));
-    await assertFails(getDoc(doc(ext(), 'cabinets/A')));
-    await assertFails(getDoc(doc(ext(), 'cabinets/A/members/admin-a')));
+    await assertFails(getDoc(doc(ext(), 'ci_cabinets/A/ci_dossiers/d1')));
+    await assertFails(getDoc(doc(ext(), 'ci_cabinets/A/ci_assures/a1')));
+    await assertFails(getDoc(doc(ext(), 'ci_cabinets/A')));
+    await assertFails(getDoc(doc(ext(), 'ci_cabinets/A/ci_members/admin-a')));
   });
 
   // Selon le fichier de règles, la fiche reste lisible après la perte de session (l'app s'en sert pour détecter une déconnexion) :
   // l'extension compare donc elle-même extensionAuthTime à son jeton, et traite aussi un refus comme une session perdue.
   it('relit sa propre fiche de membre (pour savoir si sa session est ouverte)', async () => {
-    await assertSucceeds(getDoc(doc(ext(), 'cabinets/A/members/courtier-a')));
+    await assertSucceeds(getDoc(doc(ext(), 'ci_cabinets/A/ci_members/courtier-a')));
   });
 
   it('lit le catalogue et la mémoire des formulaires', async () => {
-    await assertSucceeds(getDoc(doc(ext(), 'insurers/assureur-a')));
-    await assertSucceeds(getDoc(doc(ext(), 'products/auto')));
-    await assertSucceeds(getDoc(doc(ext(), 'formMemories/m1')));
+    await assertSucceeds(getDoc(doc(ext(), 'ci_insurers/assureur-a')));
+    await assertSucceeds(getDoc(doc(ext(), 'ci_products/auto')));
+    await assertSucceeds(getDoc(doc(ext(), 'ci_formMemories/m1')));
   });
 
   it("n'a pas accès au cabinet d'un autre", async () => {
@@ -109,7 +109,7 @@ describe("Extension : ce qu'elle écrit", () => {
   });
 
   it("ne crée pas de job", async () => {
-    await assertFails(setDoc(doc(ext(), '/cabinets/A/dossiers/d1/quoteJobs/assureur-c'), { ownerUid: 'courtier-a', status: 'analyzing' }));
+    await assertFails(setDoc(doc(ext(), '/ci_cabinets/A/ci_dossiers/d1/ci_quoteJobs/assureur-c'), { ownerUid: 'courtier-a', status: 'analyzing' }));
   });
 
   /** Offre telle que l'extension l'écrit après confirmation du courtier (E10-3). */
@@ -149,7 +149,7 @@ describe("Extension : ce qu'elle écrit", () => {
   });
 
   it("n'écrit pas d'offre pour le job d'un collègue, ni ne supprime une offre", async () => {
-    await assertFails(setDoc(doc(ext(), '/cabinets/A/dossiers/d1/offers/assureur-b'), autoOffer()));
+    await assertFails(setDoc(doc(ext(), '/ci_cabinets/A/ci_dossiers/d1/ci_offers/assureur-b'), autoOffer()));
     await env.withSecurityRulesDisabled(async context => setDoc(doc(context.firestore(), OFFER), { source: 'auto' }));
     await assertFails(env.authenticatedContext('courtier-a', claims('A', 'courtier', EXT_AUTH_TIME)).firestore().doc(OFFER).delete());
   });
@@ -164,81 +164,81 @@ describe("Extension : ce qu'elle écrit", () => {
   });
 
   it('signale un problème (extensionReports) par un code, sans pouvoir le relire', async () => {
-    await assertSucceeds(setDoc(doc(ext(), 'extensionReports/r1'), report()));
-    await assertFails(getDoc(doc(ext(), 'extensionReports/r1')));
+    await assertSucceeds(setDoc(doc(ext(), 'ci_extensionReports/r1'), report()));
+    await assertFails(getDoc(doc(ext(), 'ci_extensionReports/r1')));
   });
 
   it('accepte les codes du remplissage (analyse, mapping, remplissage), toujours fermés', async () => {
-    await assertSucceeds(setDoc(doc(ext(), 'extensionReports/f1'), report({ step: 'analyze', issue: 'no_fields' })));
-    await assertSucceeds(setDoc(doc(ext(), 'extensionReports/f2'), report({ step: 'mapping', issue: 'no_field_mapped' })));
-    await assertSucceeds(setDoc(doc(ext(), 'extensionReports/f3'), report({ step: 'fill', issue: 'fill_failed' })));
-    await assertFails(setDoc(doc(ext(), 'extensionReports/f4'), report({ step: 'fill', issue: 'champ nom refusé' })));
+    await assertSucceeds(setDoc(doc(ext(), 'ci_extensionReports/f1'), report({ step: 'analyze', issue: 'no_fields' })));
+    await assertSucceeds(setDoc(doc(ext(), 'ci_extensionReports/f2'), report({ step: 'mapping', issue: 'no_field_mapped' })));
+    await assertSucceeds(setDoc(doc(ext(), 'ci_extensionReports/f3'), report({ step: 'fill', issue: 'fill_failed' })));
+    await assertFails(setDoc(doc(ext(), 'ci_extensionReports/f4'), report({ step: 'fill', issue: 'champ nom refusé' })));
   });
 
   it('un signalement ne porte aucune donnée client : ni champ en plus, ni texte libre, ni URL complète', async () => {
-    await assertFails(setDoc(doc(ext(), 'extensionReports/r2'), report({ clientName: 'Dupont' })));
-    await assertFails(setDoc(doc(ext(), 'extensionReports/r3'), report({ issue: 'prime introuvable pour M. Dupont' })));
-    await assertFails(setDoc(doc(ext(), 'extensionReports/r4'), report({ step: 'remplissage' })));
-    await assertFails(setDoc(doc(ext(), 'extensionReports/r5'), report({ origin: 'https://extranet.assureur-a.fr/devis?nom=Dupont' })));
-    await assertFails(setDoc(doc(ext(), 'extensionReports/r6'), report({ at: Timestamp.now() })));
+    await assertFails(setDoc(doc(ext(), 'ci_extensionReports/r2'), report({ clientName: 'Dupont' })));
+    await assertFails(setDoc(doc(ext(), 'ci_extensionReports/r3'), report({ issue: 'prime introuvable pour M. Dupont' })));
+    await assertFails(setDoc(doc(ext(), 'ci_extensionReports/r4'), report({ step: 'remplissage' })));
+    await assertFails(setDoc(doc(ext(), 'ci_extensionReports/r5'), report({ origin: 'https://extranet.assureur-a.fr/devis?nom=Dupont' })));
+    await assertFails(setDoc(doc(ext(), 'ci_extensionReports/r6'), report({ at: Timestamp.now() })));
   });
 
   it("n'écrit jamais dans la mémoire des formulaires : seules les functions memoires-* le font (structure validée)", async () => {
     const memory = { origin: 'https://extranet.assureur-a.fr', formFingerprint: 'v1:00000000000000', version: 1, fields: [{ fieldKey: 'text:nom', label: 'Nom', type: 'text', order: 0, canonicalPath: 'client.lastName', confidence: 0.9 }], hits: 1 };
-    await assertFails(setDoc(doc(ext(), 'formMemories/m2'), memory));
-    await assertFails(updateDoc(doc(ext(), 'formMemories/m1'), { hits: 99 }));
-    await assertFails(setDoc(doc(ext(), 'formMemories/m3'), { ...memory, fields: [{ ...memory.fields[0], valeur: 'Dupont' }] }));
-    await assertFails(setDoc(doc(app(), 'formMemories/m4'), memory));
+    await assertFails(setDoc(doc(ext(), 'ci_formMemories/m2'), memory));
+    await assertFails(updateDoc(doc(ext(), 'ci_formMemories/m1'), { hits: 99 }));
+    await assertFails(setDoc(doc(ext(), 'ci_formMemories/m3'), { ...memory, fields: [{ ...memory.fields[0], valeur: 'Dupont' }] }));
+    await assertFails(setDoc(doc(app(), 'ci_formMemories/m4'), memory));
   });
 
   it("n'écrit pas dans le catalogue", async () => {
-    await assertFails(setDoc(doc(ext(), 'insurers/assureur-a'), { name: 'Piraté' }));
+    await assertFails(setDoc(doc(ext(), 'ci_insurers/assureur-a'), { name: 'Piraté' }));
   });
 });
 
 describe("L'extension n'a pas les droits de l'app, et l'app n'a pas ceux de l'extension", () => {
   it("la connexion de l'app (autre auth_time) ne lit ni n'écrit la mémoire des formulaires", async () => {
-    await assertFails(getDoc(doc(app(), 'formMemories/m1')));
-    await assertFails(setDoc(doc(app(), 'formMemories/m5'), { origin: 'x', formFingerprint: 'f', version: 1, fields: [], hits: 0 }));
-    await assertFails(setDoc(doc(app(), 'extensionReports/r3'), { insurerId: 'a', origin: '', step: 'extract', issue: 'premium_not_found', at: serverTimestamp() }));
+    await assertFails(getDoc(doc(app(), 'ci_formMemories/m1')));
+    await assertFails(setDoc(doc(app(), 'ci_formMemories/m5'), { origin: 'x', formFingerprint: 'f', version: 1, fields: [], hits: 0 }));
+    await assertFails(setDoc(doc(app(), 'ci_extensionReports/r3'), { insurerId: 'a', origin: '', step: 'extract', issue: 'premium_not_found', at: serverTimestamp() }));
   });
 
   it("un jeton qui n'est ni celui de l'app ni celui de l'extension n'a accès à rien", async () => {
     const stranger = ext('courtier-a', 'A', 'courtier', 1_790_009_999);
     await assertFails(getDoc(doc(stranger, JOB)));
-    await assertFails(getDoc(doc(stranger, 'formMemories/m1')));
+    await assertFails(getDoc(doc(stranger, 'ci_formMemories/m1')));
   });
 
   it("le jeton de l'extension n'ouvre pas les données de l'app", async () => {
-    await assertFails(getDoc(doc(ext(), 'cabinets/A/dossiers/d1')));
-    await assertSucceeds(getDoc(doc(app(), 'cabinets/A/dossiers/d1')));
+    await assertFails(getDoc(doc(ext(), 'ci_cabinets/A/ci_dossiers/d1')));
+    await assertSucceeds(getDoc(doc(app(), 'ci_cabinets/A/ci_dossiers/d1')));
   });
 });
 
 describe("Perte d'accès dès que la session de l'app est coupée", () => {
   const revoke = change =>
-    env.withSecurityRulesDisabled(async context => updateDoc(doc(context.firestore(), 'cabinets/A/members/courtier-a'), change));
+    env.withSecurityRulesDisabled(async context => updateDoc(doc(context.firestore(), 'ci_cabinets/A/ci_members/courtier-a'), change));
 
   it("déconnexion de l'app (session supprimée)", async () => {
     await revoke({ session: deleteField() });
     await assertFails(getDoc(doc(ext(), JOB)));
     await assertFails(updateDoc(doc(ext(), JOB), { status: 'analyzing' }));
-    await assertFails(getDocs(query(collectionGroup(ext(), 'quoteJobs'), where('ownerUid', '==', 'courtier-a'))));
+    await assertFails(getDocs(query(collectionGroup(ext(), 'ci_quoteJobs'), where('ownerUid', '==', 'courtier-a'))));
     await assertFails(setDoc(doc(ext(), OFFER), { source: 'auto', premiumAnnual: 1, capturedAt: serverTimestamp() }));
-    await assertFails(getDoc(doc(ext(), 'formMemories/m1')));
+    await assertFails(getDoc(doc(ext(), 'ci_formMemories/m1')));
   });
 
   it("nouvelle connexion de l'app (la session est remplacée, sans connexion d'extension)", async () => {
     await revoke({ session: { id: 'appareil', authTime: APP_AUTH_TIME + 100, lastSeen: Timestamp.now() } });
     await assertFails(getDoc(doc(ext(), JOB)));
     await assertFails(updateDoc(doc(ext(), JOB), { status: 'analyzing' }));
-    await assertFails(getDoc(doc(ext(), 'formMemories/m1')));
+    await assertFails(getDoc(doc(ext(), 'ci_formMemories/m1')));
   });
 
   it("l'extension se déconnecte d'elle-même (sa connexion est retirée, l'app garde la sienne)", async () => {
     await revoke({ 'session.extensionAuthTime': deleteField() });
     await assertFails(getDoc(doc(ext(), JOB)));
-    await assertSucceeds(getDoc(doc(app(), 'cabinets/A/dossiers/d1')));
+    await assertSucceeds(getDoc(doc(app(), 'ci_cabinets/A/ci_dossiers/d1')));
   });
 
   it('membre désactivé', async () => {
@@ -247,13 +247,13 @@ describe("Perte d'accès dès que la session de l'app est coupée", () => {
   });
 
   it('cabinet désactivé', async () => {
-    await env.withSecurityRulesDisabled(async context => updateDoc(doc(context.firestore(), 'cabinets/A'), { active: false }));
+    await env.withSecurityRulesDisabled(async context => updateDoc(doc(context.firestore(), 'ci_cabinets/A'), { active: false }));
     await assertFails(getDoc(doc(ext(), JOB)));
-    await assertFails(getDoc(doc(ext(), 'formMemories/m1')));
+    await assertFails(getDoc(doc(ext(), 'ci_formMemories/m1')));
   });
 
   it("cabinet au-delà de sa limite après le délai de grâce : l'extension d'un courtier est coupée, celle d'un admin non", async () => {
-    await env.withSecurityRulesDisabled(async context => updateDoc(doc(context.firestore(), 'cabinets/A'), { graceEndsAt: Timestamp.fromMillis(Date.now() - 1000) }));
+    await env.withSecurityRulesDisabled(async context => updateDoc(doc(context.firestore(), 'ci_cabinets/A'), { graceEndsAt: Timestamp.fromMillis(Date.now() - 1000) }));
     await assertFails(getDoc(doc(ext(), JOB)));
     await assertSucceeds(getDoc(doc(ext('admin-a', 'A', 'admin', EXT_AUTH_TIME + 1), OTHER_JOB)));
   });

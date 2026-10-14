@@ -51,7 +51,7 @@ const ouvrir = (token, deviceId) => call('sessions-ouvrir', token, { deviceId, a
 const ops = (script, ...args) =>
   execFileSync('node', [path.join(functionsDir, `lib/ops/${script}.js`), '--emulator', ...args], { encoding: 'utf8' });
 const auditTypes = async (cabinetId, uid) => {
-  const snapshot = await db.collection(`cabinets/${cabinetId}/auditLog`).where('uid', '==', uid).get();
+  const snapshot = await db.collection(`ci_cabinets/${cabinetId}/ci_auditLog`).where('uid', '==', uid).get();
   return snapshot.docs.map(d => d.get('type')).sort();
 };
 
@@ -66,13 +66,13 @@ before(async () => {
   adminUid = owner.uid;
   courtierUid = courtier.uid;
   cabinetId = await createCabinet({ name: 'Cabinet Test', orias: null, ownerUid: adminUid, planId: 'essentiel' });
-  await db.doc(`cabinets/${cabinetId}/members/${courtierUid}`).set({ email: 'courtier@test.fr', role: 'courtier', status: 'active' });
+  await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).set({ email: 'courtier@test.fr', role: 'courtier', status: 'active' });
   await setCabinetClaims(courtierUid, cabinetId, 'courtier');
 });
 
 describe('Création du cabinet avec son offre', () => {
   it("applique les limites de l'offre « essentiel »", async () => {
-    const cabinet = (await db.doc(`cabinets/${cabinetId}`).get()).data();
+    const cabinet = (await db.doc(`ci_cabinets/${cabinetId}`).get()).data();
     assert.equal(cabinet.planId, 'essentiel');
     assert.deepEqual(cabinet.limits, { maxUtilisateurs: 3, resetsAppareilParMois: 2, appelsIaParMois: 200, maxAppareilsParUtilisateur: 1, delaiGraceJours: 14 });
   });
@@ -82,7 +82,7 @@ describe('Un compte, un appareil', () => {
   it("le premier appareil se lie au compte et la connexion est tracée", async () => {
     const result = await ouvrir(await signIn('courtier@test.fr'), DEVICE_A);
     assert.deepEqual(result.data, { success: true });
-    const member = (await db.doc(`cabinets/${cabinetId}/members/${courtierUid}`).get()).data();
+    const member = (await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).data();
     assert.equal(member.device.id, DEVICE_A);
     assert.deepEqual(await auditTypes(cabinetId, courtierUid), ['appareil_lie', 'connexion']);
   });
@@ -93,7 +93,7 @@ describe('Un compte, un appareil', () => {
     assert.equal(result.error.details?.reason, 'device_not_authorized');
     assert.ok((await auditTypes(cabinetId, courtierUid)).includes('connexion_refusee_appareil'));
     // L'appareil lié et sa session ne changent pas.
-    const member = (await db.doc(`cabinets/${cabinetId}/members/${courtierUid}`).get()).data();
+    const member = (await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).data();
     assert.equal(member.device.id, DEVICE_A);
     assert.equal(member.session.id, DEVICE_A);
   });
@@ -139,12 +139,12 @@ describe('Réinitialisation de l’appareil par un admin', () => {
     const reset = await call('equipe-reinitialiserAppareil', adminToken, { uid: courtierUid });
     assert.deepEqual(reset.data, { success: true, remaining: 1 });
     assert.ok((await auditTypes(cabinetId, courtierUid)).includes('appareil_reinitialise'));
-    const member = (await db.doc(`cabinets/${cabinetId}/members/${courtierUid}`).get()).data();
+    const member = (await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).data();
     assert.equal(member.device, undefined);
     assert.equal(member.session, undefined);
 
     assert.deepEqual((await ouvrir(await signIn('courtier@test.fr'), DEVICE_B)).data, { success: true });
-    assert.equal((await db.doc(`cabinets/${cabinetId}/members/${courtierUid}`).get()).get('device.id'), DEVICE_B);
+    assert.equal((await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).get('device.id'), DEVICE_B);
   });
 
   it('refuse au-delà du quota mensuel de l’offre et trace le refus', async () => {
@@ -156,11 +156,11 @@ describe('Réinitialisation de l’appareil par un admin', () => {
     assert.equal(refused.error.details?.reason, 'device_reset_quota');
     assert.ok((await auditTypes(cabinetId, courtierUid)).includes('reinitialisation_refusee_quota'));
     // L'appareil n'a pas été libéré.
-    assert.equal((await db.doc(`cabinets/${cabinetId}/members/${courtierUid}`).get()).get('device.id'), DEVICE_A);
+    assert.equal((await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).get('device.id'), DEVICE_A);
   });
 
   it('le quota repart à zéro le mois suivant', async () => {
-    await db.doc(`cabinets/${cabinetId}`).update({ 'deviceResets.month': '2000-01' });
+    await db.doc(`ci_cabinets/${cabinetId}`).update({ 'deviceResets.month': '2000-01' });
     assert.equal((await call('equipe-reinitialiserAppareil', adminToken, { uid: courtierUid })).data?.remaining, 1);
   });
 });
@@ -168,12 +168,12 @@ describe('Réinitialisation de l’appareil par un admin', () => {
 describe('Baisse d’offre : délai de grâce', () => {
   it('3 → 6 sièges sans redéploiement', async () => {
     ops('set-plan', '--cabinet', cabinetId, '--plan', 'essentiel', '--max-utilisateurs', '6');
-    assert.deepEqual((await db.doc(`cabinets/${cabinetId}`).get()).get('limits'), { maxUtilisateurs: 6, resetsAppareilParMois: 2, appelsIaParMois: 200, maxAppareilsParUtilisateur: 1, delaiGraceJours: 14 });
+    assert.deepEqual((await db.doc(`ci_cabinets/${cabinetId}`).get()).get('limits'), { maxUtilisateurs: 6, resetsAppareilParMois: 2, appelsIaParMois: 200, maxAppareilsParUtilisateur: 1, delaiGraceJours: 14 });
   });
 
   it("ouvre le délai de grâce quand les membres actifs dépassent la limite, et le ferme à la désactivation d'un membre", async () => {
     ops('set-plan', '--cabinet', cabinetId, '--plan', 'essentiel', '--clear-overrides', '--max-utilisateurs', '1');
-    const cabinet = await db.doc(`cabinets/${cabinetId}`).get();
+    const cabinet = await db.doc(`ci_cabinets/${cabinetId}`).get();
     assert.equal(cabinet.get('limits.maxUtilisateurs'), 1);
     assert.ok(cabinet.get('graceEndsAt').toMillis() > Date.now());
 
@@ -185,7 +185,7 @@ describe('Baisse d’offre : délai de grâce', () => {
 
     const disabled = await call('equipe-activerMembre', adminToken, { uid: courtierUid, status: 'disabled' });
     assert.deepEqual(disabled.data, { success: true });
-    assert.equal((await db.doc(`cabinets/${cabinetId}`).get()).get('graceEndsAt'), undefined);
+    assert.equal((await db.doc(`ci_cabinets/${cabinetId}`).get()).get('graceEndsAt'), undefined);
   });
 
   it("après le délai de grâce, seul l'admin garde l'accès", async () => {
@@ -193,14 +193,14 @@ describe('Baisse d’offre : délai de grâce', () => {
     const adminToken = await signIn('admin@test.fr');
     await ouvrir(adminToken, DEVICE_A);
     assert.deepEqual((await call('equipe-activerMembre', adminToken, { uid: courtierUid, status: 'active' })).data, { success: true });
-    await db.doc(`cabinets/${cabinetId}`).update({ graceEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() - 1000) });
+    await db.doc(`ci_cabinets/${cabinetId}`).update({ graceEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() - 1000) });
 
     const courtierToken = await signIn('courtier@test.fr');
     const refused = await ouvrir(courtierToken, DEVICE_A);
     assert.equal(refused.error?.status, 'PERMISSION_DENIED');
     assert.match(refused.error.message, /administrateurs/);
     assert.deepEqual((await ouvrir(await signIn('admin@test.fr'), DEVICE_A)).data, { success: true });
-    await db.doc(`cabinets/${cabinetId}`).update({ graceEndsAt: admin.firestore.FieldValue.delete() });
+    await db.doc(`ci_cabinets/${cabinetId}`).update({ graceEndsAt: admin.firestore.FieldValue.delete() });
   });
 });
 

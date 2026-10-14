@@ -36,7 +36,7 @@ const SEARCH_OPTIONS = { ...CALLABLE_OPTIONS, maxInstances: VPC_MAX_INSTANCES } 
 
 /** Client créé, modifié ou supprimé : copie dans l'index ; nom changé : ses dossiers sont réindexés (nom du client). */
 export const indexerAssure = onDocumentWritten(
-  { ...TRIGGER_OPTIONS, document: "cabinets/{cabinetId}/assures/{assureId}" },
+  { ...TRIGGER_OPTIONS, document: "ci_cabinets/{cabinetId}/ci_assures/{assureId}" },
   async event => {
     const { cabinetId, assureId } = event.params;
     const before = event.data?.before?.data();
@@ -67,7 +67,7 @@ export const indexerAssure = onDocumentWritten(
 
 /** Dossier créé, modifié ou supprimé : copie dans l'index, avec le nom de son client. */
 export const indexerDossier = onDocumentWritten(
-  { ...TRIGGER_OPTIONS, document: "cabinets/{cabinetId}/dossiers/{dossierId}" },
+  { ...TRIGGER_OPTIONS, document: "ci_cabinets/{cabinetId}/ci_dossiers/{dossierId}" },
   async event => {
     const { cabinetId, dossierId } = event.params;
     const before = event.data?.before?.data();

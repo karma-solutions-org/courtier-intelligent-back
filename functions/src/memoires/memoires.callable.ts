@@ -7,7 +7,7 @@ import { CALLABLE_OPTIONS } from "../core/config";
 import { fieldOverlap, memoryKey, sameMapping, validateMemoryInput } from "../core/form-memory.utils";
 import type { FormMemoryField } from "../shared/index.js";
 
-const COLLECTION = "formMemories";
+const COLLECTION = "ci_formMemories";
 /** Mémoires voisines (même origine) : au-delà de ce recouvrement de champs, la nouvelle remplace l'ancienne. */
 const SUPERSEDE_OVERLAP = 0.7;
 /** Un signalement d'échec ne compte qu'une fois par cabinet ; à ce nombre de cabinets distincts, la mémoire est invalidée. */

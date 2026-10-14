@@ -17,13 +17,13 @@ let cabinetId;
 let uid;
 let token;
 
-const dossier = async dossierId => (await db.doc(`cabinets/${cabinetId}/dossiers/${dossierId}`).get()).data();
+const dossier = async dossierId => (await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}`).get()).data();
 const job = async (dossierId, insurerId = 'assureur-a') =>
-  (await db.doc(`cabinets/${cabinetId}/dossiers/${dossierId}/quoteJobs/${insurerId}`).get()).data();
+  (await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/${insurerId}`).get()).data();
 const offer = async (dossierId, insurerId = 'assureur-a') =>
-  (await db.doc(`cabinets/${cabinetId}/dossiers/${dossierId}/offers/${insurerId}`).get()).data();
+  (await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_offers/${insurerId}`).get()).data();
 const eventTypes = async dossierId =>
-  (await db.collection(`cabinets/${cabinetId}/dossiers/${dossierId}/events`).get()).docs.map(d => d.get('type'));
+  (await db.collection(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_events`).get()).docs.map(d => d.get('type'));
 
 const lancer = (dossierId, insurerId = 'assureur-a') => call('tarification-lancer', token, { dossierId, insurerId });
 
@@ -57,7 +57,7 @@ before(async () => {
   const owner = await admin.auth().createUser({ email: 'admin-tarif@test.fr', password: PASSWORD });
   uid = owner.uid;
   cabinetId = await createCabinet({ name: 'Cabinet Tarification', orias: null, ownerUid: uid, planId: 'cabinet' });
-  await db.doc(`cabinets/${cabinetId}/assures/assure-1`).set({ type: 'particulier', firstName: 'Jean', lastName: 'Dupont' });
+  await db.doc(`ci_cabinets/${cabinetId}/ci_assures/assure-1`).set({ type: 'particulier', firstName: 'Jean', lastName: 'Dupont' });
   token = await signIn('admin-tarif@test.fr');
   await ouvrir(token, DEVICE_A);
 });
@@ -98,7 +98,7 @@ describe('Lancer une tarification', () => {
   it('relance un job en échec : nouvelle tentative, erreur effacée', async () => {
     const dossierId = await newDossier();
     await lancer(dossierId);
-    await db.doc(`cabinets/${cabinetId}/dossiers/${dossierId}/quoteJobs/assureur-a`).update({ status: 'failed', error: 'Page inconnue' });
+    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/assureur-a`).update({ status: 'failed', error: 'Page inconnue' });
     const { data } = await lancer(dossierId);
     assert.equal(data.attempts, 2);
     const relaunched = await job(dossierId);
@@ -114,7 +114,7 @@ describe('Champs manquants', () => {
   before(async () => {
     dossierId = await newDossier();
     await lancer(dossierId);
-    await db.doc(`cabinets/${cabinetId}/dossiers/${dossierId}/quoteJobs/assureur-a`).update({
+    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/assureur-a`).update({
       status: 'needs_info',
       missingFields: [
         { canonicalPath: 'driver.profession', label: 'Profession', type: 'text' },
@@ -141,7 +141,7 @@ describe('Champs manquants', () => {
   });
 
   it('refuse quand le job n’attend plus d’informations', async () => {
-    await db.doc(`cabinets/${cabinetId}/dossiers/${dossierId}/quoteJobs/assureur-a`).update({ status: 'filling' });
+    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/assureur-a`).update({ status: 'filling' });
     assert.equal((await completer({ 'driver.profession': 'Infirmière' })).error.details.reason, 'not_waiting_info');
   });
 });
@@ -167,7 +167,7 @@ describe('Saisie manuelle d’une offre', () => {
   it('écrit l’offre « manual » nettoyée, le devis joint, et marque le job en tarif obtenu', async () => {
     const dossierId = await newDossier();
     await lancer(dossierId, 'assureur-b');
-    await db.doc(`cabinets/${cabinetId}/dossiers/${dossierId}/quoteJobs/assureur-b`).update({ status: 'failed', error: 'Extranet indisponible' });
+    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/assureur-b`).update({ status: 'failed', error: 'Extranet indisponible' });
 
     const storagePath = `cabinets/${cabinetId}/dossiers/${dossierId}/devis/assureur-b-1.pdf`;
     const { data } = await saisir(dossierId, manualOffer(), { storagePath, fileName: 'devis B.pdf' });
@@ -181,7 +181,7 @@ describe('Saisie manuelle d’une offre', () => {
     assert.equal(saved.enteredBy, uid);
     assert.equal(saved.documentId, data.documentId);
 
-    const document = (await db.doc(`cabinets/${cabinetId}/dossiers/${dossierId}/documents/${data.documentId}`).get()).data();
+    const document = (await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_documents/${data.documentId}`).get()).data();
     assert.equal(document.type, 'devis');
     assert.equal(document.storagePath, storagePath);
     assert.equal((await job(dossierId, 'assureur-b')).status, 'captured');

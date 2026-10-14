@@ -49,13 +49,13 @@ let cabinetId;
 let adminUid;
 let courtierUid;
 
-const member = async () => (await db.doc(`cabinets/${cabinetId}/members/${courtierUid}`).get()).data();
+const member = async () => (await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).data();
 const audit = async type => {
-  const snapshot = await db.collection(`cabinets/${cabinetId}/auditLog`).where('type', '==', type).where('uid', '==', courtierUid).get();
+  const snapshot = await db.collection(`ci_cabinets/${cabinetId}/ci_auditLog`).where('type', '==', type).where('uid', '==', courtierUid).get();
   return snapshot.size;
 };
 const iaCalls = async () => {
-  const snapshot = await db.collection(`cabinets/${cabinetId}/usage`).get();
+  const snapshot = await db.collection(`ci_cabinets/${cabinetId}/ci_usage`).get();
   return snapshot.docs.reduce((sum, d) => sum + (d.get('calls') ?? 0), 0);
 };
 const ask = (token, overrides = {}) =>
@@ -78,7 +78,7 @@ before(async () => {
   adminUid = owner.uid;
   courtierUid = courtier.uid;
   cabinetId = await createCabinet({ name: 'Cabinet Extension', orias: null, ownerUid: adminUid, planId: 'essentiel', overrides: { appelsIaParMois: 3 } });
-  await db.doc(`cabinets/${cabinetId}/members/${courtierUid}`).set({ email: 'courtier-ext@test.fr', role: 'courtier', status: 'active' });
+  await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).set({ email: 'courtier-ext@test.fr', role: 'courtier', status: 'active' });
   await setCabinetClaims(courtierUid, cabinetId, 'courtier');
 });
 
@@ -99,7 +99,7 @@ describe("Connexion de l'extension", () => {
   it("refuse si la session de l'app n'a plus donné signe de vie (app fermée sans déconnexion)", async () => {
     const appToken = await signIn('courtier-ext@test.fr');
     await ouvrir(appToken, DEVICE_A);
-    await db.doc(`cabinets/${cabinetId}/members/${courtierUid}`).update({
+    await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).update({
       'session.lastSeen': admin.firestore.Timestamp.fromMillis(Date.now() - 10 * 60 * 1000),
     });
     await sleep(1100);
@@ -205,7 +205,7 @@ describe('ia-proxy', () => {
     await sleep(1100);
     ({ extToken } = await newLogins('courtier-ext@test.fr'));
     await call('sessions-ouvrirExtension', extToken);
-    await db.collection(`cabinets/${cabinetId}/usage`).get().then(snapshot => Promise.all(snapshot.docs.map(d => d.ref.delete())));
+    await db.collection(`ci_cabinets/${cabinetId}/ci_usage`).get().then(snapshot => Promise.all(snapshot.docs.map(d => d.ref.delete())));
     upstreamRequests.length = 0;
   });
 
@@ -244,7 +244,7 @@ describe('ia-proxy', () => {
     upstreamStatusByModel = {};
     assert.deepEqual(upstreamRequests.map(r => r.model), MODELS.slice(0, 2), 'le premier qui répond l’emporte');
     // Ces deux appels sont rendus pour ne pas fausser les tests de quota qui suivent.
-    await db.doc(`cabinets/${cabinetId}/usage/ia-${new Date().toISOString().substring(0, 7)}`).set({ calls: before }, { merge: true });
+    await db.doc(`ci_cabinets/${cabinetId}/ci_usage/ia-${new Date().toISOString().substring(0, 7)}`).set({ calls: before }, { merge: true });
   });
 
   it("n'essaie pas les autres modèles quand la clé est refusée, et rembourse l'appel", async () => {
@@ -306,7 +306,7 @@ describe('ia-proxy', () => {
   });
 
   it("le quota repart à zéro le mois suivant, et dépend de l'offre du cabinet", async () => {
-    await db.collection(`cabinets/${cabinetId}/usage`).get().then(snapshot => Promise.all(snapshot.docs.map(d => d.ref.delete())));
+    await db.collection(`ci_cabinets/${cabinetId}/ci_usage`).get().then(snapshot => Promise.all(snapshot.docs.map(d => d.ref.delete())));
     assert.ok((await ask(extToken)).data);
 
     ops('set-plan', '--cabinet', cabinetId, '--plan', 'essentiel', '--appels-ia', '1');

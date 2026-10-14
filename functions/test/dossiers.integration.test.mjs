@@ -22,10 +22,10 @@ let adminToken;
 let courtierToken;
 
 const events = async dossierId => {
-  const snapshot = await db.collection(`cabinets/${cabinetId}/dossiers/${dossierId}/events`).get();
+  const snapshot = await db.collection(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_events`).get();
   return snapshot.docs.map(d => d.data()).sort((a, b) => a.at.toMillis() - b.at.toMillis());
 };
-const dossier = async dossierId => (await db.doc(`cabinets/${cabinetId}/dossiers/${dossierId}`).get()).data();
+const dossier = async dossierId => (await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}`).get()).data();
 const creer = (token = adminToken, assureId = 'assure-1') => call('dossiers-creer', token, { assureId, productId: 'auto' });
 
 before(async () => {
@@ -35,9 +35,9 @@ before(async () => {
   adminUid = owner.uid;
   courtierUid = courtier.uid;
   cabinetId = await createCabinet({ name: 'Cabinet Dossiers', orias: null, ownerUid: adminUid, planId: 'cabinet' });
-  await db.doc(`cabinets/${cabinetId}/members/${courtierUid}`).set({ email: 'courtier-dossiers@test.fr', role: 'courtier', status: 'active' });
+  await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).set({ email: 'courtier-dossiers@test.fr', role: 'courtier', status: 'active' });
   await setCabinetClaims(courtierUid, cabinetId, 'courtier');
-  await db.doc(`cabinets/${cabinetId}/assures/assure-1`).set({
+  await db.doc(`ci_cabinets/${cabinetId}/ci_assures/assure-1`).set({
     type: 'particulier',
     firstName: 'Jean',
     lastName: 'Dupont',
@@ -86,9 +86,9 @@ describe('Création et référence', () => {
   });
 
   it("refuse un produit que le cabinet n'a pas activé", async () => {
-    await db.doc(`cabinets/${cabinetId}`).update({ enabledProducts: ['moto'] });
+    await db.doc(`ci_cabinets/${cabinetId}`).update({ enabledProducts: ['moto'] });
     assert.equal((await creer()).error?.status, 'FAILED_PRECONDITION');
-    await db.doc(`cabinets/${cabinetId}`).update({ enabledProducts: ['auto'] });
+    await db.doc(`ci_cabinets/${cabinetId}`).update({ enabledProducts: ['auto'] });
     assert.ok((await creer()).data?.dossierId);
   });
 });
@@ -201,9 +201,9 @@ describe('Assignation', () => {
 
   it('refuse un membre désactivé ou étranger au cabinet', async () => {
     assert.equal((await call('dossiers-assigner', adminToken, { dossierId, uid: 'inconnu' })).error?.status, 'FAILED_PRECONDITION');
-    await db.doc(`cabinets/${cabinetId}/members/${courtierUid}`).update({ status: 'disabled' });
+    await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).update({ status: 'disabled' });
     assert.equal((await call('dossiers-assigner', adminToken, { dossierId, uid: courtierUid })).error?.status, 'FAILED_PRECONDITION');
-    await db.doc(`cabinets/${cabinetId}/members/${courtierUid}`).update({ status: 'active' });
+    await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).update({ status: 'active' });
   });
 
   it('ne trace rien quand le dossier est déjà assigné à cette personne', async () => {

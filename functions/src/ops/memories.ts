@@ -14,7 +14,7 @@ const USAGE =
 const toDate = (value: unknown): Date | null => (value ? (value as Timestamp).toDate() : null);
 
 async function readAll(): Promise<{ row: MemoryRow; ref: admin.firestore.DocumentReference }[]> {
-  const snapshot = await admin.firestore().collection("formMemories").get();
+  const snapshot = await admin.firestore().collection("ci_formMemories").get();
   return snapshot.docs.map(doc => ({
     ref: doc.ref,
     row: {
@@ -61,7 +61,7 @@ run(async () => {
     }
     case "show": {
       if (!argument) fail(`Clé manquante.\n\n${USAGE}`);
-      const doc = await admin.firestore().collection("formMemories").doc(argument).get();
+      const doc = await admin.firestore().collection("ci_formMemories").doc(argument).get();
       if (!doc.exists) fail(`Mémoire ${argument} introuvable.`);
       const row = all.find(entry => entry.row.key === argument)!.row;
       console.log(formatRow(row));

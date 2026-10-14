@@ -26,7 +26,7 @@ export async function createCabinet(input: NewCabinet): Promise<string> {
   ]);
 
   const db = admin.firestore();
-  const cabinetId = db.collection("cabinets").doc().id;
+  const cabinetId = db.collection("ci_cabinets").doc().id;
   await db.runTransaction(async tx => {
     tx.set(db.doc(cabinetPath(cabinetId)), {
       name: input.name,

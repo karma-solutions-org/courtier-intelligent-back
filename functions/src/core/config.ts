@@ -50,4 +50,4 @@ export const GEMINI_API_URL = "https://generativelanguage.googleapis.com";
 export const INVITATION_TTL_DAYS = 7;
 
 /** Journal d'audit d'un cabinet (connexions, appareils) : cabinets/{id}/auditLog. */
-export const AUDIT_LOG_COLLECTION = "auditLog";
+export const AUDIT_LOG_COLLECTION = "ci_auditLog";

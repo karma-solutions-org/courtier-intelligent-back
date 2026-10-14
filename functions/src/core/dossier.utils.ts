@@ -29,6 +29,6 @@ export function addEvent(
   type: DossierEventType,
   data?: Record<string, unknown>,
 ): void {
-  const ref = admin.firestore().collection(`${dossierPath(cabinetId, dossierId)}/events`).doc();
+  const ref = admin.firestore().collection(`${dossierPath(cabinetId, dossierId)}/ci_events`).doc();
   tx.create(ref, { type, by: uid, at: FieldValue.serverTimestamp(), data: data ?? {} });
 }

@@ -20,7 +20,7 @@ import {
  * parmi les produits actifs du catalogue. Un assureur retiré est archivé, pas effacé : l'historique des dossiers le garde.
  */
 
-const insurersCollection = (cabinetId: string) => admin.firestore().collection(`${cabinetPath(cabinetId)}/insurers`);
+const insurersCollection = (cabinetId: string) => admin.firestore().collection(`${cabinetPath(cabinetId)}/ci_insurers`);
 
 function requireName(value: unknown): string {
   const name = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";

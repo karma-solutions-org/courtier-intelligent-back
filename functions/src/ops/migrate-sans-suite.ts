@@ -15,7 +15,7 @@ run(async () => {
   const dryRun = parseArgs({ options: { "dry-run": { type: "boolean" } }, strict: false }).values["dry-run"] === true;
   initOps({ "dry-run": { type: "boolean" } }, USAGE);
   const db = admin.firestore();
-  const snapshot = await db.collectionGroup("dossiers").where("status", "==", "sans_suite").get();
+  const snapshot = await db.collectionGroup("ci_dossiers").where("status", "==", "sans_suite").get();
   if (snapshot.empty) {
     console.log("Aucun dossier « sans suite » : rien à migrer.");
     return;

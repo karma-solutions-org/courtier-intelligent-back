@@ -19,11 +19,11 @@ run(async () => {
   }
 
   const documents = [
-    ...catalog.plans.map(({ id, ...plan }) => ({ path: `plans/${id}`, data: plan })),
-    ...catalog.insurers.map(({ id, ...insurer }) => ({ path: `insurers/${id}`, data: insurer })),
+    ...catalog.plans.map(({ id, ...plan }) => ({ path: `ci_plans/${id}`, data: plan })),
+    ...catalog.insurers.map(({ id, ...insurer }) => ({ path: `ci_insurers/${id}`, data: insurer })),
     ...catalog.products.flatMap(({ id, synonyms, ...product }) => [
-      { path: `products/${id}`, data: product },
-      { path: `guaranteeSynonyms/${id}`, data: { synonyms } },
+      { path: `ci_products/${id}`, data: product },
+      { path: `ci_guaranteeSynonyms/${id}`, data: { synonyms } },
     ]),
   ];
 
@@ -37,7 +37,7 @@ run(async () => {
   // Les questions ajoutées automatiquement depuis les extranets (section `discovered`) ne sont pas dans les JSON :
   // on les reprend du produit publié, sinon chaque publication les effacerait.
   for (const document of documents) {
-    if (!document.path.startsWith("products/")) continue;
+    if (!document.path.startsWith("ci_products/")) continue;
     const published = await db.doc(document.path).get();
     const discovered = ((published.get("questionnaireSchema") as QuestionnaireSection[] | undefined) ?? []).filter(s => s.discovered);
     const data = document.data as { questionnaireSchema?: QuestionnaireSection[]; insurerRequiredPaths?: string[] };

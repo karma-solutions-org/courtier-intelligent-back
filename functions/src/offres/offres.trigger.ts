@@ -19,7 +19,7 @@ import { analyzeOffer, type ComparableOffer, type ComparisonNeed, type Guarantee
  * donc aucun recalcul n'est nécessaire quand le besoin change : les offres sont toujours analysées sur le besoin final.
  */
 export const onWrite = onDocumentWritten(
-  { document: "cabinets/{cabinetId}/dossiers/{dossierId}/offers/{insurerId}", region: REGION_ID },
+  { document: "ci_cabinets/{cabinetId}/ci_dossiers/{dossierId}/ci_offers/{insurerId}", region: REGION_ID },
   async event => {
     const after = event.data?.after;
     if (!after?.exists) return;
@@ -32,7 +32,7 @@ export const onWrite = onDocumentWritten(
     const [product, synonymsDoc] = await Promise.all([
       db.doc(productDocPath(cabinetId, productId)).get(),
       // Un produit du cabinet n'a pas de synonymes publiés : ses garanties se reconnaissent à leur libellé.
-      isCabinetProductId(productId) ? Promise.resolve(null) : db.doc(`guaranteeSynonyms/${productId}`).get(),
+      isCabinetProductId(productId) ? Promise.resolve(null) : db.doc(`ci_guaranteeSynonyms/${productId}`).get(),
     ]);
     const catalog = (product.get("guaranteeCatalog") as Guarantee[] | undefined) ?? [];
     const synonyms = (synonymsDoc?.get("synonyms") as Record<string, string[]> | undefined) ?? {};

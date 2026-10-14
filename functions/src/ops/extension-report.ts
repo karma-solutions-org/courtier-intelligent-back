@@ -23,8 +23,8 @@ run(async () => {
   const db = admin.firestore();
 
   const [reports, offers] = await Promise.all([
-    db.collection("extensionReports").where("at", ">=", since).orderBy("at", "desc").get(),
-    db.collectionGroup("offers").where("source", "==", "auto").where("capturedAt", ">=", since).get(),
+    db.collection("ci_extensionReports").where("at", ">=", since).orderBy("at", "desc").get(),
+    db.collectionGroup("ci_offers").where("source", "==", "auto").where("capturedAt", ">=", since).get(),
   ]);
   const failures = reports.docs.map(doc => ({ ...(doc.data() as ExtensionReport), id: doc.id }));
 

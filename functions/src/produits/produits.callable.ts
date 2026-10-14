@@ -24,7 +24,7 @@ import {
  * ses dossiers restent lisibles.
  */
 
-const productsCollection = (cabinetId: string) => admin.firestore().collection(`${cabinetPath(cabinetId)}/products`);
+const productsCollection = (cabinetId: string) => admin.firestore().collection(`${cabinetPath(cabinetId)}/ci_products`);
 
 function requireName(value: unknown): string {
   const name = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
@@ -63,7 +63,7 @@ async function newProductId(cabinetId: string, name: string): Promise<string> {
 
 /** Questions sur le souscripteur reprises du premier produit actif du catalogue (base d'un produit vierge). */
 async function blankStart(): Promise<QuestionnaireSection[]> {
-  const products = await admin.firestore().collection("products").where("active", "==", true).limit(5).get();
+  const products = await admin.firestore().collection("ci_products").where("active", "==", true).limit(5).get();
   for (const product of products.docs) {
     const schema = blankQuestionnaire((product.get("questionnaireSchema") as QuestionnaireSection[] | undefined) ?? []);
     if (schema.length) return schema;

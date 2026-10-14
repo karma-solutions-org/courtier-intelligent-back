@@ -22,7 +22,7 @@ function requireCabinetRole(value: unknown): CabinetRole {
 async function assertNotLastAdmin(cabinetId: string, uid: string): Promise<void> {
   const admins = await admin
     .firestore()
-    .collection(`${cabinetPath(cabinetId)}/members`)
+    .collection(`${cabinetPath(cabinetId)}/ci_members`)
     .where("role", "==", "admin")
     .where("status", "==", "active")
     .get();

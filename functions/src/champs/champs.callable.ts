@@ -118,7 +118,7 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
 
   // La mémoire du formulaire apprend les nouvelles correspondances (seulement les champs encore sans équivalent).
   if (Object.keys(mapping).length && !cabinetInsurer) {
-    const memoryRef = db.collection("formMemories").doc(memoryKey(origin, fingerprint));
+    const memoryRef = db.collection("ci_formMemories").doc(memoryKey(origin, fingerprint));
     await db.runTransaction(async tx => {
       const memory = await tx.get(memoryRef);
       const memoryFields = memory.get("fields") as FormMemoryField[] | undefined;

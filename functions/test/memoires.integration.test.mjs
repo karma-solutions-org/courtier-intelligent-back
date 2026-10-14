@@ -17,7 +17,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const field = (overrides = {}) => ({ fieldKey: 'text:nom', label: 'Nom', type: 'text', order: 0, canonicalPath: 'client.lastName', confidence: 0.9, ...overrides });
 const memory = (origin, fingerprint, fields = [field()]) => ({ origin, formFingerprint: fingerprint, fields });
-const doc = async (origin, fingerprint) => (await db.collection('formMemories').doc(memoryKey(origin, fingerprint)).get());
+const doc = async (origin, fingerprint) => (await db.collection('ci_formMemories').doc(memoryKey(origin, fingerprint)).get());
 
 let extA;
 let extB;
@@ -181,7 +181,7 @@ describe('Utilisation', () => {
     await call('memoires-utiliser', extA, { key });
     assert.equal((await doc(origin, fp)).get('hits'), 1, 'moins d’une heure après la dernière utilisation');
 
-    await db.collection('formMemories').doc(key).update({ lastUsedAt: admin.firestore.Timestamp.fromMillis(Date.now() - 2 * 3600 * 1000) });
+    await db.collection('ci_formMemories').doc(key).update({ lastUsedAt: admin.firestore.Timestamp.fromMillis(Date.now() - 2 * 3600 * 1000) });
     await call('memoires-utiliser', extA, { key });
     assert.equal((await doc(origin, fp)).get('hits'), 2);
   });

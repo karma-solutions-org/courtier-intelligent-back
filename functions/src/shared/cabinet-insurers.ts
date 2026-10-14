@@ -17,7 +17,7 @@ export function isCabinetInsurerId(insurerId: string): boolean {
 
 /** Chemin Firestore de la fiche d'un assureur, qu'il vienne du catalogue ou du cabinet. */
 export function insurerDocPath(cabinetId: string, insurerId: string): string {
-  return isCabinetInsurerId(insurerId) ? `cabinets/${cabinetId}/insurers/${insurerId}` : `insurers/${insurerId}`;
+  return isCabinetInsurerId(insurerId) ? `ci_cabinets/${cabinetId}/ci_insurers/${insurerId}` : `ci_insurers/${insurerId}`;
 }
 
 /**

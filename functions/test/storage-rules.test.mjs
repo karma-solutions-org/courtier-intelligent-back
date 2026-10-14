@@ -41,9 +41,9 @@ beforeEach(async () => {
   await env.clearStorage();
   await env.withSecurityRulesDisabled(async context => {
     const db = context.firestore();
-    for (const cabinet of ['A', 'B']) await setDoc(doc(db, `cabinets/${cabinet}`), { name: cabinet, active: true });
+    for (const cabinet of ['A', 'B']) await setDoc(doc(db, `ci_cabinets/${cabinet}`), { name: cabinet, active: true });
     for (const [uid, member] of Object.entries(MEMBERS)) {
-      await setDoc(doc(db, `cabinets/${member.cabinet}/members/${uid}`), {
+      await setDoc(doc(db, `ci_cabinets/${member.cabinet}/ci_members/${uid}`), {
         role: member.role,
         status: 'active',
         session: { id: uid, authTime: member.authTime, lastSeen: Timestamp.now() },

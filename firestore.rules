@@ -16,10 +16,10 @@ service cloud.firestore {
     function hasRole(roles) { return signedIn() && request.auth.token.ci_role in roles; }
 
     function cabinetDoc(cabinetId) {
-      return get(/databases/$(database)/documents/cabinets/$(cabinetId)).data;
+      return get(/databases/$(database)/documents/ci_cabinets/$(cabinetId)).data;
     }
     function memberDoc(cabinetId) {
-      return get(/databases/$(database)/documents/cabinets/$(cabinetId)/members/$(request.auth.uid)).data;
+      return get(/databases/$(database)/documents/ci_cabinets/$(cabinetId)/ci_members/$(request.auth.uid)).data;
     }
 
     // Membre actif d'un cabinet actif, connecté depuis l'appareil de sa session en cours.
@@ -50,8 +50,8 @@ service cloud.firestore {
     // de l'app, et perd les siens dès que la session de l'app disparaît (fermée, remplacée, appareil réinitialisé,
     // membre désactivé, cabinet désactivé).
     function ciExtActive(cabinetId) {
-      let member = get(/databases/$(database)/documents/cabinets/$(cabinetId)/members/$(request.auth.uid)).data;
-      let cabinet = get(/databases/$(database)/documents/cabinets/$(cabinetId)).data;
+      let member = get(/databases/$(database)/documents/ci_cabinets/$(cabinetId)/ci_members/$(request.auth.uid)).data;
+      let cabinet = get(/databases/$(database)/documents/ci_cabinets/$(cabinetId)).data;
       return request.auth != null
         && request.auth.token.get('ci_cabinet_id', null) == cabinetId
         && cabinet.get('active', false) == true
@@ -91,7 +91,7 @@ service cloud.firestore {
     }
 
     // La requête du side panel : « mes jobs en cours », tous dossiers confondus.
-    match /{path=**}/quoteJobs/{insurerId} {
+    match /{path=**}/ci_quoteJobs/{insurerId} {
       allow read: if ciExtAny() && resource.data.ownerUid == request.auth.uid;
     }
 
@@ -99,13 +99,13 @@ service cloud.firestore {
     // Partagée entre tous les cabinets, lue par l'extension. Écrite UNIQUEMENT par les functions memoires-*,
     // qui valident à la lettre chaque champ (les règles ne peuvent pas contrôler le contenu d'une liste) :
     // un cabinet ne peut donc ni y déposer une valeur, ni fausser la mémoire des autres.
-    match /formMemories/{memoryKey} {
+    match /ci_formMemories/{memoryKey} {
       allow read: if ciExtAny();
       allow write: if false;
     }
 
     // ── Signalements de l'extension (AUCUNE donnée client) : création seule.
-    match /extensionReports/{reportId} {
+    match /ci_extensionReports/{reportId} {
       // Codes fermés (voir EXTENSION_REPORT_ISSUES dans shared/models.ts) : un texte libre pourrait porter une donnée client.
       allow create: if ciExtAny()
         && request.resource.data.keys().hasOnly(['insurerId', 'origin', 'step', 'issue', 'at'])
@@ -124,25 +124,25 @@ service cloud.firestore {
     }
 
     // ── Catalogue global (écrit par les Cloud Functions uniquement) ────────
-    match /products/{productId} {
+    match /ci_products/{productId} {
       allow read: if signedIn();
       allow write: if false;
     }
-    match /insurers/{insurerId}/{document=**} {
+    match /ci_insurers/{insurerId}/{document=**} {
       allow read: if signedIn();
       allow write: if false;
     }
-    match /guaranteeSynonyms/{productId} {
+    match /ci_guaranteeSynonyms/{productId} {
       allow read: if signedIn();
       allow write: if false;
     }
-    match /plans/{planId} {
+    match /ci_plans/{planId} {
       allow read: if signedIn();
       allow write: if false;
     }
 
     // ── Données d'un cabinet ──────────────────────────────────────────────
-    match /cabinets/{cabinetId} {
+    match /ci_cabinets/{cabinetId} {
       allow read: if inCabinet(cabinetId);
       // L'admin ne modifie que les informations du cabinet :
       // jamais active, ownerUid, planId, overrides, limits, graceEndsAt ni deviceResets (offre et quotas).
@@ -151,7 +151,7 @@ service cloud.firestore {
           .hasOnly(['name', 'orias', 'address', 'phone', 'email', 'logoPath', 'enabledInsurers', 'enabledProducts']);
 
       // Membres : écrits par les Cloud Functions, sauf le signal de vie de sa propre session.
-      match /members/{uid} {
+      match /ci_members/{uid} {
         // L'extension relit sa propre fiche pour savoir si sa session est toujours ouverte.
         allow get: if request.auth.uid == uid && ciExtActive(cabinetId);
         allow read: if inCabinet(cabinetId);
@@ -163,31 +163,31 @@ service cloud.firestore {
           && request.resource.data.session.diff(resource.data.session).affectedKeys().hasOnly(['lastSeen'])
           && request.resource.data.session.lastSeen == request.time;
       }
-      match /invitations/{invitationId} {
+      match /ci_invitations/{invitationId} {
         allow read: if inCabinet(cabinetId) && hasRole(['admin']);
         allow write: if false;
       }
 
       // Journal des connexions et des appareils : lu par les admins, écrit par les Cloud Functions.
-      match /auditLog/{entryId} {
+      match /ci_auditLog/{entryId} {
         allow read: if inCabinet(cabinetId) && hasRole(['admin']);
         allow write: if false;
       }
 
       // Compteurs (référence des dossiers) : écrits uniquement par les Cloud Functions.
-      match /counters/{counterId} {
+      match /ci_counters/{counterId} {
         allow read: if inCabinet(cabinetId);
         allow write: if false;
       }
 
       // Assureurs propres au cabinet : lus par l'app et l'extension du cabinet, écrits par les functions assureurs-*.
-      match /insurers/{insurerId} {
+      match /ci_insurers/{insurerId} {
         allow read: if inCabinet(cabinetId) || ciExtActive(cabinetId);
         allow write: if false;
       }
 
       // Produits propres au cabinet : lus par l'app du cabinet, écrits par les functions produits-* et champs-signaler.
-      match /products/{productId} {
+      match /ci_products/{productId} {
         allow read: if inCabinet(cabinetId);
         allow write: if false;
       }
@@ -197,7 +197,7 @@ service cloud.firestore {
       // Assurés : écrits par l'app (saisie libre), donc contrôlés ici — mêmes formats que shared/assure-format.ts.
       // La détection des doublons reste un avertissement côté app : les règles ne peuvent pas interroger la collection.
       // Pas de suppression : un assuré est rattaché à ses dossiers.
-      match /assures/{assureId} {
+      match /ci_assures/{assureId} {
         function assureOptString(d, key, max) {
           return d.get(key, null) == null || (d[key] is string && d[key].size() <= max);
         }
@@ -239,12 +239,12 @@ service cloud.firestore {
         allow delete: if false;
 
         // Pièces du client (CIN, Kbis) : écrites uniquement par la function assures-rattacherPiece.
-        match /documents/{documentId} {
+        match /ci_documents/{documentId} {
           allow read: if inCabinet(cabinetId);
         }
       }
 
-      match /dossiers/{dossierId} {
+      match /ci_dossiers/{dossierId} {
         allow read: if inCabinet(cabinetId);
         // Création, données, besoin, décision, proposition, issue, statut, assignation et référence passent par les functions :
         // elles appliquent la machine à états, la complétude et la numérotation.
@@ -256,18 +256,18 @@ service cloud.firestore {
         // tarification-* (besoin validé, assureur activé, offre contrôlée) et par l'extension (voir plus bas) ;
         // les documents uniquement par les functions (documents-enregistrer, documents-analyser, tarification-saisirOffre).
         match /{collection}/{docId} {
-          allow read: if inCabinet(cabinetId) && collection in ['quoteJobs', 'offers', 'documents'];
+          allow read: if inCabinet(cabinetId) && collection in ['ci_quoteJobs', 'ci_offers', 'ci_documents'];
         }
 
         // ── Extension : jobs et offres (voir ciExtActive). Écriture limitée au statut du job et aux offres automatiques.
-        match /quoteJobs/{insurerId} {
+        match /ci_quoteJobs/{insurerId} {
           allow get, list: if ciExtActive(cabinetId) && resource.data.ownerUid == request.auth.uid;
           allow update: if ciExtActive(cabinetId) && resource.data.ownerUid == request.auth.uid && ciExtJobUpdate();
         }
 
-        match /offers/{insurerId} {
+        match /ci_offers/{insurerId} {
           allow create, update: if ciExtActive(cabinetId)
-            && get(/databases/$(database)/documents/cabinets/$(cabinetId)/dossiers/$(dossierId)/quoteJobs/$(insurerId)).data.ownerUid == request.auth.uid
+            && get(/databases/$(database)/documents/ci_cabinets/$(cabinetId)/ci_dossiers/$(dossierId)/ci_quoteJobs/$(insurerId)).data.ownerUid == request.auth.uid
             && request.resource.data.source == 'auto'
             && request.resource.data.keys().hasOnly(['quoteNumber', 'premiumAnnual', 'premiumMonthly', 'deductibles',
                                                      'guarantees', 'exclusions', 'source', 'capturedAt'])
@@ -275,7 +275,7 @@ service cloud.firestore {
         }
 
         // Historique non modifiable.
-        match /events/{eventId} {
+        match /ci_events/{eventId} {
           allow read: if inCabinet(cabinetId);
           // Les événements du dossier sont écrits par les functions ; seule une note est ajoutée depuis l'app.
           allow create: if inCabinet(cabinetId)

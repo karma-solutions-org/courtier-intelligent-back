@@ -93,7 +93,7 @@ export const rattacherPiece = onCall(CALLABLE_OPTIONS, async request => {
   }
   const { file, size, contentType } = await checkedImport(storagePath);
 
-  const documentRef = assureRef.collection("documents").doc();
+  const documentRef = assureRef.collection("ci_documents").doc();
   const name = storagePath.slice(storagePath.lastIndexOf("/") + 1);
   const target = `${assureDocumentsFolder(cabinetId, assureId)}/${documentRef.id}-${name}`.slice(0, 900);
   await file.move(target);

@@ -23,16 +23,16 @@ const USAGE =
 run(async () => {
   const args = initOps({ cabinet: { type: "string" }, confirm: { type: "boolean" } }, USAGE);
   const db = admin.firestore();
-  const cabinets = args.cabinet ? [args.cabinet] : (await db.collection("cabinets").listDocuments()).map(ref => ref.id);
+  const cabinets = args.cabinet ? [args.cabinet] : (await db.collection("ci_cabinets").listDocuments()).map(ref => ref.id);
   console.log(`Index : ${indexName(ASSURES_INDEX)}, ${indexName(DOSSIERS_INDEX)} — ${cabinets.length} cabinet(s).`);
 
   let assures = 0;
   let dossiers = 0;
   let failures = 0;
   for (const cabinetId of cabinets) {
-    const assureDocs = (await db.collection(`cabinets/${cabinetId}/assures`).get()).docs;
+    const assureDocs = (await db.collection(`ci_cabinets/${cabinetId}/ci_assures`).get()).docs;
     const names = new Map(assureDocs.map(doc => [doc.id, assureDisplayName(doc.data())]));
-    const dossierDocs = (await db.collection(`cabinets/${cabinetId}/dossiers`).get()).docs;
+    const dossierDocs = (await db.collection(`ci_cabinets/${cabinetId}/ci_dossiers`).get()).docs;
     assures += assureDocs.length;
     dossiers += dossierDocs.length;
     if (!args.confirm) continue;

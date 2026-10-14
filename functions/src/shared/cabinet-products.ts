@@ -26,7 +26,7 @@ export function isCabinetProductId(productId: string): boolean {
 
 /** Chemin Firestore de la fiche d'un produit, qu'il vienne du catalogue ou du cabinet. */
 export function productDocPath(cabinetId: string, productId: string): string {
-  return isCabinetProductId(productId) ? `cabinets/${cabinetId}/products/${productId}` : `products/${productId}`;
+  return isCabinetProductId(productId) ? `ci_cabinets/${cabinetId}/ci_products/${productId}` : `ci_products/${productId}`;
 }
 
 /** Catalogue vu par un cabinet : produits globaux puis les siens (hors archivés), triés par nom. */

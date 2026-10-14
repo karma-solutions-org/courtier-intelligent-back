@@ -17,10 +17,10 @@ let cabinetId;
 let token;
 
 const events = async dossierId => {
-  const snapshot = await db.collection(`cabinets/${cabinetId}/dossiers/${dossierId}/events`).get();
+  const snapshot = await db.collection(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_events`).get();
   return snapshot.docs.map(d => d.data()).sort((a, b) => a.at.toMillis() - b.at.toMillis());
 };
-const dossier = async dossierId => (await db.doc(`cabinets/${cabinetId}/dossiers/${dossierId}`).get()).data();
+const dossier = async dossierId => (await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}`).get()).data();
 
 /** Un dossier Auto complet, prêt pour l'analyse du besoin. */
 async function completeDossier() {
@@ -44,7 +44,7 @@ before(async () => {
   ops('seed-catalog');
   const owner = await admin.auth().createUser({ email: 'admin-besoin@test.fr', password: PASSWORD });
   cabinetId = await createCabinet({ name: 'Cabinet Besoin', orias: null, ownerUid: owner.uid, planId: 'cabinet' });
-  await db.doc(`cabinets/${cabinetId}/assures/assure-1`).set({
+  await db.doc(`ci_cabinets/${cabinetId}/ci_assures/assure-1`).set({
     type: 'particulier',
     firstName: 'Jean',
     lastName: 'Dupont',

@@ -21,7 +21,7 @@ export interface SeatUsage {
 export async function getSeatUsage(cabinetId: string, tx?: Transaction): Promise<SeatUsage> {
   const db = admin.firestore();
   const cabinetRef = db.doc(cabinetPath(cabinetId));
-  const activeMembersQuery = cabinetRef.collection("members").where("status", "==", "active");
+  const activeMembersQuery = cabinetRef.collection("ci_members").where("status", "==", "active");
   const pendingInvitationsQuery = db
     .collection(invitationsPath(cabinetId))
     .where("status", "==", "pending")
