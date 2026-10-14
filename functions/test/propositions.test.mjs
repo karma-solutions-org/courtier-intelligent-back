@@ -7,7 +7,6 @@ const require = createRequire(import.meta.url);
 const { buildProposalEmail, formatEuros } = require("../lib/propositions/proposition.utils.js");
 const { validateContractNumber, validateEffectiveDate } = require("../lib/shared/index.js");
 
-const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 9, 9, 7);
 
 const input = {

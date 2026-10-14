@@ -34,7 +34,8 @@ export function formatEuros(amount: number): string {
   const fixed = amount.toFixed(2).replace(/\.00$/, "");
   const [whole, decimals] = fixed.split(".");
   const grouped = whole!.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return `${grouped}${decimals ? `,${decimals}` : ""} €`;
+  // Espace insécable avant « € », écrite en échappement : un caractère invisible ne passe pas le lint.
+  return `${grouped}${decimals ? `,${decimals}` : ""}\u00a0€`;
 }
 
 /** Texte libre en HTML : échappé, retours à la ligne conservés. */

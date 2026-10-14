@@ -60,7 +60,7 @@ describe('selectMemories', () => {
 describe('formatRow', () => {
   it('résume une mémoire sur une ligne, en signalant celle qui est invalidée', () => {
     const line = formatRow(row('b', { invalidated: true, failures: 2 }));
-    assert.match(line, /^b  https:\/\/extranet\.assureur-a\.fr  v1:0123456789abcd  v1  12 champs  3 utilisation\(s\)  2 échec\(s\)  INVALIDÉE/);
+    assert.match(line, /^b {2}https:\/\/extranet\.assureur-a\.fr {2}v1:0123456789abcd {2}v1 {2}12 champs {2}3 utilisation\(s\) {2}2 échec\(s\) {2}INVALIDÉE/);
     assert.match(formatRow(row('a')), /dernière utilisation 2026-10-08/);
     assert.match(formatRow(row('d', { lastUsedAt: null })), /dernière utilisation —/);
   });
