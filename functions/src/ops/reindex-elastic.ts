@@ -10,7 +10,7 @@ import {
 import { initOps, run } from "./ops.utils";
 
 const USAGE =
-  "ELASTIC_CLOUD_ID=… ELASTIC_API_KEY=… ELASTIC_INDEX_PREFIX=… npm run ops:reindex-elastic -- --project <id> [--cabinet <id>] [--confirm]";
+  "ELASTIC_CLOUD_ID=… ELASTIC_API_KEY=… npm run ops:reindex-elastic -- --project <id> [--cabinet <id>] [--confirm]";
 
 /**
  * (Ré)indexe dans Elasticsearch tous les clients et dossiers déjà présents dans Firestore.
@@ -22,6 +22,8 @@ const USAGE =
  */
 run(async () => {
   const args = initOps({ cabinet: { type: "string" }, confirm: { type: "boolean" } }, USAGE);
+  // Index nommés d'après le projet visé (« aibs-partenaire-testing-assures »), comme dans les functions.
+  process.env.GCLOUD_PROJECT ??= args.emulator ? "demo-courtier-intelligent" : args.project;
   const db = admin.firestore();
   const cabinets = args.cabinet ? [args.cabinet] : (await db.collection("ci_cabinets").listDocuments()).map(ref => ref.id);
   console.log(`Index : ${indexName(ASSURES_INDEX)}, ${indexName(DOSSIERS_INDEX)} — ${cabinets.length} cabinet(s).`);

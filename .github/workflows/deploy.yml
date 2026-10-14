@@ -57,6 +57,7 @@ jobs:
       - name: Deploy
         run: npx --yes "firebase-tools@$FIREBASE_TOOLS_VERSION" deploy --project aibs-part --only functions --non-interactive --force
 
+
       # Firebase Functions v2 SDK can't express Direct VPC egress, so the shared
       # VPC is applied to the Elasticsearch functions post-deploy on Cloud Run.
       - name: Apply shared VPC to Elasticsearch functions

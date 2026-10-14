@@ -86,16 +86,14 @@ describe("Requête de recherche", () => {
 });
 
 describe("Préfixe des index", () => {
-  it("obligatoire, et jamais celui de test en production", () => {
+  it("le projet Firebase, comme les autres apps du projet partagé", () => {
     const saved = { ...process.env };
     try {
-      delete process.env.ELASTIC_INDEX_PREFIX;
-      assert.throws(() => indexPrefix(), /ELASTIC_INDEX_PREFIX/);
-      process.env.ELASTIC_INDEX_PREFIX = "aibs-partenaire-testing-ci-";
-      process.env.GCLOUD_PROJECT = "aibs-part";
-      assert.throws(() => indexPrefix(), /production/);
+      delete process.env.GCLOUD_PROJECT;
+      delete process.env.GCP_PROJECT;
+      assert.throws(() => indexPrefix(), /GCLOUD_PROJECT/);
       process.env.GCLOUD_PROJECT = "aibs-partenaire-testing";
-      assert.equal(indexPrefix(), "aibs-partenaire-testing-ci-");
+      assert.equal(indexPrefix(), "aibs-partenaire-testing-");
     } finally {
       process.env = saved;
     }

@@ -6,13 +6,9 @@ import type { QueryDslQueryContainer, SearchHit } from "@elastic/elasticsearch/l
  * Accès à Elasticsearch, repris de compli-scan-back (même cluster Elastic Cloud, même montage) :
  * - identifiants dans Secret Manager (`ELASTIC_CLOUD_ID`, `ELASTIC_API_KEY`), comme GEMINI_API_KEY : déclarés ici,
  *   attachés aux functions qui en ont besoin (`secrets: ELASTIC_SECRETS`), jamais dans le code ;
- * - préfixe d'index propre à chaque projet (`ELASTIC_INDEX_PREFIX`, fichier `.env.<projet>`), obligatoire ;
+ * - index nommés d'après le projet, comme les autres apps du projet partagé : `aibs-partenaire-testing-<index>` ;
  * - les functions qui l'appellent passent par le VPC partagé (voir vpc-functions.ts) : Elastic n'accepte que l'IP NAT.
  */
-
-/** Projet de production et préfixe des index de test : la prod ne doit jamais lire ni écrire les index de test. */
-const PRODUCTION_PROJECT_ID = "aibs-part";
-const TEST_INDEX_PREFIX = "aibs-partenaire-testing-";
 
 export type SearchDocument = { id: string } & Record<string, unknown>;
 
@@ -38,23 +34,52 @@ export function elasticClient(): Client {
   return clientInstance;
 }
 
-/** Préfixe des index de ce projet, obligatoire : un préfixe deviné pourrait faire écrire la prod dans les index de test. */
+/**
+ * Préfixe des index : le projet Firebase où tourne la function (« aibs-partenaire-testing- »), fourni par Cloud Functions
+ * (GCLOUD_PROJECT). Même convention que les autres apps du projet partagé.
+ */
 export function indexPrefix(): string {
-  const prefix = process.env.ELASTIC_INDEX_PREFIX?.toLowerCase();
-  if (!prefix) {
-    throw new Error("[ELASTIC_CONFIG_ERROR] ELASTIC_INDEX_PREFIX n'est pas défini pour ce projet.");
-  }
   const project = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-  if (project === PRODUCTION_PROJECT_ID && prefix.startsWith(TEST_INDEX_PREFIX)) {
-    throw new Error(
-      `[ELASTIC_CONFIG_ERROR] Projet de production (${PRODUCTION_PROJECT_ID}) configuré avec le préfixe de test ` +
-        `(« ${TEST_INDEX_PREFIX} ») : corrigez ELASTIC_INDEX_PREFIX avant de redéployer.`,
-    );
+  if (!project) {
+    throw new Error("[ELASTIC_CONFIG_ERROR] Projet inconnu (GCLOUD_PROJECT absent) : impossible de nommer les index.");
   }
-  return prefix;
+  return `${project.toLowerCase()}-`;
 }
 
-/** Nom complet d'un index (« assures » → « aibs-partenaire-testing-ci-assures »). */
+/**
+ * Cause lisible d'une erreur Elasticsearch, écrite dans le résumé du log (sans secret) : type d'erreur du client,
+ * code HTTP et raison renvoyés par le cluster, cluster visé et index. Exemples :
+ * « ConnectionError: … » (réseau / VPC), « ResponseError 401 security_exception » (clé), « 403 » (droits ou filtre IP).
+ */
+export function describeElasticError(error: unknown): string {
+  const e = error as { name?: string; message?: string; meta?: { statusCode?: number; body?: unknown } };
+  const body = e?.meta?.body as { error?: { type?: string; reason?: string } | string } | string | undefined;
+  const reason =
+    typeof body === "string"
+      ? body.slice(0, 300)
+      : typeof body?.error === "string"
+        ? body.error
+        : [body?.error?.type, body?.error?.reason].filter(Boolean).join(" : ");
+  return [e?.name ?? "Error", e?.meta?.statusCode, reason || e?.message, `cluster=${clusterHost()}`]
+    .filter(part => part !== undefined && part !== "")
+    .join(" | ")
+    .slice(0, 800);
+}
+
+/** Hôte du cluster déduit du Cloud ID (non secret), pour vérifier dans les logs qu'on vise le bon cluster. */
+export function clusterHost(): string {
+  const cloudId = process.env.ELASTIC_CLOUD_ID;
+  if (!cloudId) return "ELASTIC_CLOUD_ID absent";
+  try {
+    const decoded = Buffer.from(cloudId.slice(cloudId.indexOf(":") + 1), "base64").toString("utf8");
+    const [domain, esId] = decoded.split("$");
+    return esId && domain ? `${esId.slice(0, 8)}….${domain.split(":")[0]}` : "Cloud ID illisible";
+  } catch {
+    return "Cloud ID illisible";
+  }
+}
+
+/** Nom complet d'un index (« assures » → « aibs-partenaire-testing-assures »). */
 export function indexName(index: string): string {
   return `${indexPrefix()}${index}`;
 }

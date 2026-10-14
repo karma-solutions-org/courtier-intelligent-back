@@ -63,6 +63,12 @@ jobs:
       - name: Deploy
         run: npx --yes "firebase-tools@$FIREBASE_TOOLS_VERSION" deploy --project aibs-partenaire-testing --only "functions:courtier-intelligent:$FUNCTION_NAME" --non-interactive
 
+      # Catalogue global (produit Auto et son questionnaire, assureurs, offres) : republié à chaque déploiement, pour
+      # qu'il soit toujours présent dans ci_products / ci_insurers pour tous les cabinets. Sans risque à relancer :
+      # les questions découvertes sur les extranets et les exigences apprises sont conservées.
+      - name: Publish catalog
+        run: npm run ops:seed-catalog -- --project aibs-partenaire-testing
+
       # Redeploying a function resets its Cloud Run VPC config, so re-apply the
       # shared VPC if (and only if) the deployed function is in the manifest.
       - name: Apply shared VPC if the deployed function needs it

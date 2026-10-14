@@ -6,7 +6,7 @@ import { getActiveMembership } from "../core/auth.utils";
 import { CALLABLE_OPTIONS, REGION_ID } from "../core/config";
 import { assurePath, dossiersPath } from "../core/firestore-paths";
 import { VPC_MAX_INSTANCES } from "../vpc-functions";
-import { deleteDocument, ELASTIC_SECRETS, indexDocument, indexDocuments, searchIds } from "../elastic/elastic.util";
+import { deleteDocument, describeElasticError, ELASTIC_SECRETS, indexDocument, indexDocuments, searchIds } from "../elastic/elastic.util";
 import {
   ASSURE_SEARCH_FIELDS,
   ASSURES_INDEX,
@@ -60,7 +60,7 @@ export const indexerAssure = onDocumentWritten(
         );
       }
     } catch (error) {
-      logger.error("recherche-indexerAssure : indexation impossible", { cabinetId, assureId, error: String(error) });
+      logger.error(`recherche-indexerAssure : indexation impossible — ${describeElasticError(error)}`, { cabinetId, assureId });
     }
   },
 );
@@ -85,7 +85,7 @@ export const indexerDossier = onDocumentWritten(
       const assure = after.assureId ? await admin.firestore().doc(assurePath(cabinetId, String(after.assureId))).get() : null;
       await indexDocument(DOSSIERS_INDEX, toDossierSearchDoc(cabinetId, dossierId, after, assureDisplayName(assure?.data())));
     } catch (error) {
-      logger.error("recherche-indexerDossier : indexation impossible", { cabinetId, dossierId, error: String(error) });
+      logger.error(`recherche-indexerDossier : indexation impossible — ${describeElasticError(error)}`, { cabinetId, dossierId });
     }
   },
 );
@@ -103,7 +103,7 @@ async function search(
   try {
     return { ids: await searchIds(index, query, page) };
   } catch (error) {
-    logger.error("recherche : Elasticsearch indisponible", { index, error: String(error) });
+    logger.error(`recherche : Elasticsearch indisponible — ${describeElasticError(error)}`, { index });
     throw new HttpsError("unavailable", "La recherche est momentanément indisponible. Réessayez.", { reason: "search_unavailable" });
   }
 }
