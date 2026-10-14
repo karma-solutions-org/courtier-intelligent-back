@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       function_name:
-        description: 'Name of the function to deploy'
+        description: "Name of the function to deploy (e.g. recherche-clients), or 'all' for every function"
         required: true
 
 concurrency:
@@ -14,7 +14,8 @@ concurrency:
 jobs:
   deploy-to-firebase-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # « all » déploie les 46 functions : plus long qu'une seule.
+    timeout-minutes: 30
     environment: testing
     permissions:
       contents: read
@@ -60,8 +61,15 @@ jobs:
           service_account: github-action@aibs-partenaire-testing.iam.gserviceaccount.com
           project_id: aibs-partenaire-testing
 
+      # « all » : toute la codebase courtier-intelligent ; sinon la function demandée.
       - name: Deploy
-        run: npx --yes "firebase-tools@$FIREBASE_TOOLS_VERSION" deploy --project aibs-partenaire-testing --only "functions:courtier-intelligent:$FUNCTION_NAME" --non-interactive
+        run: |
+          if [ "$FUNCTION_NAME" = "all" ]; then
+            target="functions:courtier-intelligent"
+          else
+            target="functions:courtier-intelligent:$FUNCTION_NAME"
+          fi
+          npx --yes "firebase-tools@$FIREBASE_TOOLS_VERSION" deploy --project aibs-partenaire-testing --only "$target" --non-interactive --force
 
       # Catalogue global (produit Auto et son questionnaire, assureurs, offres) : republié à chaque déploiement, pour
       # qu'il soit toujours présent dans ci_products / ci_insurers pour tous les cabinets. Sans risque à relancer :
@@ -70,11 +78,20 @@ jobs:
         run: npm run ops:seed-catalog -- --project aibs-partenaire-testing
 
       # Redeploying a function resets its Cloud Run VPC config, so re-apply the
-      # shared VPC if (and only if) the deployed function is in the manifest.
+      # shared VPC to the deployed functions that are in the manifest (all of them with « all »).
       - name: Apply shared VPC if the deployed function needs it
         run: |
-          svc=$(echo "$FUNCTION_NAME" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
-          if npm run --silent list-vpc | grep -qx "$svc"; then
+          if [ "$FUNCTION_NAME" = "all" ]; then
+            services=$(npm run --silent list-vpc)
+          else
+            svc=$(echo "$FUNCTION_NAME" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+            services=$(npm run --silent list-vpc | grep -x "$svc" || true)
+          fi
+          if [ -z "$services" ]; then
+            echo "$FUNCTION_NAME is not a shared-VPC function; skipping VPC config."
+            exit 0
+          fi
+          for svc in $services; do
             echo "Applying shared VPC to $svc"
             gcloud run services update "$svc" \
               --region=europe-west3 \
@@ -83,6 +100,4 @@ jobs:
               --subnet=projects/shared-vpc-container/regions/europe-west3/subnetworks/shared-vpc-subnet \
               --vpc-egress=all-traffic \
               --quiet
-          else
-            echo "$svc is not a shared-VPC function; skipping VPC config."
-          fi
+          done
