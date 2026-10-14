@@ -1,10 +1,11 @@
 import { Client } from "@elastic/elasticsearch";
+import { defineSecret } from "firebase-functions/params";
 import type { QueryDslQueryContainer, SearchHit } from "@elastic/elasticsearch/lib/api/types";
 
 /**
  * Accès à Elasticsearch, repris de compli-scan-back (même cluster Elastic Cloud, même montage) :
- * - identifiants lus dans l'environnement (`ELASTIC_CLOUD_ID`, `ELASTIC_API_KEY`), injectés par le workflow de
- *   déploiement depuis les secrets GitHub : jamais dans le code, et aucune valeur par défaut ;
+ * - identifiants dans Secret Manager (`ELASTIC_CLOUD_ID`, `ELASTIC_API_KEY`), comme GEMINI_API_KEY : déclarés ici,
+ *   attachés aux functions qui en ont besoin (`secrets: ELASTIC_SECRETS`), jamais dans le code ;
  * - préfixe d'index propre à chaque projet (`ELASTIC_INDEX_PREFIX`, fichier `.env.<projet>`), obligatoire ;
  * - les functions qui l'appellent passent par le VPC partagé (voir vpc-functions.ts) : Elastic n'accepte que l'IP NAT.
  */
@@ -15,6 +16,11 @@ const TEST_INDEX_PREFIX = "aibs-partenaire-testing-";
 
 export type SearchDocument = { id: string } & Record<string, unknown>;
 
+/** Secrets Secret Manager du projet (déjà créés en test). Firebase les expose aux functions comme variables d'environnement. */
+export const ELASTIC_API_KEY = defineSecret("ELASTIC_API_KEY");
+export const ELASTIC_CLOUD_ID = defineSecret("ELASTIC_CLOUD_ID");
+export const ELASTIC_SECRETS = [ELASTIC_API_KEY, ELASTIC_CLOUD_ID];
+
 let clientInstance: Client | undefined;
 
 export function elasticClient(): Client {
@@ -23,8 +29,8 @@ export function elasticClient(): Client {
     const cloudId = process.env.ELASTIC_CLOUD_ID;
     if (!apiKey || !cloudId) {
       throw new Error(
-        "[ELASTIC_CONFIG_ERROR] ELASTIC_API_KEY et ELASTIC_CLOUD_ID doivent être fournis par l'environnement " +
-          "(secrets GitHub injectés au déploiement). Aucune valeur par défaut.",
+        "[ELASTIC_CONFIG_ERROR] ELASTIC_API_KEY et ELASTIC_CLOUD_ID absents : secrets Secret Manager non attachés " +
+          "à cette function (secrets: ELASTIC_SECRETS) ou non définis dans le projet. Aucune valeur par défaut.",
       );
     }
     clientInstance = new Client({ cloud: { id: cloudId }, auth: { apiKey } });

@@ -6,7 +6,7 @@ import { getActiveMembership } from "../core/auth.utils";
 import { CALLABLE_OPTIONS, REGION_ID } from "../core/config";
 import { assurePath, dossiersPath } from "../core/firestore-paths";
 import { VPC_MAX_INSTANCES } from "../vpc-functions";
-import { deleteDocument, indexDocument, indexDocuments, searchIds } from "../elastic/elastic.util";
+import { deleteDocument, ELASTIC_SECRETS, indexDocument, indexDocuments, searchIds } from "../elastic/elastic.util";
 import {
   ASSURE_SEARCH_FIELDS,
   ASSURES_INDEX,
@@ -31,8 +31,8 @@ import {
  */
 
 /** Fonctions sur le VPC partagé : nombre d'instances borné (le sous-réseau est partagé avec d'autres projets). */
-const TRIGGER_OPTIONS = { region: REGION_ID, retry: false, maxInstances: VPC_MAX_INSTANCES } as const;
-const SEARCH_OPTIONS = { ...CALLABLE_OPTIONS, maxInstances: VPC_MAX_INSTANCES } as const;
+const TRIGGER_OPTIONS = { region: REGION_ID, retry: false, maxInstances: VPC_MAX_INSTANCES, secrets: ELASTIC_SECRETS };
+const SEARCH_OPTIONS = { ...CALLABLE_OPTIONS, maxInstances: VPC_MAX_INSTANCES, secrets: ELASTIC_SECRETS };
 
 /** Client créé, modifié ou supprimé : copie dans l'index ; nom changé : ses dossiers sont réindexés (nom du client). */
 export const indexerAssure = onDocumentWritten(
