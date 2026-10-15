@@ -1,7 +1,8 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { setCabinetClaims } from "./auth.utils";
-import { cabinetPath, memberPath } from "./firestore-paths";
+import { HttpsError } from "firebase-functions/v2/https";
+import { cabinetPath, memberPath, userCabinetPath } from "./firestore-paths";
 import { resolveLimits } from "./limits.utils";
 import { DEFAULT_PLAN_ID, type PlanLimits } from "../shared/index.js";
 
@@ -28,6 +29,12 @@ export async function createCabinet(input: NewCabinet): Promise<string> {
   const db = admin.firestore();
   const cabinetId = db.collection("ci_cabinets").doc().id;
   await db.runTransaction(async tx => {
+    // Un compte = un cabinet : le verrou par uid rend deux créations simultanées impossibles.
+    const lock = await tx.get(db.doc(userCabinetPath(input.ownerUid)));
+    if (lock.exists) {
+      throw new HttpsError("already-exists", "Ce compte est déjà rattaché à un cabinet.", { reason: "already_member" });
+    }
+    tx.create(db.doc(userCabinetPath(input.ownerUid)), { cabinetId, role: "admin", at: FieldValue.serverTimestamp() });
     tx.set(db.doc(cabinetPath(cabinetId)), {
       name: input.name,
       orias: input.orias,

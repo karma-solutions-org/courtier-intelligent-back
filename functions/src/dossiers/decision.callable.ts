@@ -5,7 +5,16 @@ import { getActiveMembership, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { addEvent } from "../core/dossier.utils";
 import { dossierPath, offerPath } from "../core/firestore-paths";
-import { isTransitionAllowed, validateDecisionJustification, type DossierStatus } from "../shared/index.js";
+import {
+  insurerDocPath,
+  isTransitionAllowed,
+  needSnapshotOf,
+  offerSnapshotOf,
+  validateDecisionJustification,
+  type DossierStatus,
+  type NeedAnalysis,
+  type Offer,
+} from "../shared/index.js";
 
 /** Statuts depuis lesquels on peut choisir (ou changer) l'offre retenue. */
 const DECISION_STATUSES: DossierStatus[] = ["tarification", "comparaison", "decision"];
@@ -29,9 +38,10 @@ export const decider = onCall(CALLABLE_OPTIONS, async request => {
   const ref = db.doc(dossierPath(cabinetId, dossierId));
 
   return db.runTransaction(async tx => {
-    const [dossier, offer] = await Promise.all([
+    const [dossier, offer, insurer] = await Promise.all([
       tx.get(ref),
       tx.get(db.doc(offerPath(cabinetId, dossierId, insurerId))),
+      tx.get(db.doc(insurerDocPath(cabinetId, insurerId))),
     ]);
     if (!dossier.exists) {
       throw new HttpsError("not-found", "Dossier introuvable.");
@@ -43,6 +53,11 @@ export const decider = onCall(CALLABLE_OPTIONS, async request => {
     }
     if (!offer.exists) {
       throw new HttpsError("not-found", "Offre introuvable pour cet assureur.");
+    }
+    if (offer.get("stale") === true) {
+      throw new HttpsError("failed-precondition", "Les données du dossier ont changé depuis ce tarif : relancez la tarification.", {
+        reason: "offer_stale",
+      });
     }
     const from = dossier.get("status") as DossierStatus;
     if (!DECISION_STATUSES.includes(from)) {
@@ -72,7 +87,15 @@ export const decider = onCall(CALLABLE_OPTIONS, async request => {
     const previous = dossier.get("decision") as { insurerId?: string } | null;
     tx.update(ref, {
       status: "decision",
-      decision: { insurerId, justification, decidedBy: uid, decidedAt: FieldValue.serverTimestamp() },
+      decision: {
+        insurerId,
+        justification,
+        decidedBy: uid,
+        decidedAt: FieldValue.serverTimestamp(),
+        // Copies figées : ce qui a été choisi, et pour quel besoin, même si l'offre est ressaisie ensuite.
+        offerSnapshot: offerSnapshotOf(insurerId, (insurer.get("name") as string | undefined) ?? null, offer.data() as Partial<Offer>),
+        needSnapshot: needSnapshotOf(dossier.get("needAnalysis") as Partial<NeedAnalysis> | null),
+      },
       updatedAt: FieldValue.serverTimestamp(),
     });
     addEvent(tx, cabinetId, dossierId, uid, "decision_made", {

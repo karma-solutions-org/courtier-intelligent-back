@@ -171,9 +171,19 @@ describe('Complétude et machine à états', () => {
     assert.deepEqual(last.data, { from: 'complet', to: 'brouillon', automatic: true });
   });
 
-  it('le statut « sans suite » n’existe plus', async () => {
-    const result = await call('dossiers-changerStatut', adminToken, { dossierId, status: 'sans_suite' });
-    assert.equal(result.error?.status, 'INVALID_ARGUMENT');
+  it('« sans suite » : seulement par classerSansSuite, avec un motif, puis plus aucune transition', async () => {
+    const viaStatus = await call('dossiers-changerStatut', adminToken, { dossierId, status: 'sans_suite' });
+    assert.equal(viaStatus.error?.details?.reason, 'use_sans_suite');
+    assert.equal((await call('dossiers-classerSansSuite', adminToken, { dossierId })).error?.status, 'INVALID_ARGUMENT');
+
+    const result = await call('dossiers-classerSansSuite', adminToken, { dossierId, motif: 'Client injoignable' });
+    assert.deepEqual(result.data, { status: 'sans_suite', cancelledJobs: 0 });
+    const closed = await dossier(dossierId);
+    assert.equal(closed.status, 'sans_suite');
+    assert.equal(closed.outcome.result, 'sans_suite');
+    assert.equal(closed.outcome.motif, 'Client injoignable');
+    assert.equal((await call('dossiers-classerSansSuite', adminToken, { dossierId, motif: 'encore' })).error?.details?.reason, 'invalid_transition');
+    assert.equal((await call('dossiers-changerStatut', adminToken, { dossierId, status: 'complet' })).error?.details?.reason, 'invalid_transition');
   });
 });
 
@@ -210,5 +220,70 @@ describe('Assignation', () => {
     const before = (await events(dossierId)).length;
     await call('dossiers-assigner', adminToken, { dossierId, uid: adminUid });
     assert.equal((await events(dossierId)).length, before);
+  });
+});
+
+describe('Création de client (assures-creer)', () => {
+  const fiche = extra => ({ type: 'pro', firstName: 'Jeanne', lastName: 'Martin', companyName: 'Martin SARL', ...extra });
+
+  it('crée le client, puis bloque un doublon de SIRET ou d’email hors corbeille', async () => {
+    const created = await call('assures-creer', adminToken, fiche({ siret: '11112222333344', email: 'Jeanne@Martin.fr' }));
+    const id = created.data?.id;
+    assert.ok(id);
+    const saved = (await db.doc(`ci_cabinets/${cabinetId}/ci_assures/${id}`).get()).data();
+    assert.equal(saved.email, 'jeanne@martin.fr');
+    assert.equal(saved.createdBy, adminUid);
+
+    const sameSiret = await call('assures-creer', courtierToken, fiche({ siret: '1111 2222 3333 44' }));
+    assert.equal(sameSiret.error?.status, 'ALREADY_EXISTS');
+    assert.equal(sameSiret.error.details?.reason, 'duplicate_assure');
+    assert.equal(sameSiret.error.details?.duplicateId, id);
+    const sameEmail = await call('assures-creer', courtierToken, fiche({ email: 'jeanne@martin.fr' }));
+    assert.equal(sameEmail.error?.details?.field, 'email');
+  });
+
+  it('un client en corbeille ne bloque pas, et un homonyme non plus (simple avertissement)', async () => {
+    const first = await call('assures-creer', adminToken, fiche({ siret: '55556666777788' }));
+    await db.doc(`ci_cabinets/${cabinetId}/ci_assures/${first.data.id}`).update({ deletedAt: admin.firestore.Timestamp.now() });
+    assert.ok((await call('assures-creer', adminToken, fiche({ siret: '55556666777788' }))).data?.id);
+    assert.ok((await call('assures-creer', adminToken, fiche())).data?.id);
+  });
+
+  it('refuse une fiche invalide', async () => {
+    const refused = await call('assures-creer', adminToken, fiche({ siret: '1234' }));
+    assert.equal(refused.error?.status, 'INVALID_ARGUMENT');
+  });
+});
+
+describe('Modification de client (assures-modifier)', () => {
+  const fiche = extra => ({ type: 'pro', firstName: 'Paul', lastName: 'Durand', companyName: 'Durand SAS', ...extra });
+
+  it('modifie le client, garde son SIRET/email, et bloque le SIRET ou l’email d’un autre client hors corbeille', async () => {
+    const a = (await call('assures-creer', adminToken, fiche({ siret: '20002000200020', email: 'a@durand.fr' }))).data.id;
+    const b = (await call('assures-creer', adminToken, fiche({ siret: '30003000300030', email: 'b@durand.fr' }))).data.id;
+
+    const same = await call('assures-modifier', courtierToken, { id: a, fiche: fiche({ siret: '20002000200020', email: 'A@durand.fr', phone: '0611' }) });
+    assert.equal(same.data?.id, a);
+    const saved = (await db.doc(`ci_cabinets/${cabinetId}/ci_assures/${a}`).get()).data();
+    assert.equal(saved.phone, '0611');
+    assert.equal(saved.createdBy, adminUid);
+    assert.ok(saved.updatedAt);
+
+    const dupSiret = await call('assures-modifier', courtierToken, { id: a, fiche: fiche({ siret: '3000 3000 3000 30' }) });
+    assert.equal(dupSiret.error?.status, 'ALREADY_EXISTS');
+    assert.equal(dupSiret.error.details?.duplicateId, b);
+    const dupEmail = await call('assures-modifier', courtierToken, { id: a, fiche: fiche({ email: 'b@durand.fr' }) });
+    assert.equal(dupEmail.error?.details?.field, 'email');
+
+    await db.doc(`ci_cabinets/${cabinetId}/ci_assures/${b}`).update({ deletedAt: admin.firestore.Timestamp.now() });
+    assert.equal((await call('assures-modifier', adminToken, { id: a, fiche: fiche({ siret: '30003000300030' }) })).data?.id, a);
+  });
+
+  it('refuse une fiche invalide, un client inconnu ou en corbeille', async () => {
+    const id = (await call('assures-creer', adminToken, fiche())).data.id;
+    assert.equal((await call('assures-modifier', adminToken, { id, fiche: fiche({ email: 'x' }) })).error?.status, 'INVALID_ARGUMENT');
+    assert.equal((await call('assures-modifier', adminToken, { id: 'inconnu', fiche: fiche() })).error?.status, 'NOT_FOUND');
+    await db.doc(`ci_cabinets/${cabinetId}/ci_assures/${id}`).update({ deletedAt: admin.firestore.Timestamp.now() });
+    assert.equal((await call('assures-modifier', adminToken, { id, fiche: fiche() })).error?.status, 'FAILED_PRECONDITION');
   });
 });

@@ -84,6 +84,7 @@ describe('Lancer une tarification', () => {
     assert.equal(written.quoteData['vehicle.registration'], 'AB-123-CD');
     assert.deepEqual(written.quoteData['insuranceHistory.claimsCount'], { value: 0, knowledge: 'KNOWN' });
     assert.equal(written.dossierReference, (await dossier(dossierId)).reference);
+    assert.ok(written.productPaths.includes('vehicle.registration'));
     assert.equal((await dossier(dossierId)).status, 'tarification');
     assert.ok((await eventTypes(dossierId)).includes('pricing_requested'));
   });
@@ -193,5 +194,57 @@ describe('Saisie manuelle d’une offre', () => {
     const { data } = await saisir(dossierId, manualOffer({ premiumAnnual: null, premiumMonthly: 55 }));
     assert.equal(data.dossierStatus, 'tarification');
     assert.equal(await job(dossierId, 'assureur-b'), undefined);
+  });
+});
+
+describe('Annulation, données modifiées, corbeille', () => {
+  const jobRef = (dossierId, insurerId = 'assureur-a') => db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/${insurerId}`);
+  const offerRef = (dossierId, insurerId = 'assureur-b') => db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_offers/${insurerId}`);
+
+  it('annule un job bloqué (tout membre), puis la relance reste possible', async () => {
+    const dossierId = await newDossier();
+    await lancer(dossierId);
+    assert.deepEqual((await call('tarification-annuler', token, { dossierId, insurerId: 'assureur-a' })).data, { status: 'cancelled' });
+    assert.equal((await job(dossierId)).status, 'cancelled');
+    assert.ok((await eventTypes(dossierId)).includes('pricing_cancelled'));
+    assert.equal((await call('tarification-annuler', token, { dossierId, insurerId: 'assureur-a' })).error.details.reason, 'job_not_active');
+    assert.equal((await lancer(dossierId)).data.attempts, 2);
+  });
+
+  it('une réponse qui modifie une donnée connue rend les offres déjà obtenues périmées', async () => {
+    const dossierId = await newDossier();
+    await lancer(dossierId);
+    await offerRef(dossierId).set({ source: 'auto', premiumAnnual: 500, guarantees: [], exclusions: [], deductibles: {} });
+    await jobRef(dossierId).update({ status: 'needs_info', missingFields: [{ canonicalPath: 'vehicle.registration', label: 'Immatriculation', type: 'text' }] });
+    await call('tarification-completer', token, { dossierId, insurerId: 'assureur-a', answers: { 'vehicle.registration': 'ZZ-999-ZZ' } });
+    assert.equal((await offer(dossierId, 'assureur-b')).stale, true);
+    assert.ok((await eventTypes(dossierId)).includes('offers_stale'));
+    const decision = await call('dossiers-decider', token, { dossierId, insurerId: 'assureur-b', justification: 'Meilleur rapport garanties / prix' });
+    assert.equal(decision.error?.details?.reason, 'offer_stale');
+  });
+
+  it('classer sans suite annule les jobs en cours', async () => {
+    const dossierId = await newDossier();
+    await lancer(dossierId);
+    const { data } = await call('dossiers-classerSansSuite', token, { dossierId, motif: 'Le client a renoncé' });
+    assert.deepEqual(data, { status: 'sans_suite', cancelledJobs: 1 });
+    assert.equal((await job(dossierId)).status, 'cancelled');
+  });
+
+  it('la corbeille annule les jobs en cours ; un dossier proposé ne se supprime jamais définitivement', async () => {
+    const dossierId = await newDossier();
+    await lancer(dossierId);
+    await call('corbeille-supprimer', token, { kind: 'dossier', id: dossierId });
+    assert.equal((await job(dossierId)).status, 'cancelled');
+
+    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}`).update({ status: 'proposition_envoyee' });
+    const refused = await call('corbeille-supprimerDefinitivement', token, { kind: 'dossier', id: dossierId });
+    assert.equal(refused.error?.details?.reason, 'dossier_protected');
+  });
+
+  it('restaure un dossier sans client sans erreur', async () => {
+    const dossierId = await newDossier({ validated: false });
+    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}`).update({ assureId: admin.firestore.FieldValue.delete(), deletedAt: new Date() });
+    assert.deepEqual((await call('corbeille-restaurer', token, { kind: 'dossier', id: dossierId })).data, { ok: true });
   });
 });

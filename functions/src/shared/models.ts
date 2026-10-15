@@ -253,7 +253,15 @@ export interface Dossier {
   data: CanonicalData;
   completeness: { ok: boolean; missing: CanonicalPath[] };
   needAnalysis: NeedAnalysis | null;
-  decision: { insurerId: string; justification: string; decidedBy: string; decidedAt?: TimestampLike } | null;
+  decision: {
+    insurerId: string;
+    justification: string;
+    decidedBy: string;
+    decidedAt?: TimestampLike;
+    /** Copies figées au moment du choix (l'offre ou le besoin peuvent changer ensuite). */
+    offerSnapshot?: OfferSnapshot | null;
+    needSnapshot?: NeedSnapshot | null;
+  } | null;
   /** Proposition envoyée à l'assuré (écrite uniquement par `propositions-envoyer`). */
   proposal: DossierProposal | null;
   /** Issue de la proposition (écrite uniquement par `propositions-enregistrerReponse`). */
@@ -263,6 +271,13 @@ export interface Dossier {
   createdBy?: string;
   createdAt?: TimestampLike;
   updatedAt?: TimestampLike;
+  /** Version du questionnaire du produit à la création (`questionnaireUpdatedAt` en ms, null si inconnue). */
+  questionnaireVersion?: number | null;
+  /**
+   * Questionnaire figé à la validation de la couverture (écrit par `dossiers-validerBesoin`, effacé si la couverture
+   * est rouverte) : les contrôles d'un dossier validé s'y réfèrent, une modification du produit ne le bloque pas.
+   */
+  questionnaireSnapshot?: QuestionnaireSection[] | null;
   /** Corbeille (écrit par les functions corbeille-*) : présent tant que le dossier est supprimé. */
   deletedAt?: TimestampLike | null;
   deletedBy?: string | null;
@@ -274,16 +289,40 @@ export interface DossierProposal {
   sentAt?: TimestampLike;
   sentTo: string;
   sentBy?: string;
-  /** Nombre de relances envoyées au courtier en charge. */
+  /** Copies figées de l'offre et du besoin envoyés (chaque envoi les remplace). */
+  insurerId?: string;
+  offerSnapshot?: OfferSnapshot | null;
+  needSnapshot?: NeedSnapshot | null;
 }
 
-export type DossierOutcomeResult = 'souscrit' | 'refuse';
+/** Copie figée d'une offre (décision, proposition). */
+export interface OfferSnapshot {
+  insurerId: string;
+  insurerName: string | null;
+  quoteNumber: string | null;
+  premiumAnnual: number | null;
+  premiumMonthly: number | null;
+  deductibles: Record<string, number>;
+  guarantees: OfferGuarantee[];
+  exclusions: string[];
+  gaps: OfferGap[];
+  score: number | null;
+  source: 'auto' | 'manual' | null;
+}
+
+/** Copie figée du besoin (couverture souhaitée), sans sa date de validation. */
+export type NeedSnapshot = Omit<NeedAnalysis, 'validatedAt'>;
+
+/** `sans_suite` : classé par `dossiers-classerSansSuite` (motif obligatoire), à n'importe quelle étape. */
+export type DossierOutcomeResult = 'souscrit' | 'refuse' | 'sans_suite';
 
 export interface DossierOutcome {
   result: DossierOutcomeResult;
   contractNumber?: string | null;
   /** Date d'effet du contrat (« AAAA-MM-JJ »). */
   effectiveDate?: string | null;
+  /** Motif du classement sans suite. */
+  motif?: string | null;
   decidedBy?: string;
   decidedAt?: TimestampLike;
 }
@@ -301,7 +340,9 @@ export type DossierEventType =
   | 'offer_entered'
   | 'decision_made'
   | 'proposal_sent'
-  | 'outcome_recorded';
+  | 'outcome_recorded'
+  | 'pricing_cancelled'
+  | 'offers_stale';
 
 export interface DossierEvent {
   id: string;
@@ -325,6 +366,8 @@ export interface QuoteJob {
   status: QuoteJobStatus;
   ownerUid: string;
   quoteData: CanonicalData;
+  /** Chemins des questions du produit (écrits par `tarification-lancer`) : ce que le dossier peut fournir. */
+  productPaths?: CanonicalPath[];
   missingFields: MissingField[];
   currentStep: number | null;
   totalSteps: number | null;
@@ -368,6 +411,9 @@ export interface Offer {
   enteredBy?: string | null;
   documentId?: string | null;
   capturedAt?: TimestampLike;
+  /** Données du dossier modifiées après la capture (`tarification-completer`) : l'offre est à refaire. */
+  stale?: boolean;
+  staleSince?: TimestampLike | null;
 }
 
 /**

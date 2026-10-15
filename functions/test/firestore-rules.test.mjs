@@ -290,6 +290,8 @@ describe('Dossiers : écritures réservées aux functions', () => {
       { decision: { insurerId: 'assureur-a' } },
       { proposal: null },
       { outcome: { result: 'souscrit' } },
+      { questionnaireSnapshot: [] },
+      { champInconnu: 'x' },
     ]) {
       await assertFails(updateDoc(dossier, forbidden));
     }
@@ -317,8 +319,16 @@ describe('Assurés : contrôles des écritures du client', () => {
   });
   const assure = (db, cabinet = 'A') => doc(db, `ci_cabinets/${cabinet}/ci_assures/as1`);
 
-  it('un membre crée un assuré valide, le lit et le modifie', async () => {
-    await assertSucceeds(setDoc(assure(courtierA()), valid()));
+  // La création passe par la function assures-creer : l'assuré est posé en contournant les règles.
+  const seed = (data = valid()) => env.withSecurityRulesDisabled(ctx => setDoc(assure(ctx.firestore()), data));
+
+  it("personne ne crée un assuré directement (function assures-creer)", async () => {
+    await assertFails(setDoc(assure(courtierA()), valid()));
+    await assertFails(setDoc(assure(adminA()), valid('admin-a')));
+  });
+
+  it('un membre lit et modifie un assuré', async () => {
+    await seed();
     await assertSucceeds(getDoc(assure(adminA())));
     await assertSucceeds(updateDoc(assure(courtierA()), { phone: '0700000000', updatedAt: serverTimestamp() }));
   });
@@ -339,16 +349,24 @@ describe('Assurés : contrôles des écritures du client', () => {
   });
 
   it("une modification ne change ni l'auteur ni la date de création, et personne ne supprime un assuré", async () => {
-    await assertSucceeds(setDoc(assure(courtierA()), valid()));
+    await seed();
     await assertFails(updateDoc(assure(courtierA()), { createdBy: 'admin-a', updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(assure(courtierA()), { createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(assure(courtierA()), { email: 'invalide', updatedAt: serverTimestamp() }));
     await assertFails(deleteDoc(assure(adminA())));
   });
 
+  it("le SIRET et l'email ne changent que par la function assures-modifier (doublon bloquant)", async () => {
+    await seed();
+    await assertFails(updateDoc(assure(courtierA()), { siret: '99998888777766', updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(assure(adminA()), { email: 'autre@exemple.fr', updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(assure(adminA()), { email: null, updatedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(assure(courtierA()), { phone: '0600000000', updatedAt: serverTimestamp() }));
+  });
+
   it("un autre cabinet ne lit ni n'écrit les assurés", async () => {
     await assertFails(setDoc(assure(adminB(), 'A'), valid('admin-b')));
-    await assertSucceeds(setDoc(assure(courtierA()), valid()));
+    await seed();
     await assertFails(getDoc(assure(adminB(), 'A')));
     await assertFails(updateDoc(assure(adminB(), 'A'), { phone: '0700000000', updatedAt: serverTimestamp() }));
   });

@@ -91,7 +91,7 @@ after(() => {
 describe("Connexion de l'extension", () => {
   it("refuse tant qu'aucune session de l'app n'est ouverte sur l'appareil", async () => {
     const token = await signIn('courtier-ext@test.fr');
-    const refused = await call('sessions-ouvrirExtension', token);
+    const refused = await call('sessions-ouvrirExtension', token, { deviceId: DEVICE_A });
     assert.equal(refused.error?.status, 'FAILED_PRECONDITION');
     assert.equal(refused.error.details?.reason, 'no_app_session');
   });
@@ -103,13 +103,23 @@ describe("Connexion de l'extension", () => {
       'session.lastSeen': admin.firestore.Timestamp.fromMillis(Date.now() - 10 * 60 * 1000),
     });
     await sleep(1100);
-    const refused = await call('sessions-ouvrirExtension', await signIn('courtier-ext@test.fr'));
+    const refused = await call('sessions-ouvrirExtension', await signIn('courtier-ext@test.fr'), { deviceId: DEVICE_A });
     assert.equal(refused.error?.details?.reason, 'no_app_session');
+  });
+
+  it("refuse une extension qui ne présente pas l'appareil de la session de l'app", async () => {
+    await sleep(1100);
+    const { extToken } = await newLogins('courtier-ext@test.fr');
+    const other = await call('sessions-ouvrirExtension', extToken, { deviceId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' });
+    assert.equal(other.error?.status, 'FAILED_PRECONDITION');
+    assert.equal(other.error.details?.reason, 'device_mismatch');
+    const missing = await call('sessions-ouvrirExtension', extToken);
+    assert.equal(missing.error?.details?.reason, 'device_mismatch');
   });
 
   it("refuse un compte sans cabinet", async () => {
     await admin.auth().createUser({ email: 'sans-cabinet@test.fr', password: PASSWORD });
-    const refused = await call('sessions-ouvrirExtension', await signIn('sans-cabinet@test.fr'));
+    const refused = await call('sessions-ouvrirExtension', await signIn('sans-cabinet@test.fr'), { deviceId: DEVICE_A });
     assert.equal(refused.error?.status, 'FAILED_PRECONDITION');
   });
 
@@ -118,8 +128,8 @@ describe("Connexion de l'extension", () => {
     const { appToken, extToken } = await newLogins('courtier-ext@test.fr');
     const before = await audit('extension_connexion');
 
-    assert.deepEqual((await call('sessions-ouvrirExtension', extToken)).data, { success: true });
-    assert.deepEqual((await call('sessions-ouvrirExtension', extToken)).data, { success: true });
+    assert.deepEqual((await call('sessions-ouvrirExtension', extToken, { deviceId: DEVICE_A })).data, { success: true });
+    assert.deepEqual((await call('sessions-ouvrirExtension', extToken, { deviceId: DEVICE_A })).data, { success: true });
 
     const session = (await member()).session;
     assert.ok(typeof session.extensionAuthTime === 'number');
@@ -138,14 +148,14 @@ describe("Accès de l'extension aux functions", () => {
     assert.equal(denied.error?.status, 'PERMISSION_DENIED');
     assert.equal(denied.error.details?.reason, 'extension_session_closed');
 
-    await call('sessions-ouvrirExtension', extToken);
+    await call('sessions-ouvrirExtension', extToken, { deviceId: DEVICE_A });
     assert.ok((await ask(extToken)).data?.text);
   });
 
   it("recharger l'app ne coupe pas l'extension, une nouvelle connexion de l'app si", async () => {
     await sleep(1100);
     const { appToken, extToken } = await newLogins('courtier-ext@test.fr');
-    await call('sessions-ouvrirExtension', extToken);
+    await call('sessions-ouvrirExtension', extToken, { deviceId: DEVICE_A });
 
     await ouvrir(appToken, DEVICE_A); // rechargement de la page : même connexion
     assert.ok((await ask(extToken)).data?.text, "l'extension reste connectée");
@@ -161,7 +171,7 @@ describe("Accès de l'extension aux functions", () => {
   it("la déconnexion de l'app coupe l'extension", async () => {
     await sleep(1100);
     const { appToken, extToken } = await newLogins('courtier-ext@test.fr');
-    await call('sessions-ouvrirExtension', extToken);
+    await call('sessions-ouvrirExtension', extToken, { deviceId: DEVICE_A });
 
     await call('sessions-fermer', appToken);
 
@@ -172,7 +182,7 @@ describe("Accès de l'extension aux functions", () => {
   it("l'extension se déconnecte sans toucher à la session de l'app", async () => {
     await sleep(1100);
     const { appToken, extToken } = await newLogins('courtier-ext@test.fr');
-    await call('sessions-ouvrirExtension', extToken);
+    await call('sessions-ouvrirExtension', extToken, { deviceId: DEVICE_A });
 
     await call('sessions-fermerExtension', extToken);
 
@@ -186,7 +196,7 @@ describe("Accès de l'extension aux functions", () => {
   it("la désactivation du membre coupe l'extension", async () => {
     await sleep(1100);
     const { extToken } = await newLogins('courtier-ext@test.fr');
-    await call('sessions-ouvrirExtension', extToken);
+    await call('sessions-ouvrirExtension', extToken, { deviceId: DEVICE_A });
     await sleep(1100);
     await ouvrir(await signIn('admin-ext@test.fr'), DEVICE_A);
     const adminToken = await signIn('admin-ext@test.fr');
@@ -204,7 +214,7 @@ describe('ia-proxy', () => {
   before(async () => {
     await sleep(1100);
     ({ extToken } = await newLogins('courtier-ext@test.fr'));
-    await call('sessions-ouvrirExtension', extToken);
+    await call('sessions-ouvrirExtension', extToken, { deviceId: DEVICE_A });
     await db.collection(`ci_cabinets/${cabinetId}/ci_usage`).get().then(snapshot => Promise.all(snapshot.docs.map(d => d.ref.delete())));
     upstreamRequests.length = 0;
   });

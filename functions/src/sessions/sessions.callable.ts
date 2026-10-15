@@ -116,22 +116,39 @@ export const fermer = onCall(CALLABLE_OPTIONS, async request => {
  * seulement si l'app est ouverte sur l'appareil (session de l'app active, avec signe de vie récent).
  * L'enregistrement vit DANS la session de l'app : fermée, remplacée, appareil réinitialisé ou membre désactivé,
  * l'extension perd l'accès aussitôt (règles Firestore et functions).
+ * Liaison à l'appareil : l'extension présente l'identifiant d'appareil que l'app lui a transmis (message `PING`) ;
+ * il doit être celui de la session de l'app ET un appareil lié au compte. Sinon l'extension d'un autre poste
+ * pourrait profiter d'une app ouverte ailleurs.
  */
 export const ouvrirExtension = onCall(CALLABLE_OPTIONS, async request => {
   const { uid, cabinetId } = await getActiveMembership(request, { requireSession: false });
   const authTime = tokenAuthTime(request);
+  const rawDeviceId = request.data?.deviceId;
+  const deviceId = typeof rawDeviceId === "string" && rawDeviceId ? requireDeviceId(rawDeviceId) : null;
 
   const db = admin.firestore();
   const memberRef = db.doc(memberPath(cabinetId, uid));
 
   const isNewLogin = await db.runTransaction(async tx => {
-    const current = (await tx.get(memberRef)).get("session") as Session | undefined;
+    const member = await tx.get(memberRef);
+    const current = member.get("session") as Session | undefined;
     const lastSeen = current?.lastSeen?.toMillis();
     if (!current || lastSeen === undefined || Date.now() - lastSeen > EXTENSION_APP_SESSION_MAX_AGE_MS) {
       throw new HttpsError(
         "failed-precondition",
         "Ouvrez Courtier Intelligent dans votre navigateur et connectez-vous avant d'utiliser l'extension.",
         { reason: "no_app_session" },
+      );
+    }
+    // L'extension doit tourner sur l'appareil de la session de l'app, et cet appareil doit être lié au compte.
+    const device = member.get("device") as BoundDevice | undefined;
+    const extraDevices = (member.get("extraDevices") as BoundDevice[] | undefined) ?? [];
+    const isBound = [...(device ? [device] : []), ...extraDevices].some(entry => entry.id === deviceId);
+    if (!deviceId || current.id !== deviceId || !isBound) {
+      throw new HttpsError(
+        "failed-precondition",
+        "L'extension doit être utilisée sur l'appareil où Courtier Intelligent est ouvert.",
+        { reason: "device_mismatch" },
       );
     }
     // Garde-fou : un jeton qui aurait le même auth_time que l'app (connexions dans la même seconde) ne doit jamais

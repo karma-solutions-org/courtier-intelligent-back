@@ -1,6 +1,6 @@
 import { Client } from "@elastic/elasticsearch";
 import { defineSecret } from "firebase-functions/params";
-import type { QueryDslQueryContainer, SearchHit } from "@elastic/elasticsearch/lib/api/types";
+import type { QueryDslQueryContainer, SearchHit, SortCombinations } from "@elastic/elasticsearch/lib/api/types";
 
 /**
  * Accès à Elasticsearch, repris de compli-scan-back (même cluster Elastic Cloud, même montage) :
@@ -106,20 +106,33 @@ export async function deleteDocument(index: string, id: string): Promise<void> {
   await elasticClient().delete({ index: indexName(index), id, refresh: true }, { ignore: [404] });
 }
 
-/** Identifiants trouvés, dans l'ordre de pertinence. */
+/** Identifiants trouvés, dans l'ordre de pertinence (ou de `sort` s'il est donné). */
 export async function searchIds(
   index: string,
   query: QueryDslQueryContainer,
-  options: { size: number; from: number },
+  options: { size: number; from: number; sort?: SortCombinations[] },
 ): Promise<string[]> {
+  return (await searchHits([index], query, options)).map(hit => hit.id);
+}
+
+/** Résultats sur plusieurs index (nom logique de l'index de chaque résultat : corbeille clients + dossiers). */
+export async function searchHits(
+  indices: string[],
+  query: QueryDslQueryContainer,
+  options: { size: number; from: number; sort?: SortCombinations[] },
+): Promise<{ index: string; id: string }[]> {
+  const names = new Map(indices.map(index => [indexName(index), index]));
   const response = await elasticClient().search({
-    index: indexName(index),
+    index: [...names.keys()],
     query,
     size: options.size,
     from: options.from,
+    ...(options.sort?.length ? { sort: options.sort } : {}),
     _source: false,
     // Index pas encore créé (aucun document indexé) : aucun résultat plutôt qu'une erreur.
     ignore_unavailable: true,
   });
-  return response.hits.hits.map((hit: SearchHit<unknown>) => hit._id).filter((id): id is string => !!id);
+  return response.hits.hits
+    .filter((hit: SearchHit<unknown>) => !!hit._id)
+    .map((hit: SearchHit<unknown>) => ({ index: names.get(hit._index) ?? hit._index, id: hit._id as string }));
 }

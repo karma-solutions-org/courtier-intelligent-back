@@ -77,7 +77,10 @@ describe('normalizeNeed / isNeedValidatable', () => {
   it('un besoin se valide dès que la couverture est choisie', () => {
     assert.equal(isNeedValidatable(null), false);
     assert.equal(isNeedValidatable({ coverageLevel: null }), false);
-    assert.equal(isNeedValidatable({ coverageLevel: 'tiers' }), true);
+    assert.equal(isNeedValidatable({ coverageLevel: 'tiers' }), false);
+    assert.equal(isNeedValidatable({ coverageLevel: 'tiers', mandatoryGuarantees: [], niceToHave: [] }), false);
+    assert.equal(isNeedValidatable({ coverageLevel: 'tiers', mandatoryGuarantees: ['RC'], niceToHave: [] }), true);
+    assert.equal(isNeedValidatable({ coverageLevel: 'tiers', mandatoryGuarantees: [], niceToHave: ['VOL'] }), true);
   });
 });
 

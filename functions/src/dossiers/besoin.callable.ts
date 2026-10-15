@@ -73,6 +73,8 @@ export const enregistrerBesoin = onCall(CALLABLE_OPTIONS, async request => {
     tx.update(ref, {
       needAnalysis: { ...after, validatedAt: null },
       status: newStatus,
+      // Couverture rouverte : le questionnaire figé à la validation n'a plus cours.
+      ...(newStatus !== status ? { questionnaireSnapshot: null } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
 
@@ -117,13 +119,16 @@ export const validerBesoin = onCall(CALLABLE_OPTIONS, async request => {
     }
     const need = dossier.get("needAnalysis") as { coverageLevel?: string | null } | null;
     if (!isNeedValidatable(need as never)) {
-      throw new HttpsError("failed-precondition", "Choisissez un niveau de couverture avant de valider.", {
+      throw new HttpsError("failed-precondition", "Choisissez un niveau de couverture et au moins une garantie avant de valider.", {
         reason: "need_incomplete",
       });
     }
+    // Questionnaire figé : la suite du dossier (complétude, tarification) s'y réfère, même si le produit change.
+    const { questionnaireSchema } = await loadProduct(tx, cabinetId, dossier.get("productId"));
 
     tx.update(ref, {
       status: "besoin_valide",
+      questionnaireSnapshot: questionnaireSchema,
       "needAnalysis.validatedAt": FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });

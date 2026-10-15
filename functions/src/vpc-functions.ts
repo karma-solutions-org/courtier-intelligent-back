@@ -23,6 +23,7 @@ export const VPC_FUNCTIONS: string[] = [
   "recherche-indexerDossier",
   "recherche-clients",
   "recherche-dossiers",
+  "recherche-corbeille",
 ];
 
 /**

@@ -17,6 +17,9 @@ const USAGE =
  * À lancer UNE fois après le premier déploiement des triggers recherche-* (ils n'indexent que les écritures
  * suivantes), puis au besoin (index perdu, mapping changé). Sans risque à relancer : chaque document est remplacé.
  *
+ * À relancer après l'ajout de createdAt / deletedAt aux documents (tri, corbeille, période) : clients et dossiers
+ * de la corbeille sont indexés aussi (deleted: true).
+ *
  * Sans --confirm : compte seulement ce qui serait indexé (aucune écriture).
  * Doit tourner depuis une machine dont l'IP est autorisée par Elastic, ou depuis le VPC partagé.
  */

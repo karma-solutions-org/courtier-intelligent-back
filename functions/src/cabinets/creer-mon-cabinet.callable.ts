@@ -1,3 +1,4 @@
+import * as admin from "firebase-admin";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { assertSignedIn, requireString } from "../core/auth.utils";
 import { createCabinet } from "../core/cabinet.utils";
@@ -11,8 +12,22 @@ import { CALLABLE_OPTIONS, CLAIM_CABINET_ID } from "../core/config";
  */
 export const creerMonCabinet = onCall(CALLABLE_OPTIONS, async request => {
   const uid = assertSignedIn(request);
+  if (request.auth?.token.email_verified !== true) {
+    throw new HttpsError("failed-precondition", "Vérifiez votre adresse email avant de créer votre cabinet.", { reason: "email_not_verified" });
+  }
   if (request.auth?.token[CLAIM_CABINET_ID]) {
     throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.");
+  }
+  // Membre d'un cabinet (claims pas encore rafraîchis, ou compte d'avant le verrou ci_userCabinets) : refusé.
+  const user = await admin.auth().getUser(uid);
+  if (user.customClaims?.[CLAIM_CABINET_ID]) {
+    throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", { reason: "already_member" });
+  }
+  if (user.email) {
+    const memberships = await admin.firestore().collectionGroup("ci_members").where("email", "==", user.email).limit(1).get();
+    if (!memberships.empty) {
+      throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", { reason: "already_member" });
+    }
   }
 
   const name = requireString(request.data?.name, "nom du cabinet", 120);

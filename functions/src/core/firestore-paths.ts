@@ -20,3 +20,7 @@ export const quoteJobPath = (cabinetId: string, dossierId: string, insurerId: st
 export const offerPath = (cabinetId: string, dossierId: string, insurerId: string) =>
   `ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_offers/${insurerId}`;
 export const documentsPath = (cabinetId: string, dossierId: string) => `ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_documents`;
+/** Mémoire de formulaire propre à un cabinet : servie à son extension dès le premier remplissage réussi. */
+export const cabinetMemoryPath = (cabinetId: string, key: string) => `ci_cabinets/${cabinetId}/ci_formMemories/${key}`;
+/** Comptes déjà rattachés à un cabinet (un par uid) : verrou de `creerMonCabinet` et `accepterInvitation`. */
+export const userCabinetPath = (uid: string) => `ci_userCabinets/${uid}`;

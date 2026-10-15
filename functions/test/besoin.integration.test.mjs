@@ -120,6 +120,9 @@ describe('Validation du besoin', () => {
 
     await saveNeed(need({ coverageLevel: null }));
     assert.equal((await validate()).error?.details?.reason, 'need_incomplete');
+    // Couverture sans aucune garantie : refusée.
+    await saveNeed(need({ mandatoryGuarantees: [], niceToHave: [] }));
+    assert.equal((await validate()).error?.details?.reason, 'need_incomplete');
     assert.equal((await dossier(dossierId)).status, 'complet');
   });
 
@@ -133,8 +136,13 @@ describe('Validation du besoin', () => {
     assert.deepEqual((await events(dossierId)).at(-1).data, { from: 'complet', to: 'besoin_valide', need: true });
   });
 
-  it('refuse une seconde validation', async () => {
-    assert.equal((await validate()).error?.details?.reason, 'invalid_transition');
+  it('une seconde validation ne change rien', async () => {
+    assert.deepEqual((await validate()).data, { status: 'besoin_valide' });
+  });
+
+  it('fige le questionnaire du produit à la validation', async () => {
+    const validated = await dossier(dossierId);
+    assert.ok(Array.isArray(validated.questionnaireSnapshot) && validated.questionnaireSnapshot.length > 0);
   });
 
   it('le statut « besoin_valide » ne se pose que par la validation du besoin', async () => {

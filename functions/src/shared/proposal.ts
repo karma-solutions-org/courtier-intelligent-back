@@ -1,4 +1,5 @@
 // ⚠️ Copie générée par scripts/sync-shared.mjs — ne pas modifier ici.
+import type { NeedAnalysis, NeedSnapshot, Offer, OfferSnapshot } from './models.js';
 import type { DossierStatus } from './statuses.js';
 
 /** Proposition et suivi (Epic E14) : règles communes à l'app et aux functions. */
@@ -25,16 +26,46 @@ export function validateContractNumber(value: unknown): string | null {
 export function validateEffectiveDate(value: unknown, today: Date = new Date()): string | null {
   const text = typeof value === 'string' ? value.trim() : '';
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  if (!match) return 'La date d’effet est obligatoire (AAAA-MM-JJ).';
+  if (!match) return "La date d'effet est obligatoire (AAAA-MM-JJ).";
   const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
   const date = new Date(Date.UTC(year, month - 1, day));
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
-    return 'La date d’effet n’est pas une date valide.';
+    return "La date d'effet n'est pas une date valide.";
   }
   const dayMs = 24 * 60 * 60 * 1000;
   const ref = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
   if (date.getTime() < ref - 366 * dayMs || date.getTime() > ref + 2 * 366 * dayMs) {
-    return 'La date d’effet doit être comprise entre un an avant et deux ans après aujourd’hui.';
+    return "La date d'effet doit être comprise entre un an avant et deux ans après aujourd'hui.";
   }
   return null;
+}
+
+/** Copie figée d'une offre (décision, proposition) : valeurs manquantes ramenées à des valeurs neutres. */
+export function offerSnapshotOf(insurerId: string, insurerName: string | null, offer: Partial<Offer> | undefined | null): OfferSnapshot {
+  return {
+    insurerId,
+    insurerName,
+    quoteNumber: offer?.quoteNumber ?? null,
+    premiumAnnual: offer?.premiumAnnual ?? null,
+    premiumMonthly: offer?.premiumMonthly ?? null,
+    deductibles: offer?.deductibles ?? {},
+    guarantees: offer?.guarantees ?? [],
+    exclusions: offer?.exclusions ?? [],
+    gaps: offer?.gaps ?? [],
+    score: offer?.score ?? null,
+    source: offer?.source ?? null,
+  };
+}
+
+/** Copie figée du besoin, sans sa date de validation ; `null` sans besoin. */
+export function needSnapshotOf(need: Partial<NeedAnalysis> | undefined | null): NeedSnapshot | null {
+  if (!need) return null;
+  return {
+    coverageLevel: need.coverageLevel ?? null,
+    budgetMax: need.budgetMax ?? null,
+    maxDeductible: need.maxDeductible ?? null,
+    mandatoryGuarantees: need.mandatoryGuarantees ?? [],
+    niceToHave: need.niceToHave ?? [],
+    notes: need.notes ?? null,
+  };
 }

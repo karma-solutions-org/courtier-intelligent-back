@@ -117,3 +117,33 @@ describe('sameMapping / fieldOverlap', () => {
     assert.equal(fieldOverlap([], old), 0);
   });
 });
+
+describe('originHost / hostMatches : origines acceptées', () => {
+  const { hostMatches, originHost } = require('../lib/core/origin.utils.js');
+
+  it("localhost seulement dans les emulators, jamais en http ailleurs", () => {
+    assert.equal(originHost('http://localhost:5000', false), null);
+    assert.equal(originHost('http://localhost:5000', true), 'localhost');
+    assert.equal(originHost('http://extranet.axa.fr', true), null);
+    assert.equal(originHost('https://extranet.axa.fr', false), 'extranet.axa.fr');
+    assert.equal(originHost('pas une url', true), null);
+  });
+
+  it('domaine exact ou sous-domaine, pas un domaine qui finit pareil', () => {
+    assert.ok(hostMatches('extranet.axa.fr', ['axa.fr']));
+    assert.ok(hostMatches('axa.fr', ['axa.fr']));
+    assert.ok(!hostMatches('faux-axa.fr', ['axa.fr']));
+    assert.ok(!hostMatches('axa.fr', []));
+  });
+});
+
+describe('mémoire commune : jamais de chemin vide', () => {
+  const { sharedFields } = require('../lib/memoires/memoires.callable.js');
+  it('écarte les champs non associés', () => {
+    const fields = [
+      { fieldKey: 'text:nom', label: 'Nom', type: 'text', order: 0, canonicalPath: 'client.lastName', confidence: 0.9 },
+      { fieldKey: 'text:x', label: 'X', type: 'text', order: 1, canonicalPath: null, confidence: 0.1 },
+    ];
+    assert.deepEqual(sharedFields(fields).map(f => f.fieldKey), ['text:nom']);
+  });
+});

@@ -102,9 +102,13 @@ export function diffNeed(before: NeedInput | null, after: NeedInput): (keyof Nee
   );
 }
 
-/** Un besoin peut être validé quand le niveau de couverture est choisi. */
-export function isNeedValidatable(need: Pick<NeedAnalysis, 'coverageLevel'> | null | undefined): boolean {
-  return !!need && need.coverageLevel !== null && need.coverageLevel !== undefined;
+/** Un besoin peut être validé quand le niveau de couverture est choisi et qu'au moins une garantie est demandée. */
+export function isNeedValidatable(
+  need: Pick<NeedAnalysis, 'coverageLevel'> & Partial<Pick<NeedAnalysis, 'mandatoryGuarantees' | 'niceToHave'>> | null | undefined,
+): boolean {
+  // Au moins une garantie (obligatoire ou souhaitée) : une couverture vide ne se tarifie pas.
+  const guarantees = (need?.mandatoryGuarantees?.length ?? 0) + (need?.niceToHave?.length ?? 0);
+  return !!need && need.coverageLevel !== null && need.coverageLevel !== undefined && guarantees > 0;
 }
 
 // ── Suggestions (E5-3) ────────────────────────────────────────────────────

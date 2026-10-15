@@ -55,6 +55,60 @@ describe("buildProposalEmail", () => {
 
 });
 
+describe("buildProposalEmail : exclusions et écarts avec le besoin", () => {
+  it("liste les exclusions et les écarts (échappés), et rien sans eux", () => {
+    const { html } = buildProposalEmail({
+      ...input,
+      exclusions: ["Conduite <alcool>"],
+      gaps: [{ criterion: "mandatory_guarantee", severity: "ko", message: "Garantie Vol absente" }],
+    });
+    assert.ok(html.includes("Principales exclusions") && html.includes("Conduite &lt;alcool&gt;"));
+    assert.ok(html.includes("Écarts avec la couverture souhaitée") && html.includes("Garantie Vol absente"));
+    const plain = buildProposalEmail(input).html;
+    assert.ok(!plain.includes("Principales exclusions") && !plain.includes("Écarts avec"));
+  });
+});
+
+describe("copies figées, sans suite, doublons", () => {
+  const { conversionOutcome, duplicateReasons, isTransitionAllowed, needSnapshotOf, offerSnapshotOf } = require("../lib/shared/index.js");
+
+  it("offerSnapshotOf / needSnapshotOf : valeurs neutres, sans date de validation", () => {
+    const snapshot = offerSnapshotOf("axa", "AXA", { premiumAnnual: 500, guarantees: [] });
+    assert.deepEqual(snapshot, {
+      insurerId: "axa", insurerName: "AXA", quoteNumber: null, premiumAnnual: 500, premiumMonthly: null, deductibles: {},
+      guarantees: [], exclusions: [], gaps: [], score: null, source: null,
+    });
+    assert.equal(needSnapshotOf(null), null);
+    assert.ok(!("validatedAt" in needSnapshotOf({ coverageLevel: "tiers", validatedAt: "x" })));
+  });
+
+  it("sans suite : terminal, possible depuis toute étape non finale", () => {
+    for (const from of ["brouillon", "complet", "besoin_valide", "tarification", "comparaison", "decision", "proposition_envoyee"]) {
+      assert.ok(isTransitionAllowed(from, "sans_suite"), from);
+    }
+    for (const from of ["souscrit", "refuse", "sans_suite"]) assert.ok(!isTransitionAllowed(from, "sans_suite"), from);
+  });
+
+  it("conversion : refusé compte même en corbeille, sans suite seulement après une proposition", () => {
+    assert.equal(conversionOutcome({ status: "souscrit" }), "won");
+    assert.equal(conversionOutcome({ status: "refuse", deletedAt: new Date() }), "lost");
+    assert.equal(conversionOutcome({ status: "sans_suite", proposal: null }), null);
+    assert.equal(conversionOutcome({ status: "sans_suite", proposal: { sentTo: "a@b.fr" } }), "lost");
+    assert.equal(conversionOutcome({ status: "decision" }), null);
+  });
+
+  it("doublons : SIRET, email, nom + naissance, raison sociale", () => {
+    assert.deepEqual(duplicateReasons({ siret: "123 456 789 00012" }, { siret: "12345678900012" }), ["siret"]);
+    assert.deepEqual(duplicateReasons({ email: "A@B.fr" }, { email: "a@b.fr" }), ["email"]);
+    assert.deepEqual(
+      duplicateReasons({ firstName: "Élodie", lastName: "Durand", birthDate: "1990-01-01" }, { firstName: "elodie", lastName: "DURAND", birthDate: "1990-01-01" }),
+      ["nom_naissance"],
+    );
+    assert.deepEqual(duplicateReasons({ firstName: "Jean", lastName: "Durand" }, { firstName: "Jean", lastName: "Durand" }), []);
+    assert.deepEqual(duplicateReasons({ companyName: "ACME  SAS" }, { companyName: "acme sas" }), ["raison_sociale"]);
+  });
+});
+
 describe("validation de la souscription", () => {
   const today = new Date(NOW);
   it("numéro de contrat obligatoire", () => {

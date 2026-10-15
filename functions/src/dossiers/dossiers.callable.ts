@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
-import { addEvent, loadProduct } from "../core/dossier.utils";
+import { addEvent, cancelledJobUpdate, dossierSchema } from "../core/dossier.utils";
 import { formatReference } from "../core/dossier-reference";
 import {
   assurePath,
@@ -14,8 +14,11 @@ import {
   cabinetPath,
 } from "../core/firestore-paths";
 import {
+  ACTIVE_QUOTE_JOB_STATUSES,
   computeCompleteness,
   DOSSIER_STATUSES,
+  SANS_SUITE_MOTIF_MAX,
+  TERMINAL_DOSSIER_STATUSES,
   EDITABLE_DOSSIER_STATUSES,
   isTransitionAllowed,
   questionFor,
@@ -23,6 +26,7 @@ import {
   type CanonicalData,
   type DossierStatus,
   type QuestionnaireSection,
+  type QuoteJobStatus,
   productDocPath,
 } from "../shared/index.js";
 
@@ -102,6 +106,9 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
       status: "brouillon",
       data,
       completeness: computeCompleteness(schema, data),
+      // Version du questionnaire du produit à la création (le questionnaire est figé à la validation de la couverture).
+      questionnaireVersion: (product.get("questionnaireUpdatedAt") as admin.firestore.Timestamp | undefined)?.toMillis() ?? null,
+      questionnaireSnapshot: null,
       needAnalysis: null,
       decision: null,
       proposal: null,
@@ -155,7 +162,7 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
     if (!EDITABLE_DOSSIER_STATUSES.includes(status)) {
       throw new HttpsError("failed-precondition", "Ce dossier n'est plus modifiable.", { reason: "not_editable" });
     }
-    const { questionnaireSchema: schema } = await loadProduct(tx, cabinetId, dossier.get("productId"));
+    const schema = await dossierSchema(tx, cabinetId, dossier);
 
     for (const [path, value] of entries) {
       const question = questionFor(schema, path);
@@ -227,6 +234,9 @@ export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
       throw new HttpsError("failed-precondition", "La couverture se valide depuis l'étape Couverture du dossier.", { reason: "use_validate_need" });
     }
     // Proposition et réponse de l'assuré : uniquement par propositions-* (email, `proposal`, `outcome`).
+    if (target === "sans_suite") {
+      throw new HttpsError("failed-precondition", "Un dossier se classe sans suite avec un motif.", { reason: "use_sans_suite" });
+    }
     if (from === "proposition_envoyee" || ["proposition_envoyee", "souscrit", "refuse"].includes(target)) {
       throw new HttpsError("failed-precondition", "La proposition et la réponse de l'assuré se gèrent depuis l'onglet Proposition.", {
         reason: "use_proposal",
@@ -237,7 +247,9 @@ export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
         reason: "invalid_transition",
       });
     }
-    const { questionnaireSchema: schema } = await loadProduct(tx, cabinetId, dossier.get("productId"));
+    // Quitter « couverture validée » vers l'arrière rouvre le questionnaire : celui du produit s'applique de nouveau.
+    const reopened = from === "besoin_valide" && target === "complet";
+    const schema = await dossierSchema(tx, cabinetId, dossier, { current: reopened });
     const completeness = computeCompleteness(schema, dossier.get("data") as CanonicalData);
     if (target === "complet" && !completeness.ok) {
       throw new HttpsError(
@@ -252,6 +264,7 @@ export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
       completeness,
       // Quitter « couverture validée » annule la validation.
       ...(from === "besoin_valide" && dossier.get("needAnalysis") ? { "needAnalysis.validatedAt": null } : {}),
+      ...(reopened ? { questionnaireSnapshot: null } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
     addEvent(tx, cabinetId, dossierId, uid, "status_changed", { from, to: target });
@@ -292,6 +305,48 @@ export const assigner = onCall(CALLABLE_OPTIONS, async request => {
     addEvent(tx, cabinetId, dossierId, uid, "assigned", { from, to: assignee });
   });
   return { success: true };
+});
+
+/**
+ * Classe un dossier « sans suite » (statut final), à n'importe quelle étape non finale, avec un motif obligatoire.
+ * Écrit `outcome` ({ result: "sans_suite", motif }) ; les tarifications encore en cours sont annulées.
+ * Données : { dossierId, motif } → { status: "sans_suite", cancelledJobs }.
+ */
+export const classerSansSuite = onCall(CALLABLE_OPTIONS, async request => {
+  const { cabinetId, uid } = await getActiveMembership(request);
+  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const motif = requireString(request.data?.motif, "motif", SANS_SUITE_MOTIF_MAX);
+
+  const db = admin.firestore();
+  const ref = db.doc(dossierPath(cabinetId, dossierId));
+
+  return db.runTransaction(async tx => {
+    const dossier = await tx.get(ref);
+    if (!dossier.exists) {
+      throw new HttpsError("not-found", "Dossier introuvable.");
+    }
+    if (dossier.get("deletedAt")) {
+      throw new HttpsError("failed-precondition", "Ce dossier est dans la corbeille : restaurez-le pour le modifier.", {
+        reason: "dossier_deleted",
+      });
+    }
+    const from = dossier.get("status") as DossierStatus;
+    if (TERMINAL_DOSSIER_STATUSES.includes(from) || !isTransitionAllowed(from, "sans_suite")) {
+      throw new HttpsError("failed-precondition", "Ce dossier est déjà clos.", { reason: "invalid_transition" });
+    }
+    const jobs = await tx.get(ref.collection("ci_quoteJobs"));
+    const active = jobs.docs.filter(job => ACTIVE_QUOTE_JOB_STATUSES.includes(job.get("status") as QuoteJobStatus));
+    for (const job of active) tx.update(job.ref, cancelledJobUpdate("sans_suite"));
+
+    tx.update(ref, {
+      status: "sans_suite",
+      outcome: { result: "sans_suite", motif, contractNumber: null, effectiveDate: null, decidedBy: uid, decidedAt: FieldValue.serverTimestamp() },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    addEvent(tx, cabinetId, dossierId, uid, "status_changed", { from, to: "sans_suite" });
+    addEvent(tx, cabinetId, dossierId, uid, "outcome_recorded", { result: "sans_suite", motif, cancelledJobs: active.length });
+    return { status: "sans_suite" as DossierStatus, cancelledJobs: active.length };
+  });
 });
 
 export { enregistrerBesoin, validerBesoin } from "./besoin.callable";

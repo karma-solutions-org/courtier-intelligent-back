@@ -4,6 +4,8 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { looksLikePersonalData, memoryKey } from "../core/form-memory.utils";
+import { hostMatches, originHost } from "../core/origin.utils";
+import { cabinetMemoryPath } from "../core/firestore-paths";
 import {
   applyInsurerRequirements,
   DISCOVERED_MAX_FIELDS_PER_REPORT,
@@ -81,9 +83,10 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
   const insurer = await db.doc(insurerDocPath(cabinetId, insurerId)).get();
   if (!insurer.exists) throw new HttpsError("not-found", "Assureur introuvable.");
   // Un extranet ne fait évoluer que les produits de son assureur, et seulement depuis l'un de ses domaines.
+  // Page locale (extranet de test) : seulement dans les emulators, jamais en production.
   const domains = (insurer.get("extranetDomains") as string[] | undefined) ?? [];
-  const host = new URL(origin).hostname;
-  if (!host.startsWith("localhost") && !domains.some(domain => host === domain || host.endsWith(`.${domain}`))) {
+  const host = originHost(origin);
+  if (!host || (host !== "localhost" && !hostMatches(host, domains))) {
     throw new HttpsError("permission-denied", "Cette page n'est pas un extranet de l'assureur.");
   }
   // Un assureur ajouté par un cabinet (domaine saisi par le cabinet) ne complète que les produits de ce cabinet :
@@ -117,20 +120,29 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
     Object.assign(mapping, result.mapping);
   }
 
-  // La mémoire du formulaire apprend les nouvelles correspondances (seulement les champs encore sans équivalent).
-  if (Object.keys(mapping).length && !cabinetInsurer) {
-    const memoryRef = db.collection("ci_formMemories").doc(memoryKey(origin, fingerprint));
+  // La mémoire du formulaire DU CABINET apprend les nouvelles correspondances (seulement les champs encore sans
+  // équivalent) : la mémoire commune ne change que par memoires-enregistrer (plusieurs cabinets d'accord).
+  if (Object.keys(mapping).length) {
+    const memoryRef = db.doc(cabinetMemoryPath(cabinetId, memoryKey(origin, fingerprint)));
     await db.runTransaction(async tx => {
       const memory = await tx.get(memoryRef);
       const memoryFields = memory.get("fields") as FormMemoryField[] | undefined;
       if (!memory.exists || !Array.isArray(memoryFields)) return;
-      let changed = false;
-      const next = memoryFields.map(field => {
-        const path = mapping[field.fieldKey];
-        if (!path || field.canonicalPath !== null) return field;
-        changed = true;
-        return { ...field, canonicalPath: path as FormMemoryField["canonicalPath"], confidence: 0.9 };
-      });
+      // La mémoire ne garde que des champs associés (jamais de chemin vide) : les nouveaux champs s'y ajoutent.
+      const known = new Set(memoryFields.map(field => field.fieldKey));
+      const order = memoryFields.reduce((max, field) => Math.max(max, field.order), -1);
+      const appended: FormMemoryField[] = fields
+        .filter(field => mapping[field.fieldKey] && !known.has(field.fieldKey) && field.fieldKey.split(":")[0] === field.kind)
+        .map((field, index) => ({
+          fieldKey: field.fieldKey,
+          label: field.label,
+          type: field.kind,
+          order: Math.min(order + 1 + index, 999),
+          canonicalPath: mapping[field.fieldKey] as FormMemoryField["canonicalPath"],
+          confidence: 0.9,
+        }));
+      const changed = appended.length > 0;
+      const next = [...memoryFields, ...appended];
       if (changed) tx.update(memoryRef, { fields: next, updatedAt: FieldValue.serverTimestamp() });
     });
   }

@@ -122,3 +122,5 @@ function sanitizeValues(raw: unknown): AssureOcrValues {
   return values as AssureOcrValues;
 }
 
+export { verifierDoublon } from "./assures-doublons.callable";
+export { creer, modifier } from "./assures-creation.callable";

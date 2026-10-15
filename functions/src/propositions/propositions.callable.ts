@@ -13,6 +13,10 @@ import {
   type DossierOutcomeResult,
   type DossierStatus,
   insurerDocPath,
+  needSnapshotOf,
+  offerSnapshotOf,
+  type NeedAnalysis,
+  type Offer,
 } from "../shared/index.js";
 import { assureDisplayName, buildProposalEmail } from "./proposition.utils";
 
@@ -62,6 +66,11 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
     if (!offer.exists) {
       throw new HttpsError("failed-precondition", "L'offre retenue est introuvable.");
     }
+    if (offer.get("stale") === true) {
+      throw new HttpsError("failed-precondition", "Les données du dossier ont changé depuis ce tarif : relancez la tarification.", {
+        reason: "offer_stale",
+      });
+    }
     const to = requestedTo ?? (assure.get("email") ? requireEmail(assure.get("email")) : null);
     if (!to) {
       throw new HttpsError("invalid-argument", "L'assuré n'a pas d'adresse email : indiquez le destinataire.", {
@@ -89,6 +98,8 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
       premiumMonthly: offer.get("premiumMonthly") ?? null,
       deductibles: offer.get("deductibles") ?? {},
       guarantees: offer.get("guarantees") ?? [],
+      exclusions: offer.get("exclusions") ?? [],
+      gaps: offer.get("gaps") ?? [],
       justification: decision.justification,
       message,
     });
@@ -96,16 +107,23 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
     tx.create(db.collection(MAIL_COLLECTION).doc(), { to, ...(replyTo ? { replyTo } : {}), message: email });
 
     const resend = from === "proposition_envoyee";
+    // Copies figées de ce qui est envoyé à l'assuré (chaque envoi les remplace).
+    const snapshots = {
+      insurerId: decision.insurerId,
+      offerSnapshot: offerSnapshotOf(decision.insurerId, (insurer.get("name") as string | undefined) ?? null, offer.data() as Partial<Offer>),
+      needSnapshot: needSnapshotOf(dossier.get("needAnalysis") as Partial<NeedAnalysis> | null),
+    };
     tx.update(ref, {
       status: "proposition_envoyee",
       proposal: resend
         ? {
             ...dossier.get("proposal"),
+            ...snapshots,
             sentAt: FieldValue.serverTimestamp(),
             sentTo: to,
             sentBy: uid,
           }
-        : { sentAt: FieldValue.serverTimestamp(), sentTo: to, sentBy: uid },
+        : { ...snapshots, sentAt: FieldValue.serverTimestamp(), sentTo: to, sentBy: uid },
       updatedAt: FieldValue.serverTimestamp(),
     });
     if (!resend) {
@@ -117,7 +135,8 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
 });
 
 /**
- * Réponse de l'assuré à la proposition : souscrit (numéro de contrat et date d'effet obligatoires), refusé ou sans suite.
+ * Réponse de l'assuré à la proposition : souscrit (numéro de contrat et date d'effet obligatoires) ou refusé
+ * (« sans suite » : `dossiers-classerSansSuite`).
  * Écrit `outcome` et passe le dossier dans le statut final correspondant.
  */
 export const enregistrerReponse = onCall(CALLABLE_OPTIONS, async request => {

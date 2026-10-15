@@ -1,6 +1,6 @@
 import { escapeHtml } from "../core/html.utils";
 import { EMAIL_COLORS, emailLayout, emailParagraph, sectionTitle } from "../core/email-layout";
-import type { OfferGuarantee } from "../shared/index.js";
+import type { OfferGap, OfferGuarantee } from "../shared/index.js";
 
 /**
  * Logique pure de la proposition (Epic E14) : contenu des emails et choix des dossiers à relancer.
@@ -24,6 +24,9 @@ export interface ProposalEmailInput {
   premiumMonthly: number | null;
   deductibles: Record<string, number>;
   guarantees: OfferGuarantee[];
+  /** Exclusions de l'offre et écarts avec la couverture souhaitée : l'assuré en est informé (devoir de conseil). */
+  exclusions?: string[];
+  gaps?: OfferGap[];
   justification: string;
   message?: string | null;
 }
@@ -106,6 +109,11 @@ export function buildProposalEmail(input: ProposalEmailInput): { subject: string
       return `<tr>${cell(escapeHtml(g.label))}${cell(details.length ? details.join(" · ") : "Incluse", `text-align:right;color:${c.muted}`)}</tr>`;
     });
 
+  const exclusions = (input.exclusions ?? []).filter(e => typeof e === "string" && e.trim()).map(e => `<li style="margin:0 0 4px">${escapeHtml(e.trim())}</li>`);
+  const gaps = (input.gaps ?? []).filter(g => g?.message).map(g => `<li style="margin:0 0 4px">${escapeHtml(g.message)}</li>`);
+  const list = (items: string[]) =>
+    `<ul style="margin:6px 0 0;padding-left:20px;font-size:14px;line-height:20px;color:${c.text}">${items.join("")}</ul>`;
+
   const contact = [
     cabinet.address ? escapeHtml(cabinet.address) : null,
     cabinet.phone ? `Tél. ${escapeHtml(cabinet.phone)}` : null,
@@ -124,6 +132,12 @@ export function buildProposalEmail(input: ProposalEmailInput): { subject: string
     emailParagraph(paragraph(input.justification)) +
     (guarantees.length ? sectionTitle("Garanties incluses") + table(["Garantie", "Plafond / franchise"], guarantees) : "") +
     (deductibles.length ? sectionTitle("Franchises") + table(["Franchise", "Montant"], deductibles) : "") +
+    (exclusions.length ? sectionTitle("Principales exclusions") + list(exclusions) : "") +
+    (gaps.length
+      ? sectionTitle("Écarts avec la couverture souhaitée") +
+        emailParagraph("Cette offre ne répond pas entièrement à la couverture que vous avez exprimée :") +
+        list(gaps)
+      : "") +
     `<p style="margin:26px 0 14px;font-size:15px;line-height:23px;color:${c.text}">Pour donner suite à cette proposition ou pour toute question, il vous suffit de répondre à cet email. Nous restons à votre disposition.</p>` +
     `<p style="margin:0 0 6px;font-size:15px;line-height:23px;color:${c.text}">Bien cordialement,<br><strong>${escapeHtml(cabinet.name)}</strong></p>`;
 

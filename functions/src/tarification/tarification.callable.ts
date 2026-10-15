@@ -3,9 +3,10 @@ import { DocumentSnapshot, FieldValue, Transaction } from "firebase-admin/firest
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
-import { addEvent, loadProduct } from "../core/dossier.utils";
+import { addEvent, cancelledJobUpdate, dossierSchema, loadProduct } from "../core/dossier.utils";
 import { cabinetPath, documentsPath, dossierPath, offerPath, quoteJobPath } from "../core/firestore-paths";
 import {
+  ACTIVE_QUOTE_JOB_STATUSES,
   buildJobQuoteData,
   canLaunchQuoteJob,
   computeCompleteness,
@@ -15,6 +16,7 @@ import {
   normalizeManualOffer,
   PRICING_DOSSIER_STATUSES,
   questionFor,
+  questionsOf,
   validateAnswer,
   validateManualOffer,
   type CanonicalData,
@@ -95,10 +97,12 @@ export const lancer = onCall(CALLABLE_OPTIONS, async request => {
   return db.runTransaction(async tx => {
     const dossier = await loadPricingDossier(tx, cabinetId, dossierId);
     const insurer = await loadPricingInsurer(tx, cabinetId, insurerId, dossier.get("productId"));
-    const job = await tx.get(jobRef);
-    const { questionnaireSchema } = await loadProduct(tx, cabinetId, dossier.get("productId"));
+    const [job, offer] = await Promise.all([tx.get(jobRef), tx.get(db.doc(offerPath(cabinetId, dossierId, insurerId)))]);
+    const questionnaireSchema = await dossierSchema(tx, cabinetId, dossier);
+    // Tarif obtenu mais périmé (données du dossier modifiées depuis) : il se relance.
+    const staleCapture = job.get("status") === "captured" && offer.get("stale") === true;
 
-    if (!canLaunchQuoteJob(job.exists ? { status: job.get("status") as QuoteJobStatus } : null)) {
+    if (!staleCapture && !canLaunchQuoteJob(job.exists ? { status: job.get("status") as QuoteJobStatus } : null)) {
       throw new HttpsError(
         "failed-precondition",
         job.get("status") === "captured" ? "Le tarif de cet assureur est déjà obtenu." : "Une tarification est déjà en cours chez cet assureur.",
@@ -112,6 +116,8 @@ export const lancer = onCall(CALLABLE_OPTIONS, async request => {
       status: "requested",
       ownerUid: uid,
       quoteData: buildJobQuoteData(questionnaireSchema, dossier.get("data") as CanonicalData),
+      // Chemins des questions du produit : l'extension sait ce que le dossier peut fournir (le reste est « manquant »).
+      productPaths: [...new Set(questionsOf(questionnaireSchema).map(question => question.canonicalPath))],
       missingFields: [],
       currentStep: null,
       totalSteps: null,
@@ -148,7 +154,8 @@ export const completer = onCall(CALLABLE_OPTIONS, async request => {
     if (!job.exists || job.get("status") !== "needs_info") {
       throw new HttpsError("failed-precondition", "Cette tarification n'attend pas d'informations.", { reason: "not_waiting_info" });
     }
-    const { questionnaireSchema: schema } = await loadProduct(tx, cabinetId, dossier.get("productId"));
+    const schema = await dossierSchema(tx, cabinetId, dossier);
+    const offers = await tx.get(dossier.ref.collection("ci_offers"));
 
     // Seuls les champs demandés par l'extension sont acceptés, et tous doivent être renseignés.
     const fields = new Map(((job.get("missingFields") as MissingField[] | undefined) ?? []).map(f => [f.canonicalPath as string, f]));
@@ -167,8 +174,14 @@ export const completer = onCall(CALLABLE_OPTIONS, async request => {
       throw new HttpsError("invalid-argument", `Renseignez : ${unanswered.map(f => f.label).join(", ")}.`, { reason: "incomplete" });
     }
 
-    const data = { ...(dossier.get("data") as CanonicalData), ...(answers as CanonicalData) };
+    const previous = dossier.get("data") as CanonicalData;
+    const data = { ...previous, ...(answers as CanonicalData) };
     tx.update(dossier.ref, { data, completeness: computeCompleteness(schema, data), updatedAt: FieldValue.serverTimestamp() });
+    // Une réponse qui MODIFIE une donnée déjà connue rend périmés les tarifs déjà obtenus (calculés sur l'ancienne).
+    const changed = Object.keys(answers).filter(path => previous[path as keyof CanonicalData] !== undefined && JSON.stringify(previous[path as keyof CanonicalData]) !== JSON.stringify((answers as Record<string, unknown>)[path]));
+    const stale = changed.length ? offers.docs.filter(offer => offer.get("stale") !== true) : [];
+    for (const offer of stale) tx.update(offer.ref, { stale: true, staleSince: FieldValue.serverTimestamp() });
+    if (stale.length) addEvent(tx, cabinetId, dossierId, uid, "offers_stale", { insurers: stale.map(o => o.id), fields: changed });
     // Un nouveau `quoteData` est le signal de reprise pour l'extension ; elle repose elle-même le statut du job.
     tx.update(jobRef, { quoteData: buildJobQuoteData(schema, data), missingFields: [], updatedAt: FieldValue.serverTimestamp() });
     addEvent(tx, cabinetId, dossierId, uid, "pricing_completed", { insurerId, fields: Object.keys(answers) });
@@ -238,5 +251,31 @@ export const saisirOffre = onCall(CALLABLE_OPTIONS, async request => {
     }
     addEvent(tx, cabinetId, dossierId, uid, "offer_entered", { insurerId, replaced: previous.exists, withDocument: documentId !== null });
     return { dossierStatus: status, documentId };
+  });
+});
+
+/**
+ * Annule une tarification bloquée (extension fermée, extranet en panne…) : le job passe en « annulé », l'extension
+ * s'arrête, la relance reste possible. Tout membre du cabinet peut le faire (pas seulement le courtier du job).
+ * Données : { dossierId, insurerId } → { status: "cancelled" }.
+ */
+export const annuler = onCall(CALLABLE_OPTIONS, async request => {
+  const { cabinetId, uid } = await getActiveMembership(request);
+  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const insurerId = requireString(request.data?.insurerId, "assureur");
+
+  const db = admin.firestore();
+  const jobRef = db.doc(quoteJobPath(cabinetId, dossierId, insurerId));
+  return db.runTransaction(async tx => {
+    const [dossier, job] = await Promise.all([tx.get(db.doc(dossierPath(cabinetId, dossierId))), tx.get(jobRef)]);
+    if (!dossier.exists || !job.exists) {
+      throw new HttpsError("not-found", "Tarification introuvable.");
+    }
+    if (!ACTIVE_QUOTE_JOB_STATUSES.includes(job.get("status") as QuoteJobStatus)) {
+      throw new HttpsError("failed-precondition", "Cette tarification n'est pas en cours.", { reason: "job_not_active" });
+    }
+    tx.update(jobRef, cancelledJobUpdate("annule_par_courtier"));
+    addEvent(tx, cabinetId, dossierId, uid, "pricing_cancelled", { insurerId, from: job.get("status"), owner: job.get("ownerUid") ?? null });
+    return { status: "cancelled" as QuoteJobStatus };
   });
 });

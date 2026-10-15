@@ -78,6 +78,34 @@ describe('Création du cabinet avec son offre', () => {
   });
 });
 
+describe('Inscription : creerMonCabinet et accepterInvitation', () => {
+  it('exige un email vérifié, et un seul cabinet par compte', async () => {
+    await admin.auth().createUser({ email: 'inscription@test.fr', password: PASSWORD });
+    const unverified = await call('cabinets-creerMonCabinet', await signIn('inscription@test.fr'), { name: 'Nouveau' });
+    assert.equal(unverified.error?.details?.reason, 'email_not_verified');
+
+    const user = await admin.auth().getUserByEmail('inscription@test.fr');
+    await admin.auth().updateUser(user.uid, { emailVerified: true });
+    const token = await signIn('inscription@test.fr');
+    const [first, second] = await Promise.all([
+      call('cabinets-creerMonCabinet', token, { name: 'Nouveau' }),
+      call('cabinets-creerMonCabinet', token, { name: 'Doublon' }),
+    ]);
+    assert.equal([first, second].filter(r => r.data?.cabinetId).length, 1, 'deux appels simultanés : un seul cabinet');
+    const again = await call('cabinets-creerMonCabinet', token, { name: 'Encore' });
+    assert.ok(again.error, 'déjà rattaché');
+  });
+
+  it("refuse d'accepter une invitation sans email vérifié, ou déjà membre d'un cabinet", async () => {
+    await db.doc(`ci_cabinets/${cabinetId}/ci_invitations/inv-1`).set({
+      email: 'invite@test.fr', role: 'courtier', status: 'pending', expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 86400000),
+    });
+    await admin.auth().createUser({ email: 'invite@test.fr', password: PASSWORD });
+    const refused = await call('equipe-accepterInvitation', await signIn('invite@test.fr'), { cabinetId, invitationId: 'inv-1' });
+    assert.equal(refused.error?.details?.reason, 'email_not_verified');
+  });
+});
+
 describe('Un compte, un appareil', () => {
   it("le premier appareil se lie au compte et la connexion est tracée", async () => {
     const result = await ouvrir(await signIn('courtier@test.fr'), DEVICE_A);

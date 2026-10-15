@@ -83,8 +83,10 @@ service cloud.firestore {
         && offer.capturedAt == request.time;
     }
 
+    // Un job annulé (corbeille, sans suite, tarification-annuler) ne reprend jamais depuis l'extension.
     function ciExtJobUpdate() {
       return request.resource.data.ownerUid == resource.data.ownerUid
+        && resource.data.status != 'cancelled'
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['status', 'currentStep', 'totalSteps', 'error', 'attempts', 'missingFields', 'updatedAt'])
         && request.resource.data.status in ['analyzing', 'needs_info', 'filling', 'awaiting_submit', 'captured', 'failed'];
@@ -102,6 +104,14 @@ service cloud.firestore {
     match /ci_formMemories/{memoryKey} {
       allow read: if ciExtAny();
       allow write: if false;
+    }
+    // Propositions de mémoire commune (en attente d'un deuxième cabinet) et verrou « un compte = un cabinet » :
+    // functions seulement.
+    match /ci_formMemoryCandidates/{memoryKey} {
+      allow read, write: if false;
+    }
+    match /ci_userCabinets/{uid} {
+      allow read, write: if false;
     }
 
     // ── Signalements de l'extension (AUCUNE donnée client) : création seule.
@@ -186,6 +196,13 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Mémoire des formulaires propre au cabinet (structure seulement) : lue par son extension, écrite par memoires-*
+      // et champs-signaler. Elle sert tout de suite au cabinet ; la mémoire commune attend l'accord de 2 cabinets.
+      match /ci_formMemories/{memoryKey} {
+        allow read: if ciExtActive(cabinetId);
+        allow write: if false;
+      }
+
       // Produits propres au cabinet : lus par l'app du cabinet, écrits par les functions produits-* et champs-signaler.
       match /ci_products/{productId} {
         allow read: if inCabinet(cabinetId);
@@ -227,14 +244,12 @@ service cloud.firestore {
         }
 
         allow read: if inCabinet(cabinetId);
-        allow create: if inCabinet(cabinetId)
-          && assureAssureValid(request.resource.data)
-          && request.resource.data.createdBy == request.auth.uid
-          && request.resource.data.createdAt == request.time
-          && !request.resource.data.keys().hasAny(['updatedAt', 'deletedAt', 'deletedBy']);
+        // Création : uniquement par la function assures-creer (doublon SIRET / email bloquant, vérifié en transaction).
+        // SIRET et email : modifiés uniquement par la function assures-modifier (même contrôle de doublon).
+        allow create: if false;
         allow update: if inCabinet(cabinetId)
           && assureAssureValid(request.resource.data)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdBy', 'createdAt', 'deletedAt', 'deletedBy'])
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdBy', 'createdAt', 'deletedAt', 'deletedBy', 'siret', 'email'])
           && request.resource.data.updatedAt == request.time;
         allow delete: if false;
 
@@ -248,9 +263,12 @@ service cloud.firestore {
         allow read: if inCabinet(cabinetId);
         // Création, données, besoin, décision, proposition, issue, statut, assignation et référence passent par les functions :
         // elles appliquent la machine à états, la complétude et la numérotation.
+        // Suppression : jamais depuis l'app (corbeille et suppression définitive par les functions corbeille-*, qui
+        // refusent un dossier dont la proposition a été envoyée).
         allow create, delete: if false;
+        // Liste BLANCHE : tout champ nouveau est refusé par défaut.
         allow update: if inCabinet(cabinetId)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['reference', 'completeness', 'createdAt', 'createdBy', 'status', 'assignedTo', 'data', 'draft', 'assureId', 'productId', 'needAnalysis', 'decision', 'proposal', 'outcome', 'deletedAt', 'deletedBy', 'deletedWith']);
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt']);
 
         // Jobs de tarification, offres, documents : lus par le cabinet. Jobs et offres sont écrits par les functions
         // tarification-* (besoin validé, assureur activé, offre contrôlée) et par l'extension (voir plus bas) ;
@@ -265,9 +283,19 @@ service cloud.firestore {
           allow update: if ciExtActive(cabinetId) && resource.data.ownerUid == request.auth.uid && ciExtJobUpdate();
         }
 
+        // Seulement pendant la tarification (dossier hors corbeille), pour un job non annulé, et jamais par-dessus
+        // une offre saisie à la main par le courtier.
+        function ciExtDossierPricing() {
+          let dossier = get(/databases/$(database)/documents/ci_cabinets/$(cabinetId)/ci_dossiers/$(dossierId)).data;
+          return dossier.get('status', null) in ['tarification', 'comparaison']
+            && dossier.get('deletedAt', null) == null;
+        }
         match /ci_offers/{insurerId} {
           allow create, update: if ciExtActive(cabinetId)
+            && ciExtDossierPricing()
+            && (resource == null || resource.data.get('source', null) != 'manual')
             && get(/databases/$(database)/documents/ci_cabinets/$(cabinetId)/ci_dossiers/$(dossierId)/ci_quoteJobs/$(insurerId)).data.ownerUid == request.auth.uid
+            && get(/databases/$(database)/documents/ci_cabinets/$(cabinetId)/ci_dossiers/$(dossierId)/ci_quoteJobs/$(insurerId)).data.status != 'cancelled'
             && request.resource.data.source == 'auto'
             && request.resource.data.keys().hasOnly(['quoteNumber', 'premiumAnnual', 'premiumMonthly', 'deductibles',
                                                      'guarantees', 'exclusions', 'source', 'capturedAt'])

@@ -9,6 +9,10 @@ const {
   assureDisplayName,
   buildSearchQuery,
   cleanSearchInput,
+  dossierTerms,
+  DOSSIER_SEARCH_FIELDS,
+  periodOf,
+  sortOf,
   pageOf,
   toAssureSearchDoc,
   toDossierSearchDoc,
@@ -38,7 +42,9 @@ describe("Documents indexés", () => {
       siret: null,
       city: "Lyon",
       postalCode: "69001",
+      createdAt: null,
       deleted: true,
+      deletedAt: 1000,
     });
   });
 
@@ -82,6 +88,7 @@ describe("Requête de recherche", () => {
     assert.equal(cleanSearchInput("x".repeat(500)).length, 100);
     assert.deepEqual(pageOf({}), { size: 50, from: 0 });
     assert.deepEqual(pageOf({ size: 1000, from: -5 }), { size: 200, from: 0 });
+    assert.deepEqual(pageOf({ size: 50, from: 1_000_000 }), { size: 50, from: 9_950 });
   });
 });
 
@@ -97,5 +104,29 @@ describe("Préfixe des index", () => {
     } finally {
       process.env = saved;
     }
+  });
+});
+
+describe("Filtres, période et tri", () => {
+  it("filtres des dossiers : valeurs connues seulement, en liste", () => {
+    assert.deepEqual(dossierTerms({ status: ["brouillon", "inconnu"], productId: "auto", assignedTo: ["u 1", "u1"] }), {
+      status: ["brouillon"], productId: ["auto"], assignedTo: ["u1"], assureId: [],
+    });
+  });
+
+  it("période de suppression (ms ou ISO) et filtres dans la requête", () => {
+    const period = periodOf("deletedAt", { from: "2026-01-01T00:00:00Z", to: 5 });
+    assert.deepEqual(period, { field: "deletedAt", gte: Date.parse("2026-01-01T00:00:00Z"), lte: 5 });
+    assert.equal(periodOf("deletedAt", {}), null);
+    const query = buildSearchQuery("cab1", "", DOSSIER_SEARCH_FIELDS, { deleted: true, terms: { status: ["refuse"] }, period });
+    assert.deepEqual(query.bool.filter.slice(2), [
+      { terms: { "status.keyword": ["refuse"] } },
+      { range: { deletedAt: { gte: period.gte, lte: 5 } } },
+    ]);
+  });
+
+  it("sans texte : les plus récents d'abord ; avec texte : pertinence", () => {
+    assert.deepEqual(sortOf("", "deletedAt"), [{ deletedAt: { order: "desc", missing: "_last", unmapped_type: "long" } }]);
+    assert.deepEqual(sortOf("dupont", "deletedAt"), []);
   });
 });

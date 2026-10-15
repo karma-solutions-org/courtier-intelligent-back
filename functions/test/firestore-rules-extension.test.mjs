@@ -39,7 +39,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'ci_cabinets/A/ci_members/courtier-a'), { role: 'courtier', status: 'active', session });
     await setDoc(doc(db, 'ci_cabinets/A/ci_members/admin-a'), { role: 'admin', status: 'active', session: { ...session, authTime: APP_AUTH_TIME + 1, extensionAuthTime: EXT_AUTH_TIME + 1 } });
     await setDoc(doc(db, 'ci_cabinets/B/ci_members/courtier-b'), { role: 'courtier', status: 'active', session });
-    await setDoc(doc(db, 'ci_cabinets/A/ci_dossiers/d1'), { status: 'complet', data: { 'client.lastName': 'Dupont' } });
+    await setDoc(doc(db, 'ci_cabinets/A/ci_dossiers/d1'), { status: 'tarification', data: { 'client.lastName': 'Dupont' } });
     await setDoc(doc(db, JOB), { ownerUid: 'courtier-a', status: 'requested', quoteData: { 'client.lastName': 'Dupont' }, updatedAt: Timestamp.now() });
     await setDoc(doc(db, OTHER_JOB), { ownerUid: 'admin-a', status: 'requested', quoteData: {}, updatedAt: Timestamp.now() });
     await setDoc(doc(db, 'ci_cabinets/A/ci_assures/a1'), { firstName: 'Jean' });
@@ -130,6 +130,37 @@ describe("Extension : ce qu'elle écrit", () => {
     await assertFails(setDoc(doc(ext(), OFFER), autoOffer({ score: 99 })));
     await assertFails(setDoc(doc(ext(), OFFER), autoOffer({ gaps: [] })));
     await assertFails(setDoc(doc(ext(), OFFER), autoOffer({ source: 'manual' })));
+  });
+
+  it("n'écrit d'offre que pendant la tarification, hors corbeille, et jamais par-dessus une offre manuelle", async () => {
+    const dossier = path => env.withSecurityRulesDisabled(async context => updateDoc(doc(context.firestore(), 'ci_cabinets/A/ci_dossiers/d1'), path));
+    await dossier({ status: 'comparaison' });
+    await assertSucceeds(setDoc(doc(ext(), OFFER), autoOffer()));
+    await dossier({ status: 'decision' });
+    await assertFails(setDoc(doc(ext(), OFFER), autoOffer()));
+    await dossier({ status: 'tarification', deletedAt: Timestamp.now() });
+    await assertFails(setDoc(doc(ext(), OFFER), autoOffer()));
+    await dossier({ deletedAt: deleteField() });
+    await env.withSecurityRulesDisabled(async context => setDoc(doc(context.firestore(), OFFER), { source: 'manual', premiumAnnual: 900 }));
+    await assertFails(setDoc(doc(ext(), OFFER), autoOffer()));
+  });
+
+  it("un job annulé ne reprend pas, et ne reçoit plus d'offre", async () => {
+    await env.withSecurityRulesDisabled(async context => updateDoc(doc(context.firestore(), JOB), { status: 'cancelled' }));
+    await assertFails(updateDoc(doc(ext(), JOB), { status: 'filling' }));
+    await assertFails(setDoc(doc(ext(), OFFER), autoOffer()));
+  });
+
+  it('lit la mémoire de formulaires de son cabinet, pas celle des autres, sans pouvoir y écrire', async () => {
+    await env.withSecurityRulesDisabled(async context => {
+      await setDoc(doc(context.firestore(), 'ci_cabinets/A/ci_formMemories/m1'), { fields: [] });
+      await setDoc(doc(context.firestore(), 'ci_cabinets/B/ci_formMemories/m1'), { fields: [] });
+    });
+    await assertSucceeds(getDoc(doc(ext(), 'ci_cabinets/A/ci_formMemories/m1')));
+    await assertFails(getDoc(doc(ext(), 'ci_cabinets/B/ci_formMemories/m1')));
+    await assertFails(getDoc(doc(app(), 'ci_cabinets/A/ci_formMemories/m1')));
+    await assertFails(setDoc(doc(ext(), 'ci_cabinets/A/ci_formMemories/m2'), { fields: [] }));
+    await assertFails(getDoc(doc(ext(), 'ci_formMemoryCandidates/m1')));
   });
 
   it('refuse une offre sans prime, mal typée, ou à la date fournie par le client', async () => {

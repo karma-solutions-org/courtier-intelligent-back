@@ -15,9 +15,9 @@ export const PRICING_DOSSIER_STATUSES: DossierStatus[] = ['besoin_valide', 'tari
 /** Jobs pris en charge par l'extension : on ne les relance pas, on rouvre l'extranet. */
 export const ACTIVE_QUOTE_JOB_STATUSES: QuoteJobStatus[] = ['requested', 'analyzing', 'needs_info', 'filling', 'awaiting_submit'];
 
-/** Un job se lance quand il n'existe pas encore, et se relance quand il a échoué. */
+/** Un job se lance quand il n'existe pas encore, et se relance quand il a échoué ou a été annulé. */
 export function canLaunchQuoteJob(job: Pick<QuoteJob, 'status'> | null | undefined): boolean {
-  return !job || job.status === 'failed';
+  return !job || job.status === 'failed' || job.status === 'cancelled';
 }
 
 /** Assureurs proposés pour un produit : ceux qui le tarifent, parmi ceux activés par le cabinet (aucun choix = tous). */
