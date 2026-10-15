@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { isCanonicalPath, isRelevantField, mergeDiscoveredFields, DISCOVERED_SECTION_TITLE } = require('../lib/shared/index.js');
+const { isCanonicalPath, isRelevantField, mergeDiscoveredFields, schemaForCabinet, DISCOVERED_SECTION_TITLE } = require('../lib/shared/index.js');
 
 const SCHEMA = [
   {
@@ -117,5 +117,26 @@ describe('Exigences des extranets', () => {
   it('un champ découvert obligatoire sur l’extranet crée une question obligatoire', () => {
     const { added } = mergeDiscoveredFields(SCHEMA, [field('Kilométrage annuel', { required: true })], A);
     assert.equal(added[0].required, true);
+  });
+});
+
+describe('schemaForCabinet', () => {
+  const learned = (insurerId) => ({
+    canonicalPath: `extra.${insurerId}`, label: insurerId, type: 'text', required: true,
+    discoveredOn: [{ insurerId, origin: 'https://x', fieldKey: 'k' }],
+  });
+  const schema = [...SCHEMA, { title: DISCOVERED_SECTION_TITLE, discovered: true, questions: [learned('axa'), learned('maif')] }];
+
+  it('garde seulement les questions des assureurs activés', () => {
+    const result = schemaForCabinet(schema, ['maif']);
+    assert.deepEqual(result.flatMap(s => s.questions.map(q => q.label)), ['Marque', 'maif']);
+  });
+
+  it('retire la section découverte quand elle est vide', () => {
+    assert.equal(schemaForCabinet(schema, ['allianz']).length, 1);
+  });
+
+  it('aucun assureur choisi : tout le questionnaire', () => {
+    assert.equal(schemaForCabinet(schema, []), schema);
   });
 });

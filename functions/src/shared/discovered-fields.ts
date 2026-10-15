@@ -210,3 +210,18 @@ export function applyInsurerRequirements(
   }));
   return { schema: next, changed };
 }
+
+/**
+ * Questionnaire vu par un cabinet : une question découverte sur un extranet n'est gardée que si l'un de ses assureurs
+ * est activé par le cabinet (les questions des autres assureurs ne le concernent pas et ne bloquent pas ses dossiers).
+ * Aucun assureur choisi = tous les assureurs, comme pour `enabledInsurers` ailleurs.
+ */
+export function schemaForCabinet(schema: QuestionnaireSection[], enabledInsurers: string[]): QuestionnaireSection[] {
+  if (!enabledInsurers.length) return schema;
+  const enabled = new Set(enabledInsurers);
+  const visible = (question: Question): boolean =>
+    !question.discoveredOn?.length || question.discoveredOn.some(source => source.insurerId === null || enabled.has(source.insurerId));
+  return schema
+    .map(section => ({ ...section, questions: section.questions.filter(visible) }))
+    .filter(section => !section.discovered || section.questions.length > 0);
+}

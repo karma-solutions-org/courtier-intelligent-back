@@ -63,7 +63,8 @@ function validateFields(raw: unknown): DiscoveredFieldInput[] {
  * La mémoire du formulaire apprend ensuite que ce champ correspond à la nouvelle question : l'extension le remplira.
  */
 export const signaler = onCall(CALLABLE_OPTIONS, async request => {
-  const { cabinetId } = await getActiveMembership(request);
+  // Appelée par l'extension : c'est sa session (extensionAuthTime) qui est vérifiée, pas celle de l'app.
+  const { cabinetId } = await getActiveMembership(request, { extension: true });
   const insurerId = requireString(request.data?.insurerId, "assureur", 100);
   const origin = request.data?.origin;
   const fingerprint = request.data?.formFingerprint;
