@@ -4,7 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { looksLikePersonalData, memoryKey } from "../core/form-memory.utils";
-import { hostMatches, originHost } from "../core/origin.utils";
+import { isInsurerExtranetOrigin } from "../core/origin.utils";
 import { cabinetMemoryPath } from "../core/firestore-paths";
 import {
   applyInsurerRequirements,
@@ -83,10 +83,9 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
   const insurer = await db.doc(insurerDocPath(cabinetId, insurerId)).get();
   if (!insurer.exists) throw new HttpsError("not-found", "Assureur introuvable.");
   // Un extranet ne fait évoluer que les produits de son assureur, et seulement depuis l'un de ses domaines.
-  // Page locale (extranet de test) : seulement dans les emulators, jamais en production.
+  // Page locale (extranet de démo) : dans les emulators, ou pour un assureur du cabinet qui déclare ce domaine:port.
   const domains = (insurer.get("extranetDomains") as string[] | undefined) ?? [];
-  const host = originHost(origin);
-  if (!host || (host !== "localhost" && !hostMatches(host, domains))) {
+  if (!isInsurerExtranetOrigin(origin, domains, { cabinetInsurer })) {
     throw new HttpsError("permission-denied", "Cette page n'est pas un extranet de l'assureur.");
   }
   // Un assureur ajouté par un cabinet (domaine saisi par le cabinet) ne complète que les produits de ce cabinet :

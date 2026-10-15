@@ -137,6 +137,30 @@ describe('originHost / hostMatches : origines acceptées', () => {
   });
 });
 
+describe('isInsurerExtranetOrigin : signalement de champs', () => {
+  const { isInsurerExtranetOrigin } = require('../lib/core/origin.utils.js');
+  const prod = cabinetInsurer => ({ cabinetInsurer, emulator: false });
+
+  it('un domaine https de l’assureur, ou un sous-domaine', () => {
+    assert.ok(isInsurerExtranetOrigin('https://extranet.axa.fr', ['axa.fr'], prod(false)));
+    assert.ok(!isInsurerExtranetOrigin('https://faux-axa.fr', ['axa.fr'], prod(true)));
+  });
+
+  it('localhost hors emulators : seulement un assureur du cabinet qui déclare ce domaine:port exact', () => {
+    assert.ok(isInsurerExtranetOrigin('http://localhost:8091', ['localhost:8091'], prod(true)));
+    // Autre port, port absent, ou « localhost » sans port déclaré : refusé.
+    assert.ok(!isInsurerExtranetOrigin('http://localhost:8092', ['localhost:8091'], prod(true)));
+    assert.ok(!isInsurerExtranetOrigin('http://localhost', ['localhost'], prod(true)));
+    assert.ok(!isInsurerExtranetOrigin('http://localhost:8091', ['localhost'], prod(true)));
+    // Assureur du catalogue commun : jamais depuis localhost hors emulators (questionnaire commun protégé).
+    assert.ok(!isInsurerExtranetOrigin('http://localhost:8090', ['localhost:8090'], prod(false)));
+  });
+
+  it('localhost dans les emulators : accepté', () => {
+    assert.ok(isInsurerExtranetOrigin('http://localhost:8090', [], { cabinetInsurer: false, emulator: true }));
+  });
+});
+
 describe('mémoire commune : jamais de chemin vide', () => {
   const { sharedFields } = require('../lib/memoires/memoires.callable.js');
   it('écarte les champs non associés', () => {
