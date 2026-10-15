@@ -1,7 +1,7 @@
 {
   "indexes": [
     {
-      "collectionGroup": "offers",
+      "collectionGroup": "ci_offers",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
         {
@@ -15,7 +15,7 @@
       ]
     },
     {
-      "collectionGroup": "quoteJobs",
+      "collectionGroup": "ci_quoteJobs",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
         {
@@ -29,7 +29,7 @@
       ]
     },
     {
-      "collectionGroup": "invitations",
+      "collectionGroup": "ci_invitations",
       "queryScope": "COLLECTION",
       "fields": [
         {
