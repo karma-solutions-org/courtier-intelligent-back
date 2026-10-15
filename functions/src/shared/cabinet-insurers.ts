@@ -35,7 +35,9 @@ export function parseExtranetUrl(raw: string): { url: string; domain: string } |
   if (url.protocol !== 'https:' && !(local && url.protocol === 'http:')) return null;
   if (url.username || url.password) return null;
   if (!local && !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(url.hostname)) return null;
-  return { url: url.toString().slice(0, 500), domain: url.hostname.toLowerCase() };
+  // localhost : le port fait partie du domaine (« localhost:8091 »), comme dans l'extension.
+  const domain = url.hostname === 'localhost' ? url.host : url.hostname;
+  return { url: url.toString().slice(0, 500), domain: domain.toLowerCase() };
 }
 
 /** Catalogue vu par un cabinet : les assureurs globaux, puis les siens (hors archivés), triés par nom. */

@@ -97,10 +97,17 @@ describe('Validation : un JSON invalide est détecté', () => {
     assert.ok(http.issues.some(i => /https/.test(i.message)));
     const local = withCatalog(edit => edit('insurers/assureur-a.json', i => {
       i.extranetUrl = 'http://localhost:8090/index.html';
-      i.extranetDomains = ['localhost'];
+      i.extranetDomains = ['localhost:8090'];
       return i;
     }));
     assert.deepEqual(local.issues, []);
+    // Comme dans l'extension : pour localhost, le port fait partie du domaine.
+    const noPort = withCatalog(edit => edit('insurers/assureur-a.json', i => {
+      i.extranetUrl = 'http://localhost:8090/index.html';
+      i.extranetDomains = ['localhost'];
+      return i;
+    }));
+    assert.ok(noPort.issues.some(i => /ne couvre pas/.test(i.message)));
   });
 
   it('une offre avec une limite invalide', () => {

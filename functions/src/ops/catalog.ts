@@ -137,7 +137,8 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
     let host: string | null = null;
     try {
       const url = new URL(data.extranetUrl);
-      host = url.hostname;
+      // localhost : le port fait partie du domaine, comme dans l'extension (« localhost:8090 »).
+      host = url.hostname === "localhost" ? url.host : url.hostname;
       // http n'est accepté que pour un extranet de démonstration servi en local (localhost).
       if (url.protocol !== "https:" && !(url.protocol === "http:" && url.hostname === "localhost")) {
         add(file, "extranetUrl doit être en https (http accepté uniquement pour localhost)");
