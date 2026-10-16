@@ -17,3 +17,4 @@ export * from './assure-documents.js';
 export * from './discovered-fields.js';
 export * from './cabinet-insurers.js';
 export * from './cabinet-products.js';
+export * from './vehicle-lookup.js';

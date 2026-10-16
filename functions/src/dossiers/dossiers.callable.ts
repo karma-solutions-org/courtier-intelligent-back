@@ -28,6 +28,7 @@ import {
   type QuestionnaireSection,
   type QuoteJobStatus,
   productDocPath,
+  isCabinetProductId,
 } from "../shared/index.js";
 
 const MAX_PATCH_FIELDS = 100;
@@ -85,6 +86,13 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
     }
     if (!product.exists || product.get("active") !== true || product.get("archived") === true) {
       throw new HttpsError("not-found", "Produit introuvable ou inactif.");
+    }
+    // Produit du catalogue modifié ou retiré par le cabinet : remplacé par sa fiche du cabinet.
+    if (!isCabinetProductId(productId)) {
+      const replaced = await tx.get(db.collection(`${cabinetPath(cabinetId)}/ci_products`).where("replaces", "==", productId).limit(1));
+      if (!replaced.empty) {
+        throw new HttpsError("not-found", "Produit introuvable ou inactif.");
+      }
     }
     const enabled = (cabinet.get("enabledProducts") as string[] | undefined) ?? [];
     if (enabled.length > 0 && !enabled.includes(productId)) {

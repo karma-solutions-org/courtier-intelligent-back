@@ -134,25 +134,91 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
   return { id };
 });
 
-/** Enregistre le nom, le questionnaire et les garanties d'un produit du cabinet. */
+/** Produit du catalogue global que le cabinet n'a encore ni modifié ni retiré. */
+async function existingGlobalProduct(cabinetId: string, productId: string) {
+  const snapshot = await admin.firestore().doc(productDocPath(cabinetId, productId)).get();
+  if (!snapshot.exists || snapshot.get("active") === false) {
+    throw new HttpsError("not-found", "Produit introuvable.");
+  }
+  const replaced = await productsCollection(cabinetId).where("replaces", "==", productId).limit(1).get();
+  if (!replaced.empty) {
+    throw new HttpsError("failed-precondition", "Ce produit a déjà été modifié ou retiré par le cabinet.");
+  }
+  return snapshot;
+}
+
+/**
+ * Remplace, pour ce cabinet seulement, un produit du catalogue global par une fiche du cabinet (les autres cabinets
+ * gardent l'original). Activé à sa place s'il l'était.
+ */
+async function replaceGlobalProduct(cabinetId: string, uid: string, globalId: string, data: Record<string, unknown>): Promise<string> {
+  const id = await newProductId(cabinetId, data.name as string);
+  const db = admin.firestore();
+  await db.runTransaction(async tx => {
+    const cabinet = await tx.get(db.doc(cabinetPath(cabinetId)));
+    const enabled = (cabinet.get("enabledProducts") as string[] | undefined) ?? [];
+    tx.create(productsCollection(cabinetId).doc(id), {
+      ...data,
+      active: true,
+      custom: true,
+      basedOn: globalId,
+      replaces: globalId,
+      createdBy: uid,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    if (enabled.includes(globalId)) {
+      const next = enabled.filter(x => x !== globalId);
+      tx.update(cabinet.ref, { enabledProducts: data.archived === true ? next : [...next, id] });
+    }
+  });
+  return id;
+}
+
+/**
+ * Enregistre le nom, le questionnaire et les garanties d'un produit. Un produit du catalogue global est copié dans le
+ * cabinet (voir replaceGlobalProduct) : le nouvel identifiant est renvoyé.
+ */
 export const modifier = onCall({ ...CALLABLE_OPTIONS, memory: "512MiB" }, async request => {
   const { cabinetId, uid } = await assertCabinetAdmin(request);
   const productId = requireString(request.data?.id, "produit", 100);
-  const ref = await existingCabinetProduct(cabinetId, productId);
+  const global = !isCabinetProductId(productId);
+  const ref = global ? (await existingGlobalProduct(cabinetId, productId)).ref : await existingCabinetProduct(cabinetId, productId);
   const name = requireName(request.data?.name);
   const questionnaireSchema = validated(() => cleanQuestionnaire(request.data?.questionnaireSchema));
   if (!questionnaireSchema.some(section => section.questions.length)) {
     throw new HttpsError("invalid-argument", "Le questionnaire doit contenir au moins une question.");
   }
   const guaranteeCatalog = validated(() => cleanGuarantees(request.data?.guaranteeCatalog));
+
+  if (global) {
+    const active = await productsCollection(cabinetId).where("archived", "==", false).count().get();
+    if (active.data().count >= CABINET_PRODUCTS_MAX) {
+      throw new HttpsError("resource-exhausted", `Un cabinet peut créer jusqu'à ${CABINET_PRODUCTS_MAX} produits.`);
+    }
+    const id = await replaceGlobalProduct(cabinetId, uid, productId, { name, questionnaireSchema, guaranteeCatalog, archived: false });
+    return { ok: true, id };
+  }
   await ref.update({ name, questionnaireSchema, guaranteeCatalog, updatedBy: uid, updatedAt: FieldValue.serverTimestamp() });
-  return { ok: true };
+  return { ok: true, id: productId };
 });
 
-/** Retire un produit du cabinet : archivé (plus proposé pour un nouveau dossier), ses dossiers restent lisibles. */
+/**
+ * Retire un produit du cabinet : archivé (plus proposé pour un nouveau dossier), ses dossiers restent lisibles.
+ * Un produit du catalogue global est masqué pour ce cabinet seulement (fiche archivée qui le remplace).
+ */
 export const archiver = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await assertCabinetAdmin(request);
   const productId = requireString(request.data?.id, "produit", 100);
+  if (!isCabinetProductId(productId)) {
+    const global = await existingGlobalProduct(cabinetId, productId);
+    await replaceGlobalProduct(cabinetId, uid, productId, {
+      name: global.get("name"),
+      questionnaireSchema: global.get("questionnaireSchema") ?? [],
+      guaranteeCatalog: global.get("guaranteeCatalog") ?? [],
+      archived: true,
+    });
+    return { ok: true };
+  }
   const ref = await existingCabinetProduct(cabinetId, productId);
   const db = admin.firestore();
   const batch = db.batch();

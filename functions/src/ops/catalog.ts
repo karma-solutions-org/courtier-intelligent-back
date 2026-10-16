@@ -75,7 +75,7 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
     if (data === undefined) continue;
     const limits = isObject(data) && isObject(data.limits) ? data.limits : null;
     if (!isObject(data) || !isText(data.id) || !isText(data.name) || !limits) {
-      add(file, "attendu : { id, name, limits: { maxUtilisateurs, resetsAppareilParMois, appelsIaParMois, maxAppareilsParUtilisateur, delaiGraceJours } }");
+      add(file, "attendu : { id, name, limits: { maxUtilisateurs, resetsAppareilParMois, appelsIaParMois, appelsPlaqueParMois, maxAppareilsParUtilisateur, delaiGraceJours } }");
       continue;
     }
     if (data.id !== name.replace(/\.json$/, "")) add(file, `« id » (${data.id}) doit correspondre au nom du fichier`);
@@ -85,6 +85,9 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
     }
     if (typeof limits.appelsIaParMois !== "number" || !Number.isInteger(limits.appelsIaParMois) || limits.appelsIaParMois < 0) {
       add(file, "limits.appelsIaParMois : entier positif ou nul attendu");
+    }
+    if (typeof limits.appelsPlaqueParMois !== "number" || !Number.isInteger(limits.appelsPlaqueParMois) || limits.appelsPlaqueParMois < 0) {
+      add(file, "limits.appelsPlaqueParMois : entier positif ou nul attendu");
     }
     if (!isCount(limits.maxAppareilsParUtilisateur)) add(file, "limits.maxAppareilsParUtilisateur : entier strictement positif attendu");
     if (!isCount(limits.delaiGraceJours)) add(file, "limits.delaiGraceJours : entier strictement positif attendu");

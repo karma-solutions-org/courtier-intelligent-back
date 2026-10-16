@@ -8,7 +8,7 @@ const { computeEffectiveLimits, FALLBACK_LIMITS } = require('../lib/shared/index
 const { graceUpdate } = require('../lib/core/seats.utils.js');
 const { Timestamp } = require('firebase-admin/firestore');
 
-const essentiel = { limits: { maxUtilisateurs: 3, resetsAppareilParMois: 2, appelsIaParMois: 200, maxAppareilsParUtilisateur: 1, delaiGraceJours: 14 } };
+const essentiel = { limits: { maxUtilisateurs: 3, resetsAppareilParMois: 2, appelsIaParMois: 200, appelsPlaqueParMois: 100, maxAppareilsParUtilisateur: 1, delaiGraceJours: 14 } };
 
 describe('computeEffectiveLimits', () => {
   it("reprend les limites de l'offre", () => {
@@ -32,6 +32,7 @@ describe('computeEffectiveLimits', () => {
     const limits = computeEffectiveLimits(ancienne);
     assert.equal(limits.maxAppareilsParUtilisateur, 1);
     assert.equal(limits.delaiGraceJours, 14);
+    assert.equal(limits.appelsPlaqueParMois, 100);
     assert.equal(computeEffectiveLimits(ancienne, { maxAppareilsParUtilisateur: 2 }).maxAppareilsParUtilisateur, 2);
   });
 });

@@ -5,6 +5,7 @@
     "maxUtilisateurs": 3,
     "resetsAppareilParMois": 2,
     "appelsIaParMois": 200,
+    "appelsPlaqueParMois": 100,
     "maxAppareilsParUtilisateur": 1,
     "delaiGraceJours": 14
   }

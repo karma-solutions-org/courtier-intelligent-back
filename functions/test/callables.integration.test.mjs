@@ -74,7 +74,7 @@ describe('Création du cabinet avec son offre', () => {
   it("applique les limites de l'offre « essentiel »", async () => {
     const cabinet = (await db.doc(`ci_cabinets/${cabinetId}`).get()).data();
     assert.equal(cabinet.planId, 'essentiel');
-    assert.deepEqual(cabinet.limits, { maxUtilisateurs: 3, resetsAppareilParMois: 2, appelsIaParMois: 200, maxAppareilsParUtilisateur: 1, delaiGraceJours: 14 });
+    assert.deepEqual(cabinet.limits, { maxUtilisateurs: 3, resetsAppareilParMois: 2, appelsIaParMois: 200, appelsPlaqueParMois: 100, maxAppareilsParUtilisateur: 1, delaiGraceJours: 14 });
   });
 });
 
@@ -196,7 +196,7 @@ describe('Réinitialisation de l’appareil par un admin', () => {
 describe('Baisse d’offre : délai de grâce', () => {
   it('3 → 6 sièges sans redéploiement', async () => {
     ops('set-plan', '--cabinet', cabinetId, '--plan', 'essentiel', '--max-utilisateurs', '6');
-    assert.deepEqual((await db.doc(`ci_cabinets/${cabinetId}`).get()).get('limits'), { maxUtilisateurs: 6, resetsAppareilParMois: 2, appelsIaParMois: 200, maxAppareilsParUtilisateur: 1, delaiGraceJours: 14 });
+    assert.deepEqual((await db.doc(`ci_cabinets/${cabinetId}`).get()).get('limits'), { maxUtilisateurs: 6, resetsAppareilParMois: 2, appelsIaParMois: 200, appelsPlaqueParMois: 100, maxAppareilsParUtilisateur: 1, delaiGraceJours: 14 });
   });
 
   it("ouvre le délai de grâce quand les membres actifs dépassent la limite, et le ferme à la désactivation d'un membre", async () => {

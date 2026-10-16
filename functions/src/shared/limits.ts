@@ -6,6 +6,7 @@ export const FALLBACK_LIMITS: PlanLimits = {
   maxUtilisateurs: 3,
   resetsAppareilParMois: 2,
   appelsIaParMois: 200,
+  appelsPlaqueParMois: 100,
   maxAppareilsParUtilisateur: 1,
   delaiGraceJours: 14,
 };
@@ -30,6 +31,7 @@ export function computeEffectiveLimits(
     resetsAppareilParMois: overrides?.resetsAppareilParMois ?? base.resetsAppareilParMois,
     appelsIaParMois: overrides?.appelsIaParMois ?? base.appelsIaParMois ?? FALLBACK_LIMITS.appelsIaParMois,
     // Champs ajoutés après coup : une offre publiée avant eux ne les porte pas encore.
+    appelsPlaqueParMois: overrides?.appelsPlaqueParMois ?? base.appelsPlaqueParMois ?? FALLBACK_LIMITS.appelsPlaqueParMois,
     maxAppareilsParUtilisateur:
       overrides?.maxAppareilsParUtilisateur ?? base.maxAppareilsParUtilisateur ?? FALLBACK_LIMITS.maxAppareilsParUtilisateur,
     delaiGraceJours: overrides?.delaiGraceJours ?? base.delaiGraceJours ?? GRACE_PERIOD_DAYS,

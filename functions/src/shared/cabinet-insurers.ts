@@ -40,7 +40,18 @@ export function parseExtranetUrl(raw: string): { url: string; domain: string } |
   return { url: url.toString().slice(0, 500), domain: domain.toLowerCase() };
 }
 
-/** Catalogue vu par un cabinet : les assureurs globaux, puis les siens (hors archivés), triés par nom. */
+/** Assureurs du catalogue global remplacés ou retirés par le cabinet (fiches archivées comprises). */
+export function replacedInsurerIds(insurers: Insurer[]): Set<string> {
+  return new Set(insurers.map(insurer => insurer.replaces).filter((id): id is string => !!id));
+}
+
+/**
+ * Catalogue vu par un cabinet : les assureurs globaux qu'il n'a ni modifiés ni retirés, puis les siens (hors archivés),
+ * triés par nom.
+ */
 export function mergeInsurers(global: Insurer[], cabinet: Insurer[]): Insurer[] {
-  return [...global, ...cabinet.filter(insurer => !insurer.archived)].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const replaced = replacedInsurerIds(cabinet);
+  return [...global.filter(insurer => !replaced.has(insurer.id)), ...cabinet.filter(insurer => !insurer.archived)].sort((a, b) =>
+    a.name.localeCompare(b.name, 'fr'),
+  );
 }

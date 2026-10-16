@@ -29,9 +29,20 @@ export function productDocPath(cabinetId: string, productId: string): string {
   return isCabinetProductId(productId) ? `ci_cabinets/${cabinetId}/ci_products/${productId}` : `ci_products/${productId}`;
 }
 
-/** Catalogue vu par un cabinet : produits globaux puis les siens (hors archivés), triés par nom. */
+/** Produits du catalogue global remplacés ou retirés par le cabinet (fiches archivées comprises). */
+export function replacedProductIds(products: Product[]): Set<string> {
+  return new Set(products.map(product => product.replaces).filter((id): id is string => !!id));
+}
+
+/**
+ * Catalogue vu par un cabinet : produits globaux qu'il n'a ni modifiés ni retirés, puis les siens (hors archivés),
+ * triés par nom.
+ */
 export function mergeProducts(global: Product[], cabinet: Product[]): Product[] {
-  return [...global, ...cabinet.filter(product => !product.archived)].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const replaced = replacedProductIds(cabinet);
+  return [...global.filter(product => !replaced.has(product.id)), ...cabinet.filter(product => !product.archived)].sort((a, b) =>
+    a.name.localeCompare(b.name, 'fr'),
+  );
 }
 
 /**

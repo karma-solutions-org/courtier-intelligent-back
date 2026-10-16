@@ -18,6 +18,7 @@ import {
  * Assureurs propres à un cabinet (admin) : ajoutés en plus du catalogue global, visibles de ce cabinet seulement.
  * Écrits uniquement ici : nom, adresse de l'extranet (son domaine sert à l'extension) et produits tarifés,
  * parmi les produits actifs du catalogue. Un assureur retiré est archivé, pas effacé : l'historique des dossiers le garde.
+ * Un assureur du catalogue global modifié ou retiré est remplacé pour ce cabinet par une fiche du cabinet (`replaces`).
  */
 
 const insurersCollection = (cabinetId: string) => admin.firestore().collection(`${cabinetPath(cabinetId)}/ci_insurers`);
@@ -120,29 +121,90 @@ export const ajouter = onCall(CALLABLE_OPTIONS, async request => {
   return { id };
 });
 
-/** Modifie le nom, l'extranet ou les produits d'un assureur du cabinet. */
+/** Assureur du catalogue global que le cabinet n'a encore ni modifié ni retiré. */
+async function existingGlobalInsurer(cabinetId: string, insurerId: string) {
+  const snapshot = await admin.firestore().doc(insurerDocPath(cabinetId, insurerId)).get();
+  if (!snapshot.exists) {
+    throw new HttpsError("not-found", "Assureur introuvable.");
+  }
+  const replaced = await insurersCollection(cabinetId).where("replaces", "==", insurerId).limit(1).get();
+  if (!replaced.empty) {
+    throw new HttpsError("failed-precondition", "Cet assureur a déjà été modifié ou retiré par le cabinet.");
+  }
+  return snapshot;
+}
+
+/**
+ * Remplace, pour ce cabinet seulement, un assureur du catalogue global par une fiche du cabinet (les autres cabinets
+ * gardent l'original). Activé à sa place s'il l'était.
+ */
+async function replaceGlobalInsurer(cabinetId: string, uid: string, globalId: string, data: Record<string, unknown>): Promise<string> {
+  const id = await newInsurerId(cabinetId, data.name as string);
+  const db = admin.firestore();
+  await db.runTransaction(async tx => {
+    const cabinet = await tx.get(db.doc(cabinetPath(cabinetId)));
+    const enabled = (cabinet.get("enabledInsurers") as string[] | undefined) ?? [];
+    tx.create(insurersCollection(cabinetId).doc(id), {
+      logo: null,
+      ...data,
+      custom: true,
+      replaces: globalId,
+      createdBy: uid,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    if (enabled.includes(globalId)) {
+      const next = enabled.filter(x => x !== globalId);
+      tx.update(cabinet.ref, { enabledInsurers: data.archived === true ? next : [...next, id] });
+    }
+  });
+  return id;
+}
+
+/**
+ * Modifie le nom, l'extranet ou les produits d'un assureur. Un assureur du catalogue global est copié dans le cabinet
+ * (voir replaceGlobalInsurer) : le nouvel identifiant est renvoyé.
+ */
 export const modifier = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await assertCabinetAdmin(request);
   const insurerId = requireString(request.data?.id, "assureur", 100);
-  const { ref } = await existingCabinetInsurer(cabinetId, insurerId);
+  const global = !isCabinetInsurerId(insurerId);
+  const existing = global ? await existingGlobalInsurer(cabinetId, insurerId) : (await existingCabinetInsurer(cabinetId, insurerId)).snapshot;
   const name = requireName(request.data?.name);
   const extranet = requireExtranet(request.data?.extranetUrl);
   const productsSupported = await requireProducts(cabinetId, request.data?.productsSupported);
-  await ref.update({
-    name,
-    extranetUrl: extranet.url,
-    extranetDomains: [extranet.domain],
-    productsSupported,
-    updatedBy: uid,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-  return { ok: true };
+  const fields = { name, extranetUrl: extranet.url, extranetDomains: [extranet.domain], productsSupported };
+
+  if (global) {
+    const active = await insurersCollection(cabinetId).where("archived", "==", false).count().get();
+    if (active.data().count >= CABINET_INSURERS_MAX) {
+      throw new HttpsError("resource-exhausted", `Un cabinet peut ajouter jusqu'à ${CABINET_INSURERS_MAX} assureurs.`);
+    }
+    const id = await replaceGlobalInsurer(cabinetId, uid, insurerId, { logo: existing.get("logo") ?? null, ...fields, archived: false });
+    return { ok: true, id };
+  }
+  await existing.ref.update({ ...fields, updatedBy: uid, updatedAt: FieldValue.serverTimestamp() });
+  return { ok: true, id: insurerId };
 });
 
-/** Retire un assureur du cabinet : archivé (caché des listes, désactivé), son historique reste lisible. */
+/**
+ * Retire un assureur du cabinet : archivé (caché des listes, désactivé), son historique reste lisible.
+ * Un assureur du catalogue global est masqué pour ce cabinet seulement (fiche archivée qui le remplace).
+ */
 export const archiver = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await assertCabinetAdmin(request);
   const insurerId = requireString(request.data?.id, "assureur", 100);
+  if (!isCabinetInsurerId(insurerId)) {
+    const global = await existingGlobalInsurer(cabinetId, insurerId);
+    await replaceGlobalInsurer(cabinetId, uid, insurerId, {
+      name: global.get("name"),
+      logo: global.get("logo") ?? null,
+      extranetUrl: global.get("extranetUrl"),
+      extranetDomains: global.get("extranetDomains") ?? [],
+      productsSupported: global.get("productsSupported") ?? [],
+      archived: true,
+    });
+    return { ok: true };
+  }
   const { ref } = await existingCabinetInsurer(cabinetId, insurerId);
   const db = admin.firestore();
   const batch = db.batch();

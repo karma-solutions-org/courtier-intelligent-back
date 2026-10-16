@@ -125,6 +125,8 @@ export interface PlanLimits {
   resetsAppareilParMois: number;
   /** Appels à l'IA (fonction `ia-proxy`, tous les utilisateurs du cabinet) autorisés par mois. */
   appelsIaParMois: number;
+  /** Recherches de véhicule par plaque (function `vehicules-rechercher`, payantes chez le fournisseur) autorisées par mois. */
+  appelsPlaqueParMois: number;
   /** Appareils liés autorisés par utilisateur (1 par défaut : appareil unique). */
   maxAppareilsParUtilisateur: number;
   /** Délai de grâce (jours) après une baisse d'offre, avant que le cabinet ne passe en accès admin seul. */
@@ -187,6 +189,11 @@ export interface Product {
   custom?: boolean;
   /** Produit du cabinet retiré : caché des listes, gardé pour ses dossiers. */
   archived?: boolean;
+  /**
+   * Produit du catalogue global que cette fiche du cabinet remplace (modifié) ou masque (retiré, fiche archivée) :
+   * le cabinet ne voit plus l'original, les autres cabinets ne sont pas touchés.
+   */
+  replaces?: string | null;
 }
 
 /** guaranteeSynonyms/{productId} : formulations d'un assureur → code du référentiel (ex. « vitrage » → BDG). */
@@ -206,6 +213,11 @@ export interface Insurer {
   custom?: boolean;
   /** Assureur du cabinet retiré : caché des listes, gardé pour l'historique des dossiers. */
   archived?: boolean;
+  /**
+   * Assureur du catalogue global que cette fiche du cabinet remplace (modifié) ou masque (retiré, fiche archivée) :
+   * le cabinet ne voit plus l'original, les autres cabinets ne sont pas touchés.
+   */
+  replaces?: string | null;
 }
 
 // ── Assuré & dossier ───────────────────────────────────────────────────────
