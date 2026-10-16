@@ -155,3 +155,28 @@ export function parseAssureOcrResponse(response: string, type: AssureReadableTyp
   }
   return values;
 }
+
+const CLASSIFY_LABELS: Record<AssureDocumentType, string> = {
+  cin: "carte nationale d'identité ou passeport (recto ou verso)",
+  kbis: 'extrait Kbis',
+  carte_grise: "certificat d'immatriculation (carte grise), recto ou verso",
+  permis: 'permis de conduire, recto ou verso',
+  releve_information: "relevé d'information d'un assureur auto",
+  autre: 'autre document',
+};
+
+/** Consigne envoyée à l'IA pour reconnaître le type d'une pièce de client. */
+export function buildAssureClassifyPrompt(): string {
+  return [
+    'Tu reçois un document joint. Indique de quel type il s’agit, parmi :',
+    ...ASSURE_DOCUMENT_TYPES.map(type => `- ${type} : ${CLASSIFY_LABELS[type]}`),
+    '',
+    'Réponds UNIQUEMENT avec un JSON de la forme {"type":"..."}. En cas de doute, réponds {"type":"autre"}.',
+  ].join('\n');
+}
+
+/** Type reconnu par l'IA, ou `null` si la réponse n'est pas exploitable. */
+export function parseAssureClassifyResponse(response: string): AssureDocumentType | null {
+  const type = extractJson(response)?.['type'];
+  return (ASSURE_DOCUMENT_TYPES as readonly unknown[]).includes(type) ? (type as AssureDocumentType) : null;
+}

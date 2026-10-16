@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { buildAssureOcrPrompt, dossierTypeForAssureDocument, isAssureImportPath, isAssureReadableType, parseAssureOcrResponse } = require('../lib/shared/index.js');
+const { buildAssureOcrPrompt, dossierTypeForAssureDocument, parseAssureClassifyResponse, isAssureImportPath, isAssureReadableType, parseAssureOcrResponse } = require('../lib/shared/index.js');
 
 describe('Lecture d’une pièce de client', () => {
   it('garde les champs d’une CIN au bon format', () => {
@@ -59,5 +59,13 @@ describe('Pièces reprises dans les dossiers', () => {
     assert.equal(dossierTypeForAssureDocument('permis'), 'permis');
     assert.equal(dossierTypeForAssureDocument('cin'), 'cin');
     assert.equal(dossierTypeForAssureDocument('kbis'), null);
+  });
+});
+
+describe('Type d’une pièce reconnu par l’IA', () => {
+  it('garde un type connu, sinon null', () => {
+    assert.equal(parseAssureClassifyResponse('```json\n{"type":"carte_grise"}\n```'), 'carte_grise');
+    assert.equal(parseAssureClassifyResponse('{"type":"passeport"}'), null);
+    assert.equal(parseAssureClassifyResponse('pas de json'), null);
   });
 });

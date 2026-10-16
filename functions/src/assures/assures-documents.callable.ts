@@ -9,15 +9,18 @@ import {
   ASSURE_DOCUMENT_MAX_BYTES,
   ASSURE_DOCUMENT_MIME_TYPES,
   assureDocumentsFolder,
+  buildAssureClassifyPrompt,
   buildAssureOcrPrompt,
   isAssureDocumentType,
   isAssureImportPath,
   isAssureReadableType,
+  parseAssureClassifyResponse,
   parseAssureOcrResponse,
   type AssureOcrValues,
 } from "../shared/index.js";
 
 const MAX_OCR_OUTPUT_TOKENS = 800;
+const MAX_CLASSIFY_OUTPUT_TOKENS = 50;
 
 /** Relit le fichier déposé (existence, type, taille) : l'app ne peut pas faire passer autre chose. */
 async function checkedImport(storagePath: string) {
@@ -67,6 +70,34 @@ export const lirePiece = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY]
   }
   const values = parseAssureOcrResponse(result.text, type);
   return { values: values ?? {}, readable: values !== null, remaining };
+});
+
+/**
+ * Reconnaît le type d'une pièce déposée (CIN, carte grise, permis…) pour le pré-sélectionner dans l'app : le courtier
+ * peut le corriger avant l'import. Rien n'est écrit. Compte dans le quota d'appels d'IA du cabinet.
+ */
+export const reconnaitrePiece = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY], timeoutSeconds: 60, memory: "512MiB" }, async request => {
+  const { cabinetId, uid } = await getActiveMembership(request);
+  const storagePath = request.data?.storagePath;
+  if (!isAssureImportPath(storagePath, cabinetId, uid)) {
+    throw new HttpsError("invalid-argument", "Emplacement du document invalide.");
+  }
+  const { file, contentType } = await checkedImport(storagePath);
+  const apiKey = geminiApiKey();
+  const [bytes] = await file.download();
+
+  const { remaining, release } = await reserveIaCall(cabinetId);
+  const result = await generateWithGemini(apiKey, {
+    contents: [
+      { role: "user", parts: [{ inlineData: { mimeType: contentType, data: bytes.toString("base64") } }, { text: buildAssureClassifyPrompt() }] },
+    ],
+    generationConfig: { maxOutputTokens: MAX_CLASSIFY_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
+  });
+  if (!result) {
+    await release();
+    throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", { reason: "ia_upstream" });
+  }
+  return { type: parseAssureClassifyResponse(result.text), remaining };
 });
 
 /**
