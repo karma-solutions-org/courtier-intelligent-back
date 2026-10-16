@@ -49,6 +49,3 @@ export * as ia from "./ia/ia.callable";
 
 // ── Mémoire partagée des formulaires d'extranet (structure seulement) ─────────────────────────
 export * as memoires from "./memoires/memoires.callable";
-
-// ── Véhicules : recherche par plaque d'immatriculation (pré-remplissage du questionnaire Auto) ─────────────
-export * as vehicules from "./vehicules/vehicules.callable";

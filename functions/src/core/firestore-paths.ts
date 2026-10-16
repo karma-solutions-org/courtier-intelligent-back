@@ -14,7 +14,6 @@ export const productPath = (productId: string) => `ci_products/${productId}`;
 export const dossierCounterPath = (cabinetId: string, year: number) => `ci_cabinets/${cabinetId}/ci_counters/dossiers-${year}`;
 /** Consommation d'IA d'un cabinet pour un mois (« AAAA-MM ») : cabinets/{id}/usage/ia-2026-10. */
 export const iaUsagePath = (cabinetId: string, month: string) => `ci_cabinets/${cabinetId}/ci_usage/ia-${month}`;
-export const plaqueUsagePath = (cabinetId: string, month: string) => `ci_cabinets/${cabinetId}/ci_usage/plaque-${month}`;
 export const insurerPath = (insurerId: string) => `ci_insurers/${insurerId}`;
 export const quoteJobPath = (cabinetId: string, dossierId: string, insurerId: string) =>
   `ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/${insurerId}`;
