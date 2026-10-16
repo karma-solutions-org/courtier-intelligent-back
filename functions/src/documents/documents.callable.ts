@@ -3,10 +3,13 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
-import { documentsPath, dossierPath } from "../core/firestore-paths";
+import { assurePath, documentsPath, dossierPath } from "../core/firestore-paths";
 import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, reserveIaCall } from "../core/gemini.utils";
 import {
   buildOcrPrompt,
+  dossierDocumentsFolder,
+  dossierTypeForAssureDocument,
+  isAssureDocumentType,
   DOSSIER_DOCUMENT_MAX_BYTES,
   DOSSIER_DOCUMENT_MIME_TYPES,
   isAnalyzableDocumentType,
@@ -17,6 +20,7 @@ import {
   type DossierDocumentType,
   type QuestionnaireSection,
   productDocPath,
+  safeDocumentFileName,
 } from "../shared/index.js";
 
 const MAX_OCR_OUTPUT_TOKENS = 2_000;
@@ -155,4 +159,67 @@ export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY],
   }
   await documentRef.update({ status: "analyzed", ocrFields: fields, error: null, analyzedAt: FieldValue.serverTimestamp() });
   return { status: "analyzed", ocrFields: fields, remaining };
+});
+
+/**
+ * Reprend dans le dossier les pièces rangées avec son client (carte grise, permis, CIN, relevé d'information importés à
+ * la création du client) : chaque fichier est copié dans les documents du dossier et une entrée `documents/{id}` est
+ * écrite, prête à être lue (`analyser`). Une pièce déjà reprise ne l'est pas deux fois (`sourceAssureDocumentId`) : l'app
+ * peut appeler cette fonction à chaque ouverture du dossier. Renvoie seulement les documents créés par cet appel.
+ */
+export const reprendrePiecesClient = onCall(CALLABLE_OPTIONS, async request => {
+  const { cabinetId, uid } = await getActiveMembership(request);
+  const dossierId = requireString(request.data?.dossierId, "dossier");
+
+  const db = admin.firestore();
+  const dossier = await db.doc(dossierPath(cabinetId, dossierId)).get();
+  if (!dossier.exists) {
+    throw new HttpsError("not-found", "Dossier introuvable.");
+  }
+  if (dossier.get("deletedAt")) {
+    throw new HttpsError("failed-precondition", "Ce dossier est dans la corbeille : restaurez-le pour le modifier.", {
+      reason: "dossier_deleted",
+    });
+  }
+  const assureId = dossier.get("assureId") as string | undefined;
+  if (!assureId) return { documents: [] };
+
+  const [pieces, existing] = await Promise.all([
+    db.collection(`${assurePath(cabinetId, assureId)}/ci_documents`).get(),
+    db.collection(documentsPath(cabinetId, dossierId)).where("sourceAssureDocumentId", "!=", null).get(),
+  ]);
+  const alreadyTaken = new Set(existing.docs.map(doc => doc.get("sourceAssureDocumentId") as string));
+  const bucket = admin.storage().bucket();
+  const created: { documentId: string; type: DossierDocumentType }[] = [];
+
+  for (const piece of pieces.docs) {
+    const assureType = piece.get("type");
+    if (alreadyTaken.has(piece.id) || !isAssureDocumentType(assureType)) continue;
+    const type = dossierTypeForAssureDocument(assureType);
+    const source = piece.get("storagePath") as string | undefined;
+    if (!type || !source) continue;
+    const fileName = (piece.get("fileName") as string | null) ?? null;
+    const target = `${dossierDocumentsFolder(cabinetId, dossierId)}/${type}-${Date.now()}-${safeDocumentFileName(fileName ?? source.slice(source.lastIndexOf("/") + 1))}`;
+    if (!isDossierDocumentPath(target, cabinetId, dossierId)) continue;
+    const [exists] = await bucket.file(source).exists();
+    if (!exists) continue;
+    await bucket.file(source).copy(bucket.file(target));
+
+    const documentRef = db.collection(documentsPath(cabinetId, dossierId)).doc();
+    await documentRef.create({
+      type,
+      storagePath: target,
+      fileName,
+      contentType: piece.get("contentType") ?? null,
+      size: piece.get("size") ?? null,
+      ocrFields: [],
+      status: "uploaded",
+      error: null,
+      sourceAssureDocumentId: piece.id,
+      uploadedBy: uid,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    created.push({ documentId: documentRef.id, type });
+  }
+  return { documents: created };
 });

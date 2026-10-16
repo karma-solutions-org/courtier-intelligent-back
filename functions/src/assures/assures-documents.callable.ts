@@ -12,6 +12,7 @@ import {
   buildAssureOcrPrompt,
   isAssureDocumentType,
   isAssureImportPath,
+  isAssureReadableType,
   parseAssureOcrResponse,
   type AssureOcrValues,
 } from "../shared/index.js";
@@ -35,7 +36,7 @@ async function checkedImport(storagePath: string) {
 }
 
 /**
- * Lecture d'une pièce (CIN, Kbis) déposée avant la création du client : renvoie les valeurs lues pour pré-remplir
+ * Lecture d'une pièce d'identité (CIN, Kbis) déposée avant la création du client : renvoie les valeurs lues pour pré-remplir
  * le formulaire. Rien n'est écrit : le courtier vérifie, puis la pièce est rangée avec le client par `rattacherPiece`.
  * Compte dans le quota d'appels d'IA du cabinet.
  */
@@ -43,7 +44,7 @@ export const lirePiece = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY]
   const { cabinetId, uid } = await getActiveMembership(request);
   const type = request.data?.type;
   const storagePath = request.data?.storagePath;
-  if (!isAssureDocumentType(type)) {
+  if (!isAssureReadableType(type)) {
     throw new HttpsError("invalid-argument", "Type de pièce invalide.");
   }
   if (!isAssureImportPath(storagePath, cabinetId, uid)) {

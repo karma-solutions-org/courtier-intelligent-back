@@ -1,11 +1,24 @@
 // ⚠️ Copie générée par scripts/sync-shared.mjs — ne pas modifier ici.
-// Pièces d'un client (CIN, Kbis) : lues à la création du client pour pré-remplir sa fiche, puis rangées avec elle.
+// Pièces d'un client : CIN et Kbis sont lues à la création du client pour pré-remplir sa fiche ; toutes (carte grise,
+// permis… compris) sont rangées avec elle, puis reprises dans ses dossiers (documents-reprendrePiecesClient).
 // Règles communes à l'app (pré-remplissage) et aux functions assures-* (contrôle de la réponse de l'IA).
 import { ASSURE_BIRTH_DATE_PATTERN, ASSURE_MAX_LENGTHS, ASSURE_POSTAL_CODE_PATTERN, ASSURE_SIRET_PATTERN } from './assure-format.js';
-import { DOSSIER_DOCUMENT_MAX_BYTES, DOSSIER_DOCUMENT_MIME_TYPES } from './documents.js';
+import { DOSSIER_DOCUMENT_MAX_BYTES, DOSSIER_DOCUMENT_MIME_TYPES, DossierDocumentType } from './documents.js';
 
-export const ASSURE_DOCUMENT_TYPES = ['cin', 'kbis'] as const;
+export const ASSURE_DOCUMENT_TYPES = ['cin', 'kbis', 'carte_grise', 'permis', 'releve_information', 'autre'] as const;
 export type AssureDocumentType = (typeof ASSURE_DOCUMENT_TYPES)[number];
+
+/** Pièces lues pour pré-remplir la fiche du client (les autres sont seulement rangées, puis lues dans le dossier). */
+export const ASSURE_READABLE_TYPES = ['cin', 'kbis'] as const;
+export type AssureReadableType = (typeof ASSURE_READABLE_TYPES)[number];
+
+export const isAssureReadableType = (type: unknown): type is AssureReadableType =>
+  typeof type === 'string' && (ASSURE_READABLE_TYPES as readonly string[]).includes(type);
+
+/** Type du document créé dans un dossier à partir d'une pièce du client ; `null` : pièce non reprise (Kbis). */
+export function dossierTypeForAssureDocument(type: AssureDocumentType): DossierDocumentType | null {
+  return type === 'kbis' ? null : type;
+}
 
 export const ASSURE_DOCUMENT_MIME_TYPES = DOSSIER_DOCUMENT_MIME_TYPES;
 export const ASSURE_DOCUMENT_MAX_BYTES = DOSSIER_DOCUMENT_MAX_BYTES;
@@ -52,7 +65,7 @@ export function isAssureImportPath(path: unknown, cabinetId: string, uid: string
   return typeof path === 'string' && path.startsWith(prefix) && FILE_NAME.test(path.slice(prefix.length));
 }
 
-const FIELDS: Record<AssureDocumentType, string[]> = {
+const FIELDS: Record<AssureReadableType, string[]> = {
   cin: [
     '- civilite : "M." ou "Mme" (sexe M ou F)',
     '- lastName : nom de naissance (le nom d\'usage seulement s\'il est seul)',
@@ -68,13 +81,13 @@ const FIELDS: Record<AssureDocumentType, string[]> = {
   ],
 };
 
-const LABELS: Record<AssureDocumentType, string> = {
+const LABELS: Record<AssureReadableType, string> = {
   cin: "carte nationale d'identité française",
   kbis: 'extrait Kbis',
 };
 
 /** Consigne envoyée à l'IA pour une pièce de client. */
-export function buildAssureOcrPrompt(type: AssureDocumentType): string {
+export function buildAssureOcrPrompt(type: AssureReadableType): string {
   return [
     `Tu lis un(e) ${LABELS[type]} joint(e). Extrais uniquement les champs suivants :`,
     ...FIELDS[type],
@@ -117,7 +130,7 @@ function pastDate(value: unknown): string | undefined {
  * Contrôle la réponse de l'IA : seuls les champs prévus pour ce type de pièce sont gardés, chacun au bon format.
  * Un champ vide ou invalide est écarté (jamais de valeur inventée). `null` si la réponse n'est pas un JSON exploitable.
  */
-export function parseAssureOcrResponse(response: string, type: AssureDocumentType): AssureOcrValues | null {
+export function parseAssureOcrResponse(response: string, type: AssureReadableType): AssureOcrValues | null {
   const raw = extractJson(response);
   if (!raw) return null;
   const values: AssureOcrValues = {

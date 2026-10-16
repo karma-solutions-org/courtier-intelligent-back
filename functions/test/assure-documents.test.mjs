@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { buildAssureOcrPrompt, isAssureImportPath, parseAssureOcrResponse } = require('../lib/shared/index.js');
+const { buildAssureOcrPrompt, dossierTypeForAssureDocument, isAssureImportPath, isAssureReadableType, parseAssureOcrResponse } = require('../lib/shared/index.js');
 
 describe('Lecture d’une pièce de client', () => {
   it('garde les champs d’une CIN au bon format', () => {
@@ -44,5 +44,20 @@ describe('Dépôt provisoire', () => {
     assert.equal(isAssureImportPath('cabinets/c1/imports/u2/123-cin.pdf', 'c1', 'u1'), false);
     assert.equal(isAssureImportPath('cabinets/c1/imports/u1/../x.pdf', 'c1', 'u1'), false);
     assert.equal(isAssureImportPath('cabinets/c2/imports/u1/a.pdf', 'c1', 'u1'), false);
+  });
+});
+
+describe('Pièces reprises dans les dossiers', () => {
+  it('seules la CIN et le Kbis sont lues pour la fiche', () => {
+    assert.equal(isAssureReadableType('cin'), true);
+    assert.equal(isAssureReadableType('kbis'), true);
+    assert.equal(isAssureReadableType('carte_grise'), false);
+  });
+
+  it('donne le type du document du dossier ; le Kbis n’est pas repris', () => {
+    assert.equal(dossierTypeForAssureDocument('carte_grise'), 'carte_grise');
+    assert.equal(dossierTypeForAssureDocument('permis'), 'permis');
+    assert.equal(dossierTypeForAssureDocument('cin'), 'cin');
+    assert.equal(dossierTypeForAssureDocument('kbis'), null);
   });
 });
