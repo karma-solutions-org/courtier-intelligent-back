@@ -169,6 +169,45 @@ export const ouvrirExtension = onCall(CALLABLE_OPTIONS, async request => {
   return { success: true };
 });
 
+/** Délai minimal entre deux jetons de connexion automatique pour un même membre. */
+const EXTENSION_TOKEN_MIN_INTERVAL_MS = 5_000;
+
+/**
+ * Émet un jeton de connexion pour l'extension Chrome du même appareil (connexion automatique, sans second mot de passe).
+ * Seule l'APP peut l'appeler : `getActiveMembership` compare l'`auth_time` du jeton à celui de la session de l'app,
+ * donc le jeton de l'extension (autre `auth_time`) est refusé. Le jeton émis est un custom token Firebase : l'extension
+ * l'échange contre sa propre connexion (nouvel `auth_time`) puis appelle `sessions-ouvrirExtension`, qui garde toutes
+ * ses vérifications (session de l'app vivante, appareil lié, `auth_time` distinct de celui de l'app).
+ * Le jeton vit au plus une heure, la fréquence d'émission est limitée et chaque émission est tracée.
+ * Production : le compte de service des functions doit avoir le rôle « Service Account Token Creator » (signature).
+ */
+export const emettreJetonExtension = onCall(CALLABLE_OPTIONS, async request => {
+  const { uid, cabinetId } = await getActiveMembership(request);
+  const deviceId = requireDeviceId(request.data?.deviceId);
+
+  const db = admin.firestore();
+  const memberRef = db.doc(memberPath(cabinetId, uid));
+  await db.runTransaction(async tx => {
+    const current = (await tx.get(memberRef)).get("session") as Session | undefined;
+    if (!current || current.id !== deviceId) {
+      throw new HttpsError(
+        "failed-precondition",
+        "L'extension doit être utilisée sur l'appareil où Courtier Intelligent est ouvert.",
+        { reason: "device_mismatch" },
+      );
+    }
+    const issuedAt = current.extensionTokenIssuedAt?.toMillis();
+    if (issuedAt !== undefined && Date.now() - issuedAt < EXTENSION_TOKEN_MIN_INTERVAL_MS) {
+      throw new HttpsError("resource-exhausted", "Trop de demandes de connexion de l'extension. Réessayez dans quelques secondes.");
+    }
+    tx.update(memberRef, { "session.extensionTokenIssuedAt": FieldValue.serverTimestamp() });
+  });
+
+  const token = await admin.auth().createCustomToken(uid);
+  await writeAudit(cabinetId, { type: "extension_jeton_emis", uid });
+  return { token };
+});
+
 /** Ferme la session de l'extension (déconnexion depuis le side panel). La session de l'app n'est pas touchée. */
 export const fermerExtension = onCall(CALLABLE_OPTIONS, async request => {
   const { uid, cabinetId } = await getActiveMembership(request, { requireSession: false });

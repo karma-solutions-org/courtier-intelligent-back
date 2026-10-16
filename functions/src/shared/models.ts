@@ -85,6 +85,8 @@ export interface Session {
    */
   extensionAuthTime?: number;
   extensionOpenedAt?: TimestampLike;
+  /** Dernière émission d'un jeton de connexion automatique de l'extension (`sessions-emettreJetonExtension`) : limite la fréquence. */
+  extensionTokenIssuedAt?: TimestampLike;
 }
 
 /** cabinets/{t}/auditLog/{id} : écrit uniquement par les Cloud Functions, lu par les admins. */
@@ -93,6 +95,7 @@ export type AuditLogType =
   | 'connexion_refusee_appareil'
   | 'appareil_lie'
   | 'extension_connexion'
+  | 'extension_jeton_emis'
   | 'appareil_reinitialise'
   | 'reinitialisation_refusee_quota';
 
