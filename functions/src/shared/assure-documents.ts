@@ -8,8 +8,11 @@ import { DOSSIER_DOCUMENT_MAX_BYTES, DOSSIER_DOCUMENT_MIME_TYPES, DossierDocumen
 export const ASSURE_DOCUMENT_TYPES = ['cin', 'kbis', 'carte_grise', 'permis', 'releve_information', 'autre'] as const;
 export type AssureDocumentType = (typeof ASSURE_DOCUMENT_TYPES)[number];
 
-/** Pièces lues pour pré-remplir la fiche du client (les autres sont seulement rangées, puis lues dans le dossier). */
-export const ASSURE_READABLE_TYPES = ['cin', 'kbis'] as const;
+/**
+ * Pièces lues pour pré-remplir la fiche du client : identité (CIN, permis), société (Kbis), titulaire et adresse (carte
+ * grise). Le relevé d'information et « autre » sont seulement rangés, puis lus dans le dossier.
+ */
+export const ASSURE_READABLE_TYPES = ['cin', 'kbis', 'permis', 'carte_grise'] as const;
 export type AssureReadableType = (typeof ASSURE_READABLE_TYPES)[number];
 
 export const isAssureReadableType = (type: unknown): type is AssureReadableType =>
@@ -79,11 +82,23 @@ const FIELDS: Record<AssureReadableType, string[]> = {
     '- lastName, firstName : nom et premier prénom du représentant légal (gérant, président)',
     '- street, postalCode (5 chiffres), city : adresse du siège',
   ],
+  permis: [
+    '- lastName : nom (rubrique 1)',
+    '- firstName : premier prénom uniquement (rubrique 2)',
+    '- birthDate : date de naissance (rubrique 3), format AAAA-MM-JJ',
+  ],
+  carte_grise: [
+    '- lastName, firstName : nom et premier prénom du titulaire (rubrique C.1), seulement si c\'est une personne',
+    '- companyName : raison sociale du titulaire (rubrique C.1), seulement si c\'est une société',
+    '- street, postalCode (5 chiffres), city : adresse du titulaire (rubrique C.3)',
+  ],
 };
 
 const LABELS: Record<AssureReadableType, string> = {
   cin: "carte nationale d'identité française",
   kbis: 'extrait Kbis',
+  permis: 'permis de conduire français',
+  carte_grise: "certificat d'immatriculation (carte grise) français",
 };
 
 /** Consigne envoyée à l'IA pour une pièce de client. */
@@ -144,10 +159,18 @@ export function parseAssureOcrResponse(response: string, type: AssureReadableTyp
   if (type === 'cin') {
     if (raw['civilite'] === 'M.' || raw['civilite'] === 'Mme') values.civilite = raw['civilite'];
     values.birthDate = pastDate(raw['birthDate']);
+  } else if (type === 'permis') {
+    // Le permis ne porte pas d'adresse : une adresse renvoyée serait inventée.
+    values.birthDate = pastDate(raw['birthDate']);
+    delete values.street;
+    delete values.postalCode;
+    delete values.city;
   } else {
     values.companyName = text(raw['companyName'], ASSURE_MAX_LENGTHS.companyName);
-    const siret = typeof raw['siret'] === 'string' ? raw['siret'].replace(/\s/g, '') : '';
-    if (ASSURE_SIRET_PATTERN.test(siret)) values.siret = siret;
+    if (type === 'kbis') {
+      const siret = typeof raw['siret'] === 'string' ? raw['siret'].replace(/\s/g, '') : '';
+      if (ASSURE_SIRET_PATTERN.test(siret)) values.siret = siret;
+    }
   }
   // Champs non lus retirés : « absent » et « vide » se confondent pour l'app.
   for (const key of Object.keys(values) as (keyof AssureOcrValues)[]) {

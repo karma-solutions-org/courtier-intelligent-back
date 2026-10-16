@@ -48,10 +48,11 @@ describe('Dépôt provisoire', () => {
 });
 
 describe('Pièces reprises dans les dossiers', () => {
-  it('seules la CIN et le Kbis sont lues pour la fiche', () => {
+  it('CIN, Kbis, permis et carte grise sont lus pour la fiche ; le relevé non', () => {
     assert.equal(isAssureReadableType('cin'), true);
     assert.equal(isAssureReadableType('kbis'), true);
-    assert.equal(isAssureReadableType('carte_grise'), false);
+    assert.equal(isAssureReadableType('permis'), true);
+    assert.equal(isAssureReadableType('releve_information'), false);
   });
 
   it('donne le type du document du dossier ; le Kbis n’est pas repris', () => {
@@ -67,5 +68,20 @@ describe('Type d’une pièce reconnu par l’IA', () => {
     assert.equal(parseAssureClassifyResponse('```json\n{"type":"carte_grise"}\n```'), 'carte_grise');
     assert.equal(parseAssureClassifyResponse('{"type":"passeport"}'), null);
     assert.equal(parseAssureClassifyResponse('pas de json'), null);
+  });
+});
+
+describe('Identité lue sur un permis ou une carte grise', () => {
+  it('permis : nom, prénom, date de naissance, jamais d’adresse', () => {
+    const values = parseAssureOcrResponse('{"lastName":"Laabidi","firstName":"Helmi","birthDate":"1985-10-16","city":"Tunis"}', 'permis');
+    assert.deepEqual(values, { lastName: 'Laabidi', firstName: 'Helmi', birthDate: '1985-10-16' });
+  });
+
+  it('carte grise : titulaire et adresse, sans date de naissance', () => {
+    const values = parseAssureOcrResponse(
+      '{"lastName":"Laabidi","firstName":"Helmi","street":"225 Boulevard Paul Claudel","postalCode":"13010","city":"Marseille","birthDate":"1985-10-16"}',
+      'carte_grise',
+    );
+    assert.deepEqual(values, { lastName: 'Laabidi', firstName: 'Helmi', street: '225 Boulevard Paul Claudel', postalCode: '13010', city: 'Marseille' });
   });
 });
