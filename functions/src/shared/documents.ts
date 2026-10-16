@@ -85,7 +85,10 @@ const DOCUMENT_HINTS: Partial<Record<DossierDocumentType, string[]>> = {
   carte_grise: [
     "Rubriques du certificat d'immatriculation français :",
     "- A : numéro d'immatriculation ; B : date de première immatriculation ; D.1 : marque ;",
-    '- D.2 : type, variante, version (la version commerciale complète, ex. « 1.5 dCi 90 Business ») ; D.3 : dénomination commerciale (modèle) ;',
+    '- D.3 : dénomination commerciale (modèle) ; D.2 : type, variante, version (code constructeur, ex. « FLA0A6 ») ;',
+    '- vehicle.version : décris la version en clair, dans cet ordre : cylindrée P.1 en litres arrondie à une décimale (1995 cm3 → 2.0),',
+    '  puissance P.2 convertie en chevaux (kW × 1,36, arrondi : 66 kW → 90 ch), carburant (Essence, Gazole…), carrosserie J.3 (Fourgon,',
+    '  Berline…), puis le code D.2 entre parenthèses. Ex. « 2.0 90 ch Gazole Fourgon (FLA0A6) ». Omets ce qui n\'est pas imprimé ;',
     '- J.1 : genre national (VP = voiture, CTTE ou VU = utilitaire, MTL/MTT1/MTT2 = moto) ; P.6 : puissance fiscale (CV) ;',
     '- P.3 : type de carburant. Codes : ES = essence ; GO = diesel ; EL = électrique ; EE ou EH = hybride (essence ou gazole + électrique non rechargeable) ;',
     '  EH avec mention rechargeable, ou « PHEV » = hybride rechargeable ; GP, GL, EG = GPL ; FE, FG = superéthanol (E85).',

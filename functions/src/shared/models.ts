@@ -449,6 +449,8 @@ export interface DossierDocument {
   /** Lecture en échec : code de la raison (`ia_quota`, `ia_upstream`, `ia_unusable`…). */
   error?: string | null;
   uploadedBy: string;
+  /** Pièce du client reprise dans le dossier (documents-reprendrePiecesClient) : id de la pièce d'origine. */
+  sourceAssureDocumentId?: string;
   createdAt?: TimestampLike;
   analyzedAt?: TimestampLike;
 }
