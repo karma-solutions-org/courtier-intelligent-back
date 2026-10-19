@@ -6,7 +6,11 @@ import { CALLABLE_OPTIONS } from "../core/config";
 import { assurePath, documentsPath, dossierPath } from "../core/firestore-paths";
 import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, reserveIaCall } from "../core/gemini.utils";
 import {
+  buildDetectOcrPrompt,
   buildOcrPrompt,
+  DOSSIER_DOCUMENT_TYPES,
+  parseDetectedType,
+  type Question,
   dossierDocumentsFolder,
   dossierTypeForAssureDocument,
   isAssureDocumentType,
@@ -103,8 +107,10 @@ export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY],
   if (!document.exists || !dossier.exists) {
     throw new HttpsError("not-found", "Document introuvable.");
   }
+  // `detectType` : le courtier n'a pas choisi le type, l'IA le reconnaît puis lit les champs de ce type (même appel).
+  const detectType = request.data?.detectType === true;
   const type = document.get("type") as DossierDocumentType;
-  if (!isAnalyzableDocumentType(type)) {
+  if (!detectType && !isAnalyzableDocumentType(type)) {
     throw new HttpsError("failed-precondition", "Ce type de document n'est pas lu automatiquement.", { reason: "not_analyzable" });
   }
   const storagePath = document.get("storagePath") as string;
@@ -114,7 +120,12 @@ export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY],
 
   const product = await db.doc(productDocPath(cabinetId, dossier.get("productId") as string)).get();
   const schema = (product.get("questionnaireSchema") as QuestionnaireSection[] | undefined) ?? [];
-  const questions = ocrQuestions(schema, type);
+  const questionsByType: Partial<Record<DossierDocumentType, Question[]>> = {};
+  for (const candidate of DOSSIER_DOCUMENT_TYPES) {
+    const list = isAnalyzableDocumentType(candidate) ? ocrQuestions(schema, candidate) : [];
+    if (list.length) questionsByType[candidate] = list;
+  }
+  const questions = detectType ? Object.values(questionsByType).flat() : ocrQuestions(schema, type);
   if (!questions.length) {
     throw new HttpsError("failed-precondition", "Le questionnaire de ce produit n'a aucun champ lisible sur ce document.", { reason: "no_fields" });
   }
@@ -140,7 +151,10 @@ export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY],
     contents: [
       {
         role: "user",
-        parts: [{ inlineData: { mimeType, data: bytes.toString("base64") } }, { text: buildOcrPrompt(type, questions) }],
+        parts: [
+          { inlineData: { mimeType, data: bytes.toString("base64") } },
+          { text: detectType ? buildDetectOcrPrompt(questionsByType) : buildOcrPrompt(type, questions) },
+        ],
       },
     ],
     generationConfig: { maxOutputTokens: MAX_OCR_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
@@ -152,13 +166,20 @@ export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY],
     throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", { reason: "ia_upstream" });
   }
 
-  const fields = parseOcrResponse(result.text, type, schema);
-  if (fields === null) {
+  const finalType = detectType ? parseDetectedType(result.text) : type;
+  const fields = finalType ? parseOcrResponse(result.text, finalType, schema) : null;
+  if (!finalType || fields === null) {
     await fail("ia_unusable");
     return { status: "failed", ocrFields: [], remaining };
   }
-  await documentRef.update({ status: "analyzed", ocrFields: fields, error: null, analyzedAt: FieldValue.serverTimestamp() });
-  return { status: "analyzed", ocrFields: fields, remaining };
+  await documentRef.update({
+    type: finalType,
+    status: "analyzed",
+    ocrFields: fields,
+    error: null,
+    analyzedAt: FieldValue.serverTimestamp(),
+  });
+  return { status: "analyzed", ocrFields: fields, documentType: finalType, remaining };
 });
 
 /**

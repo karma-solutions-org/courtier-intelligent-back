@@ -31,9 +31,9 @@ Exportées par groupe dans `index.ts` (`export * as members from ...`) : le nom 
 | `equipe-accepterInvitation` | Invité connecté | Le rattache au cabinet avec le rôle prévu |
 | `equipe-changerRole` | Admin du cabinet | Change le rôle d'un membre (garde au moins un admin) |
 | `equipe-annulerInvitation` | Admin du cabinet | Annule une invitation en attente (libère la place) |
-| `sessions-ouvrir` | App, à la connexion | Lie le compte à l'appareil (1re connexion) et ouvre la session ; refuse tout autre appareil (tracé dans `auditLog`) |
-| `sessions-fermer` | App, à la déconnexion | Ferme la session (l'appareil reste lié) |
-| `equipe-reinitialiserAppareil` | Admin du cabinet | Libère l'appareil lié d'un membre, dans la limite du quota mensuel de l'offre |
+| `sessions-ouvrir` | App, à la connexion | Ouvre la session ; refuse si le compte est déjà ouvert sur un autre appareil (tracé dans `auditLog`) |
+| `sessions-fermer` | App, à la déconnexion | Ferme la session : le compte peut aussitôt se connecter ailleurs |
+| `equipe-reinitialiserAppareil` | Admin du cabinet | Ferme de force la session d'un membre (déconnexion partout), dans la limite du quota mensuel de l'offre |
 | `sessions-ouvrirExtension` | Extension Chrome, à la connexion | Enregistre la connexion de l'extension dans la session de l'app ; refuse si l'app n'est pas ouverte sur l'appareil |
 | `sessions-fermerExtension` | Extension Chrome, à la déconnexion | Retire la connexion de l'extension (la session de l'app est intacte) |
 | `memoires-enregistrer` | Extension Chrome | Apprend la structure d'un formulaire d'extranet (après un remplissage validé) : validation à la lettre, confirmation, remplacement d'une ancienne version |
@@ -45,7 +45,7 @@ Région : **europe-west3** (le front appelle la même).
 
 ## Claims
 
-Claims **préfixés `ci_`** : `ci_cabinet_id`, `ci_role` (`admin` | `courtier`). L'appareil autorisé est identifié par `auth_time` du token, comparé à `members/{uid}.session.authTime` (l'ancien claim `ci_session_id` est supprimé).
+Claims **préfixés `ci_`** : `ci_cabinet_id`, `ci_role` (`admin` | `courtier`). La connexion autorisée est identifiée par `auth_time` du token, comparé à `members/{uid}.session.authTime` (l'ancien claim `ci_session_id` est supprimé).
 Le projet de test est partagé avec d'autres applications dont les règles donnent des droits sur des claims génériques (`admin`, `role`) : ne pas les renommer. Les claims existants des autres applications sont conservés.
 
 ## ⚠️ Projet Firebase partagé
@@ -56,19 +56,19 @@ Le projet de test est partagé avec d'autres applications dont les règles donne
 - **Ne jamais lancer `firebase deploy` sans `--only`** : les règles Firestore/Storage de ce repo remplaceraient celles des autres applications. Elles servent aux emulators.
 - Les emails partent via la collection `mail`, lue par l'instance `firestore-send-email` (*Trigger Email*) déjà installée sur le projet. Les Extensions Firebase s'arrêtent le 31 mars 2027 : prévoir un envoi direct (SMTP) avant.
 
-## Offres, limites et appareil unique
+## Offres, limites et session unique
 
 - **Offres** : `plans/{planId}` (publiées par `seed-catalog`, fichiers `catalog/plans/*.json`) portent les limites `maxUtilisateurs` (admin compris) et `resetsAppareilParMois`.
 - Le cabinet stocke `planId`, une surcharge facultative `overrides` et les limites effectives `limits` (= offre + surcharge, `computeEffectiveLimits`). Tout est **écrit uniquement côté serveur** : passer un cabinet de 3 à 6 sièges se fait avec `npm run ops:set-plan`, sans redéploiement. Une invitation en attente réserve une place.
 - **Baisse d'offre** : si les membres actifs dépassent la nouvelle limite, `graceEndsAt` est posé sur le cabinet (14 jours). Pendant le délai : bandeau côté app et invitations bloquées. Ensuite, les règles Firestore et les functions réservent l'accès aux admins. Le délai se referme dès que le cabinet rentre dans sa limite.
-- **Un compte = un appareil** : la 1re connexion lie l'appareil (`members/{uid}.device`, identifiant conservé dans l'IndexedDB de l'app). Tout autre appareil est refusé par `sessions-ouvrir` (raison `device_not_authorized`) et le refus est tracé dans `cabinets/{id}/auditLog`. Une nouvelle connexion de l'appareil lié remplace aussitôt la précédente (la session est liée à `auth_time`). L'admin libère l'appareil avec `equipe-reinitialiserAppareil` (quota mensuel, chaque action dans `auditLog`). Une offre peut autoriser plusieurs appareils par utilisateur (`limits.maxAppareilsParUtilisateur`, 1 par défaut : les suivants vont dans `members/{uid}.extraDevices`) et fixe son délai de grâce après une baisse d'offre (`limits.delaiGraceJours`, 14 jours par défaut). Si le seul admin d'un cabinet a perdu son poste, l'exploitation le libère avec `npm run ops:reset-device` (hors quota).
+- **Un compte = une session à la fois** : un compte peut se connecter depuis n'importe quel appareil (identifiant conservé dans l'IndexedDB de l'app, enregistré dans `members/{uid}.session.id`), mais n'est ouvert qu'à un endroit à la fois. Si une session est encore active sur un **autre** appareil (signe de vie de moins de 3 min, `APP_SESSION_ACTIVE_MS`), `sessions-ouvrir` refuse (raison `session_active`) et le refus est tracé dans `cabinets/{id}/auditLog`. Après une déconnexion (`sessions-fermer`), ou 3 min sans signe de vie (navigateur fermé sans se déconnecter), un autre appareil peut se connecter. Sur le **même** appareil, une nouvelle connexion remplace aussitôt la précédente (la session est liée à `auth_time`). L'admin peut fermer de force la session d'un membre avec `equipe-reinitialiserAppareil` (quota mensuel, chaque action dans `auditLog`). L'offre fixe son délai de grâce après une baisse d'offre (`limits.delaiGraceJours`, 14 jours par défaut). Si le seul admin d'un cabinet est bloqué, l'exploitation ferme sa session avec `npm run ops:reset-device` (hors quota). Les champs `device`, `extraDevices` et `limits.maxAppareilsParUtilisateur` de l'ancienne règle « un compte = un appareil » ne sont plus utilisés pour la connexion.
 
 ## Extension Chrome
 
 L'extension se connecte avec le compte de l'app, mais **son jeton a sa propre heure de connexion** (`auth_time`) :
 - `sessions-ouvrirExtension` l'enregistre dans la session de l'app (`members/{uid}.session.extensionAuthTime`), et **seulement si l'app est ouverte sur l'appareil** (session active, signe de vie de moins de 3 min) ;
 - l'extension n'a **jamais les droits de l'app** (les règles comparent `auth_time` à `session.authTime`) : elle lit ses propres jobs de tarification (`quoteJobs.ownerUid == uid`), n'écrit que le **statut et la progression** de ces jobs, des **offres automatiques** et la mémoire des formulaires (`formMemories`, `extensionReports`) ;
-- l'enregistrement vit dans la session de l'app : déconnexion de l'app, nouvelle connexion, appareil réinitialisé, membre ou cabinet désactivé → **l'extension perd l'accès immédiatement** (règles et functions) ;
+- l'enregistrement vit dans la session de l'app : déconnexion de l'app, nouvelle connexion, session fermée par un admin, membre ou cabinet désactivé → **l'extension perd l'accès immédiatement** (règles et functions) ;
 - recharger la page de l'app ne coupe pas l'extension.
 
 ### Mémoire partagée des formulaires (`formMemories`)
@@ -102,7 +102,7 @@ npm run ops:seed-catalog -- --project aibs-partenaire-testing   # publie le cata
 npm run ops:create-cabinet -- --emulator --name "Cabinet Dupont" --admin-email admin@dupont.fr --plan essentiel
 npm run ops:set-plan -- --emulator --cabinet <id> --plan cabinet            # ou --max-utilisateurs 6
 npm run ops:set-cabinet-status -- --emulator --cabinet <id> --status disabled
-npm run ops:reset-device -- --emulator --cabinet <id> --email admin@dupont.fr        # seul admin qui a perdu son poste ; --yes pour appliquer (hors quota mensuel, audit by « ops »)
+npm run ops:reset-device -- --emulator --cabinet <id> --email admin@dupont.fr        # seul admin bloqué : ferme sa session ; --yes pour appliquer (hors quota mensuel, audit by « ops »)
 npm run ops:extension-report -- --emulator --days 30 --last 20                      # échecs de l'extension par assureur et étape, réussites = offres « auto » capturées
 ```
 
@@ -129,7 +129,7 @@ Un JSON invalide (schéma, `canonicalPath` hors du modèle canonique, référenc
 cd functions
 npm run test              # emulator Firestore : isolation des cabinets, droits par rôle, journal d'audit, délai de grâce
 npm run test:unit         # catalogue et limites (sans emulator)
-npm run test:integration  # emulators auth + firestore + functions : appareil unique, dossiers, besoin, extension, ia-proxy, scripts ops
+npm run test:integration  # emulators auth + firestore + functions : session unique, dossiers, besoin, extension, ia-proxy, scripts ops
 ```
 
 > `functions/.env.demo-courtier-intelligent` (URL du faux service d'IA et clé factice) n'est lu que par les emulators du projet `demo-courtier-intelligent`.

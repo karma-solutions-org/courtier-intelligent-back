@@ -76,7 +76,7 @@ export async function getActiveMembership(
         extension
           ? "Session de l'extension expirée ou fermée. Reconnectez-vous dans l'extension."
           : "Session expirée ou ouverte sur un autre appareil. Reconnectez-vous.",
-        extension ? { reason: "extension_session_closed" } : undefined,
+        { reason: extension ? "extension_session_closed" : "session_closed" },
       );
     }
   }

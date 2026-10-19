@@ -127,6 +127,32 @@ export function buildOcrPrompt(type: DossierDocumentType, questions: Question[])
   ].join('\n');
 }
 
+/**
+ * Consigne de détection : l'IA reconnaît d'abord le type du document parmi ceux proposés, puis n'extrait que les champs de
+ * ce type. Un seul appel d'IA par fichier, même quand le courtier n'a pas choisi le type.
+ */
+export function buildDetectOcrPrompt(questionsByType: Partial<Record<DossierDocumentType, Question[]>>): string {
+  const types = Object.keys(questionsByType) as DossierDocumentType[];
+  return [
+    'Tu lis un document joint. Identifie d\'abord son type parmi :',
+    ...types.map(t => `- "${t}" : ${DOCUMENT_LABELS[t]}`),
+    '- "autre" : tout autre document',
+    'Un recto ou un verso seul reste du même type (ex. verso de carte grise → "carte_grise").',
+    '',
+    'Puis applique UNIQUEMENT la consigne du type reconnu (aucun champ si "autre") :',
+    ...types.flatMap(t => ['', `### Si "${t}"`, buildOcrPrompt(t, questionsByType[t] ?? [])]),
+    '',
+    'Réponds UNIQUEMENT avec un JSON de la forme {"documentType":"...","fields":[{"canonicalPath":"...","value":...,"confidence":0.0}]}.',
+  ].join('\n');
+}
+
+/** Type reconnu par l'IA dans sa réponse de détection ; `null` si la réponse n'en donne pas un valide. */
+export function parseDetectedType(text: string): DossierDocumentType | null {
+  const body = extractJson(text) as { documentType?: unknown } | null;
+  const type = body?.documentType;
+  return isDossierDocumentType(type) ? type : null;
+}
+
 /** Le premier objet JSON d'un texte (l'IA l'entoure parfois de ```json … ```). */
 function extractJson(text: string): unknown {
   const start = text.indexOf('{');
