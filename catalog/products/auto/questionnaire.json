@@ -223,5 +223,358 @@
         "visibleIf": { "path": "insuranceHistory.wasTerminated", "equals": true }
       }
     ]
+  },
+  {
+    "title": "Détail des sinistres",
+    "questions": [
+      {
+        "canonicalPath": "insuranceHistory.claims.1.type",
+        "label": "Sinistre 1 : type",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "materiel",
+            "label": "Matériel"
+          },
+          {
+            "value": "corporel",
+            "label": "Corporel"
+          },
+          {
+            "value": "bris_de_glace",
+            "label": "Bris de glace"
+          },
+          {
+            "value": "vol",
+            "label": "Vol"
+          },
+          {
+            "value": "incendie",
+            "label": "Incendie"
+          },
+          {
+            "value": "autre",
+            "label": "Autre"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.1.responsibility",
+        "label": "Sinistre 1 : responsabilité",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "0",
+            "label": "0 % (non responsable)"
+          },
+          {
+            "value": "50",
+            "label": "50 % (partiellement responsable)"
+          },
+          {
+            "value": "100",
+            "label": "100 % (responsable)"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.1.date",
+        "label": "Sinistre 1 : date",
+        "type": "date",
+        "required": false
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.2.type",
+        "label": "Sinistre 2 : type",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "materiel",
+            "label": "Matériel"
+          },
+          {
+            "value": "corporel",
+            "label": "Corporel"
+          },
+          {
+            "value": "bris_de_glace",
+            "label": "Bris de glace"
+          },
+          {
+            "value": "vol",
+            "label": "Vol"
+          },
+          {
+            "value": "incendie",
+            "label": "Incendie"
+          },
+          {
+            "value": "autre",
+            "label": "Autre"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.2.responsibility",
+        "label": "Sinistre 2 : responsabilité",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "0",
+            "label": "0 % (non responsable)"
+          },
+          {
+            "value": "50",
+            "label": "50 % (partiellement responsable)"
+          },
+          {
+            "value": "100",
+            "label": "100 % (responsable)"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.2.date",
+        "label": "Sinistre 2 : date",
+        "type": "date",
+        "required": false
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.3.type",
+        "label": "Sinistre 3 : type",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "materiel",
+            "label": "Matériel"
+          },
+          {
+            "value": "corporel",
+            "label": "Corporel"
+          },
+          {
+            "value": "bris_de_glace",
+            "label": "Bris de glace"
+          },
+          {
+            "value": "vol",
+            "label": "Vol"
+          },
+          {
+            "value": "incendie",
+            "label": "Incendie"
+          },
+          {
+            "value": "autre",
+            "label": "Autre"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.3.responsibility",
+        "label": "Sinistre 3 : responsabilité",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "0",
+            "label": "0 % (non responsable)"
+          },
+          {
+            "value": "50",
+            "label": "50 % (partiellement responsable)"
+          },
+          {
+            "value": "100",
+            "label": "100 % (responsable)"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.3.date",
+        "label": "Sinistre 3 : date",
+        "type": "date",
+        "required": false
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.4.type",
+        "label": "Sinistre 4 : type",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "materiel",
+            "label": "Matériel"
+          },
+          {
+            "value": "corporel",
+            "label": "Corporel"
+          },
+          {
+            "value": "bris_de_glace",
+            "label": "Bris de glace"
+          },
+          {
+            "value": "vol",
+            "label": "Vol"
+          },
+          {
+            "value": "incendie",
+            "label": "Incendie"
+          },
+          {
+            "value": "autre",
+            "label": "Autre"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.4.responsibility",
+        "label": "Sinistre 4 : responsabilité",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "0",
+            "label": "0 % (non responsable)"
+          },
+          {
+            "value": "50",
+            "label": "50 % (partiellement responsable)"
+          },
+          {
+            "value": "100",
+            "label": "100 % (responsable)"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.4.date",
+        "label": "Sinistre 4 : date",
+        "type": "date",
+        "required": false
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.5.type",
+        "label": "Sinistre 5 : type",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "materiel",
+            "label": "Matériel"
+          },
+          {
+            "value": "corporel",
+            "label": "Corporel"
+          },
+          {
+            "value": "bris_de_glace",
+            "label": "Bris de glace"
+          },
+          {
+            "value": "vol",
+            "label": "Vol"
+          },
+          {
+            "value": "incendie",
+            "label": "Incendie"
+          },
+          {
+            "value": "autre",
+            "label": "Autre"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.5.responsibility",
+        "label": "Sinistre 5 : responsabilité",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "0",
+            "label": "0 % (non responsable)"
+          },
+          {
+            "value": "50",
+            "label": "50 % (partiellement responsable)"
+          },
+          {
+            "value": "100",
+            "label": "100 % (responsable)"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.5.date",
+        "label": "Sinistre 5 : date",
+        "type": "date",
+        "required": false
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.6.type",
+        "label": "Sinistre 6 : type",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "materiel",
+            "label": "Matériel"
+          },
+          {
+            "value": "corporel",
+            "label": "Corporel"
+          },
+          {
+            "value": "bris_de_glace",
+            "label": "Bris de glace"
+          },
+          {
+            "value": "vol",
+            "label": "Vol"
+          },
+          {
+            "value": "incendie",
+            "label": "Incendie"
+          },
+          {
+            "value": "autre",
+            "label": "Autre"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.6.responsibility",
+        "label": "Sinistre 6 : responsabilité",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "0",
+            "label": "0 % (non responsable)"
+          },
+          {
+            "value": "50",
+            "label": "50 % (partiellement responsable)"
+          },
+          {
+            "value": "100",
+            "label": "100 % (responsable)"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.6.date",
+        "label": "Sinistre 6 : date",
+        "type": "date",
+        "required": false
+      }
+    ]
   }
 ]

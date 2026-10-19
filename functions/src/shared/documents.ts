@@ -104,6 +104,14 @@ const DOCUMENT_HINTS: Partial<Record<DossierDocumentType, string[]>> = {
     "  française ou un département → « France »). Omets-le si le lieu n'est pas imprimé ;",
     '- driver.licenseCountry : pays qui a délivré le permis (permis « République française » → « France »).',
   ],
+  releve_information: [
+    "Relevé d'information : coefficient bonus-malus (CRM), assureur, dates du contrat, et le tableau des sinistres des dernières années.",
+    '- insuranceHistory.claims.<n>.* : un sinistre par ligne du tableau, n = 1 pour le plus récent, puis 2, 3… (6 au plus) ;',
+    '  .type : nature du sinistre (« matériel », « corporel », « bris de glace », « vol », « incendie », sinon « autre ») ;',
+    '  .responsibility : part de responsabilité imprimée (« 0 » non responsable, « 50 » partiellement, « 100 » totalement) ;',
+    '  .date : date de survenance du sinistre (pas la date de déclaration ni de règlement).',
+    "- N'invente aucune ligne : s'il n'y a pas de sinistre, omets ces champs ; une rubrique illisible d'une ligne est omise seule.",
+  ],
 };
 
 /** Consigne envoyée à l'IA : uniquement les champs du questionnaire lisibles sur ce type de document. */
