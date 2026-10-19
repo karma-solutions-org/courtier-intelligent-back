@@ -5,7 +5,7 @@ import type { Plan, PlanLimits } from './models.js';
 export const FALLBACK_LIMITS: PlanLimits = {
   maxUtilisateurs: 3,
   resetsAppareilParMois: 2,
-  appelsIaParMois: 200,
+  appelsIaParMois: 10000,
   appelsPlaqueParMois: 100,
   maxAppareilsParUtilisateur: 1,
   delaiGraceJours: 14,
