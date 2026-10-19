@@ -1,11 +1,11 @@
 import * as admin from "firebase-admin";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { FieldValue, type Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { writeAudit } from "../core/audit.utils";
 import { getActiveMembership, requireString, tokenAuthTime } from "../core/auth.utils";
-import { CALLABLE_OPTIONS, EXTENSION_APP_SESSION_MAX_AGE_MS } from "../core/config";
-import { cabinetPath, memberPath } from "../core/firestore-paths";
-import { FALLBACK_LIMITS, type BoundDevice, type Session } from "../shared/index.js";
+import { APP_SESSION_ACTIVE_MS, CALLABLE_OPTIONS, EXTENSION_APP_SESSION_MAX_AGE_MS } from "../core/config";
+import { memberPath } from "../core/firestore-paths";
+import type { Session } from "../shared/index.js";
 
 /** Identifiant d'appareil généré par l'app (UUID) et conservé dans son IndexedDB. */
 function requireDeviceId(value: unknown): string {
@@ -19,11 +19,11 @@ function requireDeviceId(value: unknown): string {
 /**
  * Ouvre la session de l'appareil qui se connecte.
  *
- * Un compte est lié à UN appareil (ou jusqu'à `limits.maxAppareilsParUtilisateur` selon l'offre) : les premiers
- * avec lesquels il se connecte, jusqu'à ce qu'un admin les réinitialise (`equipe-reinitialiserAppareil`).
- * Le premier reste dans `device`, les suivants dans `extraDevices`.
- * - autre appareil, toutes les places prises : REFUSÉ (et tracé dans le journal d'audit du cabinet), même avec le bon mot de passe ;
- * - appareil lié : accepté. Une nouvelle connexion remplace aussitôt la précédente (autre onglet, autre
+ * Un compte peut se connecter depuis n'importe quel appareil, mais n'est ouvert qu'à UN endroit à la fois :
+ * - une session encore active sur un AUTRE appareil (signe de vie depuis moins de `APP_SESSION_ACTIVE_MS`) : REFUSÉ
+ *   (et tracé dans le journal d'audit du cabinet), même avec le bon mot de passe ;
+ * - pas de session active ailleurs (déconnecté, ou navigateur fermé depuis plus de ce délai) : acceptée ;
+ * - même appareil : acceptée. Une nouvelle connexion remplace aussitôt la précédente (autre onglet, autre
  *   fenêtre) : la session est liée à l'`auth_time` du token (heure de connexion par mot de passe, signée par
  *   Firebase), les règles Firestore et les functions n'acceptent plus que celui de la dernière connexion.
  */
@@ -37,22 +37,16 @@ export const ouvrir = onCall(CALLABLE_OPTIONS, async request => {
   const memberRef = db.doc(memberPath(cabinetId, uid));
 
   const outcome = await db.runTransaction(async tx => {
-    const [member, cabinet] = await Promise.all([tx.get(memberRef), tx.get(db.doc(cabinetPath(cabinetId)))]);
-    const device = member.get("device") as BoundDevice | undefined;
-    const extraDevices = (member.get("extraDevices") as BoundDevice[] | undefined) ?? [];
-    const bound = device ? [device, ...extraDevices] : [];
-    const maxDevices =
-      (cabinet.get("limits.maxAppareilsParUtilisateur") as number | undefined) ?? FALLBACK_LIMITS.maxAppareilsParUtilisateur;
-    const isBound = bound.some(entry => entry.id === deviceId);
-    if (!isBound && bound.length >= maxDevices) {
-      return { refused: true as const, boundLabel: bound.map(entry => entry.label).filter(Boolean).join(", ") || null };
-    }
-    const newDevice = { id: deviceId, label, boundAt: Timestamp.now() };
+    const member = await tx.get(memberRef);
     const current = member.get("session") as Session | undefined;
     const isSameLogin = current?.authTime === authTime;
+    const lastSeen = current?.lastSeen?.toMillis();
+    const activeElsewhere =
+      !!current && !isSameLogin && current.id !== deviceId && lastSeen !== undefined && Date.now() - lastSeen < APP_SESSION_ACTIVE_MS;
+    if (activeElsewhere) {
+      return { refused: true as const, activeLabel: current.appareil ?? null };
+    }
     tx.update(memberRef, {
-      // Premier appareil : `device` (forme historique) ; les suivants s'ajoutent à `extraDevices`.
-      ...(isBound ? {} : device ? { extraDevices: [...extraDevices, newDevice] } : { device: { ...newDevice, boundAt: FieldValue.serverTimestamp() } }),
       session: {
         id: deviceId,
         authTime,
@@ -66,25 +60,22 @@ export const ouvrir = onCall(CALLABLE_OPTIONS, async request => {
           : {}),
       },
     });
-    return { refused: false as const, newlyBound: !isBound, isNewLogin: !isSameLogin };
+    return { refused: false as const, isNewLogin: !isSameLogin };
   });
 
   if (outcome.refused) {
     await writeAudit(cabinetId, {
-      type: "connexion_refusee_appareil",
+      type: "connexion_refusee_session_active",
       uid,
-      data: { appareil: label, appareilLie: outcome.boundLabel },
+      data: { appareil: label, appareilActif: outcome.activeLabel },
     });
     throw new HttpsError(
       "permission-denied",
-      "Cet appareil n'est pas autorisé : votre compte est lié à un autre appareil" +
-        `${outcome.boundLabel ? ` (${outcome.boundLabel})` : ""}. ` +
-        "Demandez à l'administrateur de votre cabinet de le réinitialiser.",
-      { reason: "device_not_authorized" },
+      "Ce compte est déjà ouvert sur un autre appareil" +
+        `${outcome.activeLabel ? ` (${outcome.activeLabel})` : ""}. ` +
+        "Déconnectez-vous de cet appareil, ou attendez quelques minutes s'il a été fermé, puis réessayez.",
+      { reason: "session_active" },
     );
-  }
-  if (outcome.newlyBound) {
-    await writeAudit(cabinetId, { type: "appareil_lie", uid, data: { appareil: label } });
   }
   if (outcome.isNewLogin) {
     await writeAudit(cabinetId, { type: "connexion", uid, data: { appareil: label } });
@@ -93,7 +84,7 @@ export const ouvrir = onCall(CALLABLE_OPTIONS, async request => {
   return { success: true };
 });
 
-/** Ferme la session à la déconnexion. L'appareil reste lié au compte. */
+/** Ferme la session à la déconnexion : le compte peut aussitôt se connecter ailleurs. */
 export const fermer = onCall(CALLABLE_OPTIONS, async request => {
   const { uid, cabinetId } = await getActiveMembership(request, { requireSession: false });
   const authTime = tokenAuthTime(request);
@@ -117,7 +108,7 @@ export const fermer = onCall(CALLABLE_OPTIONS, async request => {
  * L'enregistrement vit DANS la session de l'app : fermée, remplacée, appareil réinitialisé ou membre désactivé,
  * l'extension perd l'accès aussitôt (règles Firestore et functions).
  * Liaison à l'appareil : l'extension présente l'identifiant d'appareil que l'app lui a transmis (message `PING`) ;
- * il doit être celui de la session de l'app ET un appareil lié au compte. Sinon l'extension d'un autre poste
+ * il doit être celui de la session de l'app. Sinon l'extension d'un autre poste
  * pourrait profiter d'une app ouverte ailleurs.
  */
 export const ouvrirExtension = onCall(CALLABLE_OPTIONS, async request => {
@@ -140,11 +131,8 @@ export const ouvrirExtension = onCall(CALLABLE_OPTIONS, async request => {
         { reason: "no_app_session" },
       );
     }
-    // L'extension doit tourner sur l'appareil de la session de l'app, et cet appareil doit être lié au compte.
-    const device = member.get("device") as BoundDevice | undefined;
-    const extraDevices = (member.get("extraDevices") as BoundDevice[] | undefined) ?? [];
-    const isBound = [...(device ? [device] : []), ...extraDevices].some(entry => entry.id === deviceId);
-    if (!deviceId || current.id !== deviceId || !isBound) {
+    // L'extension doit tourner sur l'appareil de la session de l'app.
+    if (!deviceId || current.id !== deviceId) {
       throw new HttpsError(
         "failed-precondition",
         "L'extension doit être utilisée sur l'appareil où Courtier Intelligent est ouvert.",
@@ -177,7 +165,7 @@ const EXTENSION_TOKEN_MIN_INTERVAL_MS = 5_000;
  * Seule l'APP peut l'appeler : `getActiveMembership` compare l'`auth_time` du jeton à celui de la session de l'app,
  * donc le jeton de l'extension (autre `auth_time`) est refusé. Le jeton émis est un custom token Firebase : l'extension
  * l'échange contre sa propre connexion (nouvel `auth_time`) puis appelle `sessions-ouvrirExtension`, qui garde toutes
- * ses vérifications (session de l'app vivante, appareil lié, `auth_time` distinct de celui de l'app).
+ * ses vérifications (session de l'app vivante, même appareil, `auth_time` distinct de celui de l'app).
  * Le jeton vit au plus une heure, la fréquence d'émission est limitée et chaque émission est tracée.
  * Production : le compte de service des functions doit avoir le rôle « Service Account Token Creator » (signature).
  */

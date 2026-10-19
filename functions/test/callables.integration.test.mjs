@@ -106,27 +106,43 @@ describe('Inscription : creerMonCabinet et accepterInvitation', () => {
   });
 });
 
-describe('Un compte, un appareil', () => {
-  it("le premier appareil se lie au compte et la connexion est tracée", async () => {
+describe('Un compte, une session à la fois', () => {
+  it('la connexion ouvre la session et est tracée', async () => {
     const result = await ouvrir(await signIn('courtier@test.fr'), DEVICE_A);
     assert.deepEqual(result.data, { success: true });
     const member = (await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).data();
-    assert.equal(member.device.id, DEVICE_A);
-    assert.deepEqual(await auditTypes(cabinetId, courtierUid), ['appareil_lie', 'connexion']);
+    assert.equal(member.session.id, DEVICE_A);
+    assert.deepEqual(await auditTypes(cabinetId, courtierUid), ['connexion']);
   });
 
-  it('un deuxième appareil est refusé, même avec le bon mot de passe, et le refus est tracé', async () => {
+  it('un autre appareil est refusé tant que la session est active, et le refus est tracé', async () => {
     const result = await ouvrir(await signIn('courtier@test.fr'), DEVICE_B);
     assert.equal(result.error?.status, 'PERMISSION_DENIED');
-    assert.equal(result.error.details?.reason, 'device_not_authorized');
-    assert.ok((await auditTypes(cabinetId, courtierUid)).includes('connexion_refusee_appareil'));
-    // L'appareil lié et sa session ne changent pas.
-    const member = (await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).data();
-    assert.equal(member.device.id, DEVICE_A);
-    assert.equal(member.session.id, DEVICE_A);
+    assert.equal(result.error.details?.reason, 'session_active');
+    assert.ok((await auditTypes(cabinetId, courtierUid)).includes('connexion_refusee_session_active'));
+    // La session active ne change pas.
+    assert.equal((await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).get('session.id'), DEVICE_A);
   });
 
-  it("une nouvelle connexion de l'appareil lié coupe aussitôt la précédente", async () => {
+  it('un autre appareil est accepté une fois la session fermée', async () => {
+    const tokenA = await signIn('courtier@test.fr');
+    await ouvrir(tokenA, DEVICE_A);
+    assert.deepEqual((await call('sessions-fermer', tokenA)).data, { success: true });
+    await sleep(1100); // auth_time est en secondes
+    assert.deepEqual((await ouvrir(await signIn('courtier@test.fr'), DEVICE_B)).data, { success: true });
+    assert.equal((await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).get('session.id'), DEVICE_B);
+  });
+
+  it('un autre appareil est accepté quand la session ne donne plus signe de vie (navigateur fermé)', async () => {
+    await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).update({
+      'session.lastSeen': admin.firestore.Timestamp.fromMillis(Date.now() - 10 * 60 * 1000),
+    });
+    await sleep(1100);
+    assert.deepEqual((await ouvrir(await signIn('courtier@test.fr'), DEVICE_A)).data, { success: true });
+    assert.equal((await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).get('session.id'), DEVICE_A);
+  });
+
+  it("une nouvelle connexion du même appareil coupe aussitôt la précédente", async () => {
     const oldToken = await signIn('admin@test.fr');
     assert.deepEqual((await ouvrir(oldToken, DEVICE_A)).data, { success: true });
     await sleep(1100); // auth_time est en secondes
@@ -160,7 +176,7 @@ describe('Réinitialisation de l’appareil par un admin', () => {
     assert.equal(result.error?.status, 'PERMISSION_DENIED');
   });
 
-  it("libère l'appareil : le nouvel appareil se lie, l'ancien perd l'accès", async () => {
+  it("ferme la session : un autre appareil peut se connecter, l'ancien perd l'accès", async () => {
     const oldCourtierToken = await signIn('courtier@test.fr');
     await ouvrir(oldCourtierToken, DEVICE_A);
 
@@ -172,19 +188,20 @@ describe('Réinitialisation de l’appareil par un admin', () => {
     assert.equal(member.session, undefined);
 
     assert.deepEqual((await ouvrir(await signIn('courtier@test.fr'), DEVICE_B)).data, { success: true });
-    assert.equal((await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).get('device.id'), DEVICE_B);
+    assert.equal((await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).get('session.id'), DEVICE_B);
   });
 
   it('refuse au-delà du quota mensuel de l’offre et trace le refus', async () => {
     assert.equal((await call('equipe-reinitialiserAppareil', adminToken, { uid: courtierUid })).data?.remaining, 0);
     await ouvrir(await signIn('courtier@test.fr'), DEVICE_A);
+    const sessionBefore = (await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).get('session.id');
 
     const refused = await call('equipe-reinitialiserAppareil', adminToken, { uid: courtierUid });
     assert.equal(refused.error?.status, 'RESOURCE_EXHAUSTED');
     assert.equal(refused.error.details?.reason, 'device_reset_quota');
     assert.ok((await auditTypes(cabinetId, courtierUid)).includes('reinitialisation_refusee_quota'));
-    // L'appareil n'a pas été libéré.
-    assert.equal((await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).get('device.id'), DEVICE_A);
+    // La session n'a pas été fermée.
+    assert.equal((await db.doc(`ci_cabinets/${cabinetId}/ci_members/${courtierUid}`).get()).get('session.id'), sessionBefore);
   });
 
   it('le quota repart à zéro le mois suivant', async () => {

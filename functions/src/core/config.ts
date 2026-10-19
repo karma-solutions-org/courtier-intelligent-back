@@ -37,6 +37,12 @@ export const MAIL_COLLECTION = "mail";
 export const EXTENSION_APP_SESSION_MAX_AGE_MS = 3 * 60 * 1000;
 
 /**
+ * Une session sans signe de vie depuis ce délai est considérée fermée (navigateur fermé sans se déconnecter) :
+ * le compte peut alors se connecter depuis un autre appareil.
+ */
+export const APP_SESSION_ACTIVE_MS = 3 * 60 * 1000;
+
+/**
  * Modèles Gemini utilisés par `ia-proxy`, dans l'ordre : si l'un échoue (introuvable, surchargé, en panne, réponse vide),
  * on essaie le suivant. Choisis côté serveur, jamais par l'extension.
  */

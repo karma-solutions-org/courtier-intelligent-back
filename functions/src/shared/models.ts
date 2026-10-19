@@ -93,6 +93,7 @@ export interface Session {
 export type AuditLogType =
   | 'connexion'
   | 'connexion_refusee_appareil'
+  | 'connexion_refusee_session_active'
   | 'appareil_lie'
   | 'extension_connexion'
   | 'extension_jeton_emis'
