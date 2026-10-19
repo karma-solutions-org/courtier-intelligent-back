@@ -1,5 +1,5 @@
 // ⚠️ Copie générée par scripts/sync-shared.mjs — ne pas modifier ici.
-/** Rôles. Stockés dans les claims `ci_role` et dans cabinets/{t}/members/{uid}.role. */
+/** Rôles. Stockés dans les claims `ci_role` et dans cabinets/{cabinetId}/members/{uid}.role. */
 export type UserRole = 'admin' | 'courtier';
 /** Rôle d'un membre dans son cabinet (identique à UserRole : tout utilisateur appartient à un cabinet). */
 export type CabinetRole = UserRole;
@@ -36,10 +36,38 @@ export const DOSSIER_TRANSITIONS: Record<DossierStatus, DossierStatus[]> = {
   sans_suite: [],
 };
 
+/** Statuts finaux : plus aucune transition (« sans suite » : classé par `dossiers-classerSansSuite`, avec un motif). */
+export const TERMINAL_DOSSIER_STATUSES: DossierStatus[] = ['souscrit', 'refuse', 'sans_suite'];
+
+/** Dossiers jamais supprimés définitivement (trace d'une proposition faite à l'assuré). */
+export const PROTECTED_DOSSIER_STATUSES: DossierStatus[] = ['proposition_envoyee', 'souscrit', 'refuse'];
+
+/** Motif obligatoire d'un classement sans suite. */
+export const SANS_SUITE_MOTIF_MAX = 500;
+
+/**
+ * Issue d'un dossier pour le taux de conversion : `won` (souscrit), `lost` (refusé, ou sans suite après une
+ * proposition envoyée), `null` (pas d'issue). La corbeille n'y change rien : un dossier refusé puis supprimé compte.
+ */
+export function conversionOutcome(dossier: { status: DossierStatus; proposal?: unknown | null }): 'won' | 'lost' | null {
+  if (dossier.status === 'souscrit') return 'won';
+  if (dossier.status === 'refuse') return 'lost';
+  if (dossier.status === 'sans_suite' && dossier.proposal) return 'lost';
+  return null;
+}
+
+/** Une transition de statut est-elle autorisée par la machine à états ? */
+export function isTransitionAllowed(from: DossierStatus, to: DossierStatus): boolean {
+  return DOSSIER_TRANSITIONS[from].includes(to);
+}
+
+/** Tant que le dossier est dans l'un de ces statuts, ses informations restent modifiables. */
+export const EDITABLE_DOSSIER_STATUSES: DossierStatus[] = ['brouillon', 'complet', 'besoin_valide'];
+
 export const DOSSIER_STATUS_LABELS: Record<DossierStatus, string> = {
   brouillon: 'Brouillon',
   complet: 'Complet',
-  besoin_valide: 'Besoin validé',
+  besoin_valide: 'Couverture validée',
   tarification: 'Tarification',
   comparaison: 'Comparaison',
   decision: 'Décision',
@@ -57,14 +85,16 @@ export type QuoteJobStatus =
   | 'filling'
   | 'awaiting_submit'
   | 'captured'
-  | 'failed';
+  | 'failed'
+  | 'cancelled';
 
 export const QUOTE_JOB_STATUS_LABELS: Record<QuoteJobStatus, string> = {
   requested: 'Demandé',
-  analyzing: 'Analyse de l’extranet',
+  analyzing: "Analyse de l'extranet",
   needs_info: 'Informations manquantes',
   filling: 'Remplissage en cours',
-  awaiting_submit: 'À valider sur l’extranet',
+  awaiting_submit: "À valider sur l'extranet",
   captured: 'Tarif obtenu',
   failed: 'Échec',
+  cancelled: 'Annulé',
 };

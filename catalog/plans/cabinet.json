@@ -1,0 +1,12 @@
+{
+  "id": "cabinet",
+  "name": "Cabinet",
+  "limits": {
+    "maxUtilisateurs": 6,
+    "resetsAppareilParMois": 4,
+    "appelsIaParMois": 1000,
+    "appelsPlaqueParMois": 500,
+    "maxAppareilsParUtilisateur": 1,
+    "delaiGraceJours": 14
+  }
+}

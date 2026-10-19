@@ -13,8 +13,11 @@ courtier-intelligent-back/
     └── src/
         ├── index.ts                         Export de toutes les functions
         ├── core/                            Config (région, claims), chemins Firestore, utilitaires d'auth
-        ├── cabinets/                        creerMonCabinet, creer, activer
-        └── equipe/equipe.callable.ts        inviter, accepterInvitation, changerRole, activerMembre
+        ├── cabinets/                        creerMonCabinet
+        ├── equipe/equipe.callable.ts        inviter, accepterInvitation, changerRole, activerMembre, reinitialiserAppareil
+        ├── sessions/sessions.callable.ts    ouvrir, fermer
+        └── ops/                             scripts d'exploitation (voir « Scripts ops »)
+└── catalog/                                 JSON versionnés du catalogue global (offres, assureurs, produits)
 ```
 
 ## Functions
@@ -28,15 +31,21 @@ Exportées par groupe dans `index.ts` (`export * as members from ...`) : le nom 
 | `equipe-accepterInvitation` | Invité connecté | Le rattache au cabinet avec le rôle prévu |
 | `equipe-changerRole` | Admin du cabinet | Change le rôle d'un membre (garde au moins un admin) |
 | `equipe-annulerInvitation` | Admin du cabinet | Annule une invitation en attente (libère la place) |
-| `sessions-ouvrir` | App, à la connexion | Ouvre la session de l'appareil ; refusée si un autre appareil est connecté |
-| `sessions-fermer` | App, à la déconnexion | Libère la session : l'utilisateur peut se connecter ailleurs |
+| `sessions-ouvrir` | App, à la connexion | Ouvre la session ; refuse si le compte est déjà ouvert sur un autre appareil (tracé dans `auditLog`) |
+| `sessions-fermer` | App, à la déconnexion | Ferme la session : le compte peut aussitôt se connecter ailleurs |
+| `equipe-reinitialiserAppareil` | Admin du cabinet | Ferme de force la session d'un membre (déconnexion partout), dans la limite du quota mensuel de l'offre |
+| `sessions-ouvrirExtension` | Extension Chrome, à la connexion | Enregistre la connexion de l'extension dans la session de l'app ; refuse si l'app n'est pas ouverte sur l'appareil |
+| `sessions-fermerExtension` | Extension Chrome, à la déconnexion | Retire la connexion de l'extension (la session de l'app est intacte) |
+| `memoires-enregistrer` | Extension Chrome | Apprend la structure d'un formulaire d'extranet (après un remplissage validé) : validation à la lettre, confirmation, remplacement d'une ancienne version |
+| `memoires-utiliser` / `memoires-invalider` | Extension Chrome | Compte une utilisation (au plus 1 par heure) / signale un échec ; à 2 cabinets distincts, la mémoire est invalidée |
+| `ia-proxy` | Extension Chrome | Appel à l'API d'IA : clé côté serveur, modèle imposé, tailles bornées, quota mensuel selon l'offre |
 | `equipe-activerMembre` | Admin du cabinet | Désactive / réactive un membre (révoque ses sessions) |
 
 Région : **europe-west3** (le front appelle la même).
 
 ## Claims
 
-Claims **préfixés `ci_`** : `ci_cabinet_id`, `ci_role` (`admin` | `courtier`). L'appareil autorisé est identifié par `auth_time` du token, comparé à `members/{uid}.session.authTime` (l'ancien claim `ci_session_id` est supprimé).
+Claims **préfixés `ci_`** : `ci_cabinet_id`, `ci_role` (`admin` | `courtier`). La connexion autorisée est identifiée par `auth_time` du token, comparé à `members/{uid}.session.authTime` (l'ancien claim `ci_session_id` est supprimé).
 Le projet de test est partagé avec d'autres applications dont les règles donnent des droits sur des claims génériques (`admin`, `role`) : ne pas les renommer. Les claims existants des autres applications sont conservés.
 
 ## ⚠️ Projet Firebase partagé
@@ -45,19 +54,86 @@ Le projet de test est partagé avec d'autres applications dont les règles donne
 
 - Déployer **uniquement les functions** : `npm --prefix functions run deploy` (codebase `courtier-intelligent`).
 - **Ne jamais lancer `firebase deploy` sans `--only`** : les règles Firestore/Storage de ce repo remplaceraient celles des autres applications. Elles servent aux emulators.
-- Les emails partent via la collection `MailCourtierIntelligent` : une instance de l'extension Firebase *Trigger Email* doit écouter cette collection.
+- Les emails partent via la collection `mail`, lue par l'instance `firestore-send-email` (*Trigger Email*) déjà installée sur le projet. Les Extensions Firebase s'arrêtent le 31 mars 2027 : prévoir un envoi direct (SMTP) avant.
 
-## Offre : limite d'utilisateurs et appareil unique
+## Offres, limites et session unique
 
-- `maxUtilisateurs` (3 par défaut, admin compris) est stocké sur le cabinet et **écrit uniquement côté serveur**. Une invitation en attente réserve une place.
-- Un seul appareil par utilisateur : `sessions-ouvrir` refuse un 2e appareil tant que le 1er envoie son signal de vie (expiration après 2 minutes sans signal). Les règles refusent tout accès d'une autre session.
+- **Offres** : `plans/{planId}` (publiées par `seed-catalog`, fichiers `catalog/plans/*.json`) portent les limites `maxUtilisateurs` (admin compris) et `resetsAppareilParMois`.
+- Le cabinet stocke `planId`, une surcharge facultative `overrides` et les limites effectives `limits` (= offre + surcharge, `computeEffectiveLimits`). Tout est **écrit uniquement côté serveur** : passer un cabinet de 3 à 6 sièges se fait avec `npm run ops:set-plan`, sans redéploiement. Une invitation en attente réserve une place.
+- **Baisse d'offre** : si les membres actifs dépassent la nouvelle limite, `graceEndsAt` est posé sur le cabinet (14 jours). Pendant le délai : bandeau côté app et invitations bloquées. Ensuite, les règles Firestore et les functions réservent l'accès aux admins. Le délai se referme dès que le cabinet rentre dans sa limite.
+- **Un compte = une session à la fois** : un compte peut se connecter depuis n'importe quel appareil (identifiant conservé dans l'IndexedDB de l'app, enregistré dans `members/{uid}.session.id`), mais n'est ouvert qu'à un endroit à la fois. Si une session est encore active sur un **autre** appareil (signe de vie de moins de 3 min, `APP_SESSION_ACTIVE_MS`), `sessions-ouvrir` refuse (raison `session_active`) et le refus est tracé dans `cabinets/{id}/auditLog`. Après une déconnexion (`sessions-fermer`), ou 3 min sans signe de vie (navigateur fermé sans se déconnecter), un autre appareil peut se connecter. Sur le **même** appareil, une nouvelle connexion remplace aussitôt la précédente (la session est liée à `auth_time`). L'admin peut fermer de force la session d'un membre avec `equipe-reinitialiserAppareil` (quota mensuel, chaque action dans `auditLog`). L'offre fixe son délai de grâce après une baisse d'offre (`limits.delaiGraceJours`, 14 jours par défaut). Si le seul admin d'un cabinet est bloqué, l'exploitation ferme sa session avec `npm run ops:reset-device` (hors quota). Les champs `device`, `extraDevices` et `limits.maxAppareilsParUtilisateur` de l'ancienne règle « un compte = un appareil » ne sont plus utilisés pour la connexion.
+
+## Extension Chrome
+
+L'extension se connecte avec le compte de l'app, mais **son jeton a sa propre heure de connexion** (`auth_time`) :
+- `sessions-ouvrirExtension` l'enregistre dans la session de l'app (`members/{uid}.session.extensionAuthTime`), et **seulement si l'app est ouverte sur l'appareil** (session active, signe de vie de moins de 3 min) ;
+- l'extension n'a **jamais les droits de l'app** (les règles comparent `auth_time` à `session.authTime`) : elle lit ses propres jobs de tarification (`quoteJobs.ownerUid == uid`), n'écrit que le **statut et la progression** de ces jobs, des **offres automatiques** et la mémoire des formulaires (`formMemories`, `extensionReports`) ;
+- l'enregistrement vit dans la session de l'app : déconnexion de l'app, nouvelle connexion, session fermée par un admin, membre ou cabinet désactivé → **l'extension perd l'accès immédiatement** (règles et functions) ;
+- recharger la page de l'app ne coupe pas l'extension.
+
+### Mémoire partagée des formulaires (`formMemories`)
+
+Ce que l'extension apprend d'un formulaire d'extranet est partagé par **tous les cabinets** : seule de la **structure** y entre (champs, types, libellés, chemin canonique), jamais une valeur.
+- **Lecture** par l'extension connectée (règles) ; **écriture uniquement par les functions `memoires-*`**, car les règles Firestore ne savent pas contrôler le contenu d'une liste. Chaque champ est validé à la lettre : six propriétés exactement, clé `type:identifiant`, chemin de la liste fermée, libellé sans e-mail ni numéro, origine https. Un cabinet ne peut ni déposer une donnée, ni remplacer la mémoire valide des autres.
+- Clé du document : `sha256(origine|empreinte)` tronqué à 32 caractères (même calcul dans l'extension, vecteur de test commun).
+- **Réapprentissage** : une nouvelle empreinte très proche d'une ancienne (≥ 70 % de champs communs, même origine) la remplace ; une mémoire signalée en échec par 2 cabinets distincts est invalidée, puis réapprise au prochain remplissage réussi.
+- `npm run ops:memories -- --project <id> list | show <clé> | purge (--key|--origin|--invalidated|--older-than-days n) [--yes]` : consulter et purger (sans `--yes`, la purge affiche seulement ce qui serait supprimé ; sans critère, elle refuse).
+
+### `ia-proxy`
+
+Aucune clé d'IA dans l'extension. L'IA est **Gemini** ; sa clé est un **secret des Cloud Functions**, à créer dans chaque projet avant le premier déploiement (sinon le déploiement s'arrête) :
+
+```bash
+firebase functions:secrets:set GEMINI_API_KEY --project aibs-partenaire-testing
+```
+
+Les modèles sont imposés côté serveur (`GEMINI_MODELS` dans `core/config.ts`) et essayés **dans l'ordre** : un modèle introuvable, surchargé (429), en panne (5xx), trop lent ou dont la réponse est vide passe la main au suivant ; une clé refusée (401/403) arrête tout de suite. L'appel ne compte qu'une fois dans le quota, et il est rendu si aucun modèle ne répond. L'extension envoie toujours `{ system, messages, maxTokens }` et reçoit `{ text }` : le proxy traduit vers `generateContent`. Les messages sont bornés (20 messages, 30 000 caractères chacun, 2 000 tokens en sortie), le contenu n'est ni journalisé ni conservé. Limite : `limits.appelsIaParMois` de l'offre (200 / 1000 / 5000), compteur `cabinets/{id}/usage/ia-AAAA-MM`, un appel réservé avant l'envoi et remboursé si le service d'IA échoue. `npm run ops:set-plan -- … --appels-ia 500` l'ajuste par cabinet.
+
+
+## Scripts ops
+
+Toujours avec une cible explicite : `--emulator` ou `--project <id>` (le projet de test est partagé, aucune cible par défaut). Les arguments passent après `--`.
+
+```bash
+cd functions
+npm run catalog:validate                                   # valide les JSON du catalogue (CI)
+npm run ops:preview-questionnaire -- auto                  # aperçu local du questionnaire
+npm run ops:seed-catalog -- --project aibs-partenaire-testing   # publie le catalogue ; sans risque à relancer ; --dry-run pour valider seulement
+npm run ops:create-cabinet -- --emulator --name "Cabinet Dupont" --admin-email admin@dupont.fr --plan essentiel
+npm run ops:set-plan -- --emulator --cabinet <id> --plan cabinet            # ou --max-utilisateurs 6
+npm run ops:set-cabinet-status -- --emulator --cabinet <id> --status disabled
+npm run ops:reset-device -- --emulator --cabinet <id> --email admin@dupont.fr        # seul admin bloqué : ferme sa session ; --yes pour appliquer (hors quota mensuel, audit by « ops »)
+npm run ops:extension-report -- --emulator --days 30 --last 20                      # échecs de l'extension par assureur et étape, réussites = offres « auto » capturées
+```
+
+## Catalogue
+
+Le catalogue global est maintenu en JSON dans `catalog/` et publié par `seed-catalog` (pas d'écran d'administration) :
+
+```
+catalog/
+├── plans/<offre>.json                    id, name, limits
+├── insurers/<assureur>.json              id, name, extranetUrl, extranetDomains, productsSupported
+└── products/<produit>/
+    ├── product.json                      id, name, active
+    ├── questionnaire.json                sections → questions (canonicalPath, type, required, choices, visibleIf, withKnowledge)
+    ├── guarantees.json                   référentiel des garanties (code, label, type)
+    └── synonyms.json                     code de garantie → formulations des assureurs
+```
+
+Un JSON invalide (schéma, `canonicalPath` hors du modèle canonique, références croisées) bloque la publication. ⚠️ Les 3 assureurs fournis sont des données d'exemple (`*.example`) : remplacer l'URL et les domaines de l'extranet par ceux des vrais assureurs.
 
 ## Tests des règles Firestore
 
 ```bash
 cd functions
-npm run test         # lance l'emulator Firestore et vérifie l'isolation des cabinets et les droits par rôle
+npm run test              # emulator Firestore : isolation des cabinets, droits par rôle, journal d'audit, délai de grâce
+npm run test:unit         # catalogue et limites (sans emulator)
+npm run test:integration  # emulators auth + firestore + functions : session unique, dossiers, besoin, extension, ia-proxy, scripts ops
 ```
+
+> `functions/.env.demo-courtier-intelligent` (URL du faux service d'IA et clé factice) n'est lu que par les emulators du projet `demo-courtier-intelligent`.
+> ⚠️ `firestore.shared.rules` contient depuis son premier commit une ligne parasite (`database}/documents {`) avant la section Courtier Intelligent : ce fichier n'est pas chargeable tel quel, la source de vérité testée est `firestore.rules`.
 
 ## Développement local
 

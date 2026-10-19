@@ -27,22 +27,33 @@ export const LEGACY_CLAIM_SESSION_ID = "ci_session_id";
 export type { UserRole } from "../shared/index.js";
 export const CABINET_ROLES: CabinetRole[] = ["admin", "courtier"];
 
-/** Collection lue par l'extension Firebase « Trigger Email » de ce projet. */
-export const MAIL_COLLECTION = "MailCourtierIntelligent";
+/** Collection lue par l'instance « firestore-send-email » (Trigger Email) du projet, partagée avec d'autres apps. */
+export const MAIL_COLLECTION = "mail";
 
 /**
- * Nombre d'utilisateurs par défaut d'un nouveau cabinet (admin compris).
- * La limite d'un cabinet est stockée dans son champ `maxUtilisateurs`, modifiable
- * uniquement côté serveur : jamais depuis l'app (règles Firestore).
+ * L'extension ne se connecte que si l'app est ouverte sur l'appareil : sa session doit avoir donné signe de vie
+ * (signal toutes les 30 s) depuis moins que ce délai.
  */
-export const DEFAULT_MAX_UTILISATEURS = 3;
+export const EXTENSION_APP_SESSION_MAX_AGE_MS = 3 * 60 * 1000;
 
 /**
- * Un seul appareil par utilisateur : une session est « active » tant que l'appareil
- * envoie un signal de vie. Sans signal depuis ce délai (PC éteint sans déconnexion),
- * un autre appareil peut se connecter.
+ * Une session sans signe de vie depuis ce délai est considérée fermée (navigateur fermé sans se déconnecter) :
+ * le compte peut alors se connecter depuis un autre appareil.
  */
-export const SESSION_TTL_MS = 2 * 60 * 1000;
+export const APP_SESSION_ACTIVE_MS = 3 * 60 * 1000;
+
+/**
+ * Modèles Gemini utilisés par `ia-proxy`, dans l'ordre : si l'un échoue (introuvable, surchargé, en panne, réponse vide),
+ * on essaie le suivant. Choisis côté serveur, jamais par l'extension.
+ */
+export const GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest"];
+
+/** API Gemini (remplacée par un faux service dans les emulators : `IA_UPSTREAM_URL`). */
+export const GEMINI_API_URL = "https://generativelanguage.googleapis.com";
+
 
 /** Durée de validité d'une invitation. */
 export const INVITATION_TTL_DAYS = 7;
+
+/** Journal d'audit d'un cabinet (connexions, appareils) : cabinets/{id}/auditLog. */
+export const AUDIT_LOG_COLLECTION = "ci_auditLog";

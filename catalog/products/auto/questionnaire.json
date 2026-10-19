@@ -1,0 +1,580 @@
+[
+  {
+    "title": "Souscripteur",
+    "questions": [
+      { "canonicalPath": "client.lastName", "label": "Nom", "type": "text", "required": true },
+      { "canonicalPath": "client.firstName", "label": "Prénom", "type": "text", "required": true },
+      { "canonicalPath": "client.birthDate", "label": "Date de naissance", "type": "date", "required": true },
+      { "canonicalPath": "client.email", "label": "Email", "type": "text", "required": true },
+      { "canonicalPath": "client.phone", "label": "Téléphone", "type": "text", "required": false },
+      { "canonicalPath": "client.address.street", "label": "Adresse", "type": "text", "required": true },
+      { "canonicalPath": "client.address.postalCode", "label": "Code postal", "type": "text", "required": true },
+      { "canonicalPath": "client.address.city", "label": "Ville", "type": "text", "required": true }
+    ]
+  },
+  {
+    "title": "Véhicule",
+    "questions": [
+      { "canonicalPath": "vehicle.registration", "label": "Immatriculation", "type": "text", "required": true },
+      { "canonicalPath": "vehicle.brand", "label": "Marque", "type": "text", "required": true },
+      { "canonicalPath": "vehicle.model", "label": "Modèle", "type": "text", "required": true },
+      { "canonicalPath": "vehicle.version", "label": "Version", "type": "text", "required": true },
+      {
+        "canonicalPath": "vehicle.firstRegistrationDate",
+        "label": "Date de première mise en circulation",
+        "type": "date",
+        "required": true
+      },
+      { "canonicalPath": "vehicle.fiscalPower", "label": "Puissance fiscale (CV)", "type": "number", "required": true },
+      {
+        "canonicalPath": "vehicle.energyType",
+        "label": "Type d'énergie",
+        "type": "choice",
+        "required": true,
+        "choices": [
+          { "value": "essence", "label": "Essence" },
+          { "value": "diesel", "label": "Diesel" },
+          { "value": "hybride", "label": "Hybride" },
+          { "value": "hybride_rechargeable", "label": "Hybride rechargeable" },
+          { "value": "electrique", "label": "Électrique" },
+          { "value": "gpl", "label": "GPL" },
+          { "value": "ethanol", "label": "Superéthanol (E85)" }
+        ]
+      },
+      { "canonicalPath": "vehicle.vehicleValue", "label": "Valeur du véhicule (€)", "type": "number", "required": false },
+      {
+        "canonicalPath": "vehicle.vehicleType",
+        "label": "Type de véhicule",
+        "type": "choice",
+        "required": true,
+        "choices": [
+          { "value": "voiture", "label": "Voiture" },
+          { "value": "utilitaire", "label": "Utilitaire léger" },
+          { "value": "moto", "label": "Moto" }
+        ]
+      },
+      {
+        "canonicalPath": "vehicle.usage",
+        "label": "Usage du véhicule",
+        "type": "choice",
+        "required": true,
+        "choices": [
+          { "value": "prive", "label": "Privé" },
+          { "value": "prive_trajet", "label": "Privé et trajet domicile-travail" },
+          { "value": "professionnel", "label": "Professionnel" }
+        ]
+      },
+      {
+        "canonicalPath": "vehicle.parkingType",
+        "label": "Lieu de stationnement la nuit",
+        "type": "choice",
+        "required": true,
+        "choices": [
+          { "value": "garage_prive", "label": "Garage privé" },
+          { "value": "parking_ferme", "label": "Parking fermé" },
+          { "value": "voie_publique", "label": "Voie publique" }
+        ]
+      },
+      { "canonicalPath": "vehicle.parkingPostalCode", "label": "Code postal du lieu de stationnement", "type": "text", "required": true },
+      { "canonicalPath": "vehicle.parkingCity", "label": "Ville du lieu de stationnement", "type": "text", "required": true },
+      { "canonicalPath": "vehicle.purchaseDate", "label": "Date d'achat", "type": "date", "required": false }
+    ]
+  },
+  {
+    "title": "Conducteur principal",
+    "questions": [
+      { "canonicalPath": "driver.lastName", "label": "Nom du conducteur", "type": "text", "required": true },
+      { "canonicalPath": "driver.firstName", "label": "Prénom du conducteur", "type": "text", "required": true },
+      { "canonicalPath": "driver.birthDate", "label": "Date de naissance du conducteur", "type": "date", "required": true },
+      { "canonicalPath": "driver.birthCountry", "label": "Pays de naissance du conducteur", "type": "text", "required": false },
+      { "canonicalPath": "driver.licenseDate", "label": "Date d'obtention du permis", "type": "date", "required": true },
+      { "canonicalPath": "driver.licenseCountry", "label": "Pays d'obtention du permis", "type": "text", "required": false },
+      {
+        "canonicalPath": "driver.licenseType",
+        "label": "Type de permis",
+        "type": "choice",
+        "required": true,
+        "choices": [
+          { "value": "B", "label": "Permis B" },
+          { "value": "A", "label": "Permis A (moto)" },
+          { "value": "AAC", "label": "Conduite accompagnée" }
+        ]
+      },
+      {
+        "canonicalPath": "driver.socioProfessionalCategory",
+        "label": "Catégorie socio-professionnelle",
+        "type": "choice",
+        "required": true,
+        "choices": [
+          { "value": "salarie_prive", "label": "Salarié du secteur privé" },
+          { "value": "fonctionnaire", "label": "Fonctionnaire / agent public" },
+          { "value": "cadre", "label": "Cadre" },
+          { "value": "artisan_commercant", "label": "Artisan / commerçant" },
+          { "value": "profession_liberale", "label": "Profession libérale" },
+          { "value": "chef_entreprise", "label": "Chef d'entreprise" },
+          { "value": "agriculteur", "label": "Agriculteur" },
+          { "value": "vrp", "label": "VRP / commercial itinérant" },
+          { "value": "etudiant", "label": "Étudiant" },
+          { "value": "retraite", "label": "Retraité" },
+          { "value": "sans_activite", "label": "Sans activité" },
+          { "value": "autre", "label": "Autre" }
+        ]
+      },
+      { "canonicalPath": "driver.profession", "label": "Profession", "type": "text", "required": false }
+    ]
+  },
+  {
+    "title": "Historique d'assurance",
+    "questions": [
+      {
+        "canonicalPath": "insuranceHistory.currentlyInsured",
+        "label": "Le conducteur est-il actuellement assuré ?",
+        "type": "boolean",
+        "required": true
+      },
+      {
+        "canonicalPath": "insuranceHistory.previousInsurer",
+        "label": "Assureur actuel",
+        "type": "text",
+        "required": true,
+        "visibleIf": { "path": "insuranceHistory.currentlyInsured", "equals": true }
+      },
+      {
+        "canonicalPath": "insuranceHistory.previousContractStartDate",
+        "label": "Début du contrat actuel",
+        "type": "date",
+        "required": false,
+        "visibleIf": { "path": "insuranceHistory.currentlyInsured", "equals": true }
+      },
+      {
+        "canonicalPath": "insuranceHistory.previousContractEndDate",
+        "label": "Échéance du contrat actuel",
+        "type": "date",
+        "required": false,
+        "visibleIf": { "path": "insuranceHistory.currentlyInsured", "equals": true }
+      },
+      {
+        "canonicalPath": "insuranceHistory.seniority",
+        "label": "Ancienneté d'assurance (mois)",
+        "type": "number",
+        "required": false,
+        "withKnowledge": true
+      },
+      {
+        "canonicalPath": "insuranceHistory.bonusMalus",
+        "label": "Coefficient bonus-malus",
+        "type": "number",
+        "required": true,
+        "withKnowledge": true
+      },
+      {
+        "canonicalPath": "insuranceHistory.claimsCount",
+        "label": "Sinistres déclarés sur les 36 derniers mois",
+        "type": "number",
+        "required": true,
+        "withKnowledge": true
+      },
+      {
+        "canonicalPath": "insuranceHistory.responsibleClaimsCount",
+        "label": "dont sinistres responsables",
+        "type": "number",
+        "required": false,
+        "withKnowledge": true
+      },
+      {
+        "canonicalPath": "insuranceHistory.nonResponsibleClaimsCount",
+        "label": "dont sinistres non responsables",
+        "type": "number",
+        "required": true,
+        "withKnowledge": true
+      },
+      {
+        "canonicalPath": "insuranceHistory.wasTerminated",
+        "label": "Le conducteur a-t-il déjà été résilié ?",
+        "type": "boolean",
+        "required": true
+      },
+      {
+        "canonicalPath": "insuranceHistory.terminatedByInsurer",
+        "label": "Résiliation à l'initiative de l'assureur",
+        "type": "boolean",
+        "required": true,
+        "visibleIf": { "path": "insuranceHistory.wasTerminated", "equals": true }
+      },
+      {
+        "canonicalPath": "insuranceHistory.terminationReason",
+        "label": "Motif de la résiliation",
+        "type": "choice",
+        "required": false,
+        "visibleIf": { "path": "insuranceHistory.wasTerminated", "equals": true },
+        "choices": [
+          { "value": "non_paiement", "label": "Non-paiement" },
+          { "value": "sinistres", "label": "Sinistres" },
+          { "value": "fausse_declaration", "label": "Fausse déclaration" },
+          { "value": "alcoolemie", "label": "Alcoolémie / stupéfiants" },
+          { "value": "autre", "label": "Autre" }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.terminationDate",
+        "label": "Date de la résiliation",
+        "type": "date",
+        "required": false,
+        "visibleIf": { "path": "insuranceHistory.wasTerminated", "equals": true }
+      }
+    ]
+  },
+  {
+    "title": "Détail des sinistres",
+    "questions": [
+      {
+        "canonicalPath": "insuranceHistory.claims.1.type",
+        "label": "Sinistre 1 : type",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "materiel",
+            "label": "Matériel"
+          },
+          {
+            "value": "corporel",
+            "label": "Corporel"
+          },
+          {
+            "value": "bris_de_glace",
+            "label": "Bris de glace"
+          },
+          {
+            "value": "vol",
+            "label": "Vol"
+          },
+          {
+            "value": "incendie",
+            "label": "Incendie"
+          },
+          {
+            "value": "autre",
+            "label": "Autre"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.1.responsibility",
+        "label": "Sinistre 1 : responsabilité",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "0",
+            "label": "0 % (non responsable)"
+          },
+          {
+            "value": "50",
+            "label": "50 % (partiellement responsable)"
+          },
+          {
+            "value": "100",
+            "label": "100 % (responsable)"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.1.date",
+        "label": "Sinistre 1 : date",
+        "type": "date",
+        "required": false
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.2.type",
+        "label": "Sinistre 2 : type",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "materiel",
+            "label": "Matériel"
+          },
+          {
+            "value": "corporel",
+            "label": "Corporel"
+          },
+          {
+            "value": "bris_de_glace",
+            "label": "Bris de glace"
+          },
+          {
+            "value": "vol",
+            "label": "Vol"
+          },
+          {
+            "value": "incendie",
+            "label": "Incendie"
+          },
+          {
+            "value": "autre",
+            "label": "Autre"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.2.responsibility",
+        "label": "Sinistre 2 : responsabilité",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "0",
+            "label": "0 % (non responsable)"
+          },
+          {
+            "value": "50",
+            "label": "50 % (partiellement responsable)"
+          },
+          {
+            "value": "100",
+            "label": "100 % (responsable)"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.2.date",
+        "label": "Sinistre 2 : date",
+        "type": "date",
+        "required": false
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.3.type",
+        "label": "Sinistre 3 : type",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "materiel",
+            "label": "Matériel"
+          },
+          {
+            "value": "corporel",
+            "label": "Corporel"
+          },
+          {
+            "value": "bris_de_glace",
+            "label": "Bris de glace"
+          },
+          {
+            "value": "vol",
+            "label": "Vol"
+          },
+          {
+            "value": "incendie",
+            "label": "Incendie"
+          },
+          {
+            "value": "autre",
+            "label": "Autre"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.3.responsibility",
+        "label": "Sinistre 3 : responsabilité",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "0",
+            "label": "0 % (non responsable)"
+          },
+          {
+            "value": "50",
+            "label": "50 % (partiellement responsable)"
+          },
+          {
+            "value": "100",
+            "label": "100 % (responsable)"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.3.date",
+        "label": "Sinistre 3 : date",
+        "type": "date",
+        "required": false
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.4.type",
+        "label": "Sinistre 4 : type",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "materiel",
+            "label": "Matériel"
+          },
+          {
+            "value": "corporel",
+            "label": "Corporel"
+          },
+          {
+            "value": "bris_de_glace",
+            "label": "Bris de glace"
+          },
+          {
+            "value": "vol",
+            "label": "Vol"
+          },
+          {
+            "value": "incendie",
+            "label": "Incendie"
+          },
+          {
+            "value": "autre",
+            "label": "Autre"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.4.responsibility",
+        "label": "Sinistre 4 : responsabilité",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "0",
+            "label": "0 % (non responsable)"
+          },
+          {
+            "value": "50",
+            "label": "50 % (partiellement responsable)"
+          },
+          {
+            "value": "100",
+            "label": "100 % (responsable)"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.4.date",
+        "label": "Sinistre 4 : date",
+        "type": "date",
+        "required": false
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.5.type",
+        "label": "Sinistre 5 : type",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "materiel",
+            "label": "Matériel"
+          },
+          {
+            "value": "corporel",
+            "label": "Corporel"
+          },
+          {
+            "value": "bris_de_glace",
+            "label": "Bris de glace"
+          },
+          {
+            "value": "vol",
+            "label": "Vol"
+          },
+          {
+            "value": "incendie",
+            "label": "Incendie"
+          },
+          {
+            "value": "autre",
+            "label": "Autre"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.5.responsibility",
+        "label": "Sinistre 5 : responsabilité",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "0",
+            "label": "0 % (non responsable)"
+          },
+          {
+            "value": "50",
+            "label": "50 % (partiellement responsable)"
+          },
+          {
+            "value": "100",
+            "label": "100 % (responsable)"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.5.date",
+        "label": "Sinistre 5 : date",
+        "type": "date",
+        "required": false
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.6.type",
+        "label": "Sinistre 6 : type",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "materiel",
+            "label": "Matériel"
+          },
+          {
+            "value": "corporel",
+            "label": "Corporel"
+          },
+          {
+            "value": "bris_de_glace",
+            "label": "Bris de glace"
+          },
+          {
+            "value": "vol",
+            "label": "Vol"
+          },
+          {
+            "value": "incendie",
+            "label": "Incendie"
+          },
+          {
+            "value": "autre",
+            "label": "Autre"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.6.responsibility",
+        "label": "Sinistre 6 : responsabilité",
+        "type": "choice",
+        "required": false,
+        "choices": [
+          {
+            "value": "0",
+            "label": "0 % (non responsable)"
+          },
+          {
+            "value": "50",
+            "label": "50 % (partiellement responsable)"
+          },
+          {
+            "value": "100",
+            "label": "100 % (responsable)"
+          }
+        ]
+      },
+      {
+        "canonicalPath": "insuranceHistory.claims.6.date",
+        "label": "Sinistre 6 : date",
+        "type": "date",
+        "required": false
+      }
+    ]
+  }
+]

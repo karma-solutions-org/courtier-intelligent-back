@@ -50,12 +50,13 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
         with:
-          workload_identity_provider: **projects/1045695684946/locations/global/workloadIdentityPools/github/providers/github-actions
-          service_account: **github-action-deploy@aibs-part.iam.gserviceaccount.com
-          project_id: **aibs-part
+          workload_identity_provider: projects/1045695684946/locations/global/workloadIdentityPools/github/providers/github-actions
+          service_account: github-action-deploy@aibs-part.iam.gserviceaccount.com
+          project_id: aibs-part
 
       - name: Deploy
         run: npx --yes "firebase-tools@$FIREBASE_TOOLS_VERSION" deploy --project aibs-part --only functions --non-interactive --force
+
 
       # Firebase Functions v2 SDK can't express Direct VPC egress, so the shared
       # VPC is applied to the Elasticsearch functions post-deploy on Cloud Run.

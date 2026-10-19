@@ -1,12 +1,15 @@
 import * as admin from "firebase-admin";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, type Transaction } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { assertSignedIn, assertCabinetAdmin, requireEmail, requireString, setCabinetClaims } from "../core/auth.utils";
 import { CLAIM_CABINET_ID, INVITATION_TTL_DAYS, MAIL_COLLECTION, CALLABLE_OPTIONS, CABINET_ROLES, UserRole } from "../core/config";
 import { escapeHtml } from "../core/html.utils";
-import { assertSeatAvailable, getSeatUsage, lockSeats } from "../core/seats.utils";
-import { invitationPath, invitationsPath, memberPath, cabinetPath } from "../core/firestore-paths";
-import type { CabinetRole } from "../shared/index.js";
+import { buildInvitationEmail } from "./invitation-email";
+import { assertSeatAvailable, getSeatUsage, graceUpdate, lockSeats } from "../core/seats.utils";
+import { writeAudit } from "../core/audit.utils";
+import { completeDeviceReset, deviceResetUpdate } from "../core/device.utils";
+import { invitationPath, invitationsPath, memberPath, cabinetPath, userCabinetPath } from "../core/firestore-paths";
+import { FALLBACK_LIMITS, type CabinetRole } from "../shared/index.js";
 
 function requireCabinetRole(value: unknown): CabinetRole {
   if (!CABINET_ROLES.includes(value as CabinetRole)) {
@@ -15,14 +18,14 @@ function requireCabinetRole(value: unknown): CabinetRole {
   return value as CabinetRole;
 }
 
-/** Un cabinet doit toujours garder au moins un administrateur actif. */
-async function assertNotLastAdmin(cabinetId: string, uid: string): Promise<void> {
-  const admins = await admin
-    .firestore()
-    .collection(`${cabinetPath(cabinetId)}/members`)
-    .where("role", "==", "admin")
-    .where("status", "==", "active")
-    .get();
+/**
+ * Un cabinet doit toujours garder au moins un administrateur actif. Lu DANS la transaction qui écrit le membre :
+ * deux admins qui se rétrogradent en même temps ne peuvent pas laisser le cabinet sans admin.
+ */
+async function assertNotLastAdmin(tx: Transaction, cabinetId: string, uid: string): Promise<void> {
+  const admins = await tx.get(
+    admin.firestore().collection(`${cabinetPath(cabinetId)}/ci_members`).where("role", "==", "admin").where("status", "==", "active"),
+  );
   if (admins.size <= 1 && admins.docs[0]?.id === uid) {
     throw new HttpsError("failed-precondition", "Le cabinet doit garder au moins un administrateur.");
   }
@@ -66,13 +69,7 @@ export const inviter = onCall(CALLABLE_OPTIONS, async request => {
   const link = `${appUrl.replace(/\/$/, "")}/invitation?cabinet=${cabinetId}&invitation=${invitation.id}`;
   await db.collection(MAIL_COLLECTION).add({
     to: email,
-    message: {
-      subject: `Invitation à rejoindre ${cabinetName} sur Courtier Intelligent`,
-      html:
-        `<p>Vous êtes invité à rejoindre le cabinet <strong>${cabinetName}</strong> sur Courtier Intelligent.</p>` +
-        `<p><a href="${link}">Accepter l'invitation</a></p>` +
-        `<p>Ce lien expire dans ${INVITATION_TTL_DAYS} jours.</p>`,
-    },
+    message: buildInvitationEmail({ cabinetName, email, link, ttlDays: INVITATION_TTL_DAYS }),
   });
 
   return { invitationId: invitation.id };
@@ -84,6 +81,10 @@ export const accepterInvitation = onCall(CALLABLE_OPTIONS, async request => {
   if (request.auth?.token[CLAIM_CABINET_ID]) {
     throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.");
   }
+  // L'adresse doit être prouvée : sinon n'importe qui créerait un compte à l'adresse invitée.
+  if (request.auth?.token.email_verified !== true) {
+    throw new HttpsError("failed-precondition", "Vérifiez votre adresse email avant d'accepter l'invitation.", { reason: "email_not_verified" });
+  }
   const cabinetId = requireString(request.data?.cabinetId, "cabinet");
   const invitationId = requireString(request.data?.invitationId, "invitation");
   const user = await admin.auth().getUser(uid);
@@ -94,6 +95,10 @@ export const accepterInvitation = onCall(CALLABLE_OPTIONS, async request => {
   const role = await db.runTransaction(async tx => {
     const invitation = await tx.get(invitationRef);
     const cabinet = await tx.get(db.doc(cabinetPath(cabinetId)));
+    const lock = await tx.get(db.doc(userCabinetPath(uid)));
+    if (lock.exists) {
+      throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", { reason: "already_member" });
+    }
     // L'invitation occupait déjà une place : il suffit qu'une place de membre actif reste libre.
     const usage = await getSeatUsage(cabinetId, tx);
     assertSeatAvailable(usage, usage.activeMembers + 1);
@@ -107,8 +112,11 @@ export const accepterInvitation = onCall(CALLABLE_OPTIONS, async request => {
     if ((invitation.get("expiresAt") as Timestamp).toMillis() < Date.now()) {
       throw new HttpsError("deadline-exceeded", "Cette invitation a expiré.");
     }
-    if (invitation.get("email") !== user.email?.toLowerCase()) {
-      throw new HttpsError("permission-denied", "Cette invitation a été envoyée à une autre adresse email.");
+    const email = user.email?.toLowerCase();
+    if (!email || !user.emailVerified || invitation.get("email") !== email || String(request.auth?.token.email ?? "").toLowerCase() !== email) {
+      throw new HttpsError("permission-denied", "Cette invitation a été envoyée à une autre adresse email.", {
+        reason: "wrong_email",
+      });
     }
     const invitedRole = invitation.get("role") as UserRole;
     tx.set(db.doc(memberPath(cabinetId, uid)), {
@@ -119,6 +127,7 @@ export const accepterInvitation = onCall(CALLABLE_OPTIONS, async request => {
       createdAt: FieldValue.serverTimestamp(),
     });
     tx.update(invitationRef, { status: "accepted", acceptedBy: uid, acceptedAt: FieldValue.serverTimestamp() });
+    tx.create(db.doc(userCabinetPath(uid)), { cabinetId, role: invitedRole, at: FieldValue.serverTimestamp() });
     return invitedRole;
   });
 
@@ -133,15 +142,17 @@ export const changerRole = onCall(CALLABLE_OPTIONS, async request => {
   const role = requireCabinetRole(request.data?.role);
 
   const ref = admin.firestore().doc(memberPath(cabinetId, memberUid));
-  const member = await ref.get();
-  if (!member.exists) {
-    throw new HttpsError("not-found", "Membre introuvable.");
-  }
-  if (member.get("role") === "admin" && role !== "admin") {
-    await assertNotLastAdmin(cabinetId, memberUid);
-  }
-
-  await ref.update({ role, updatedAt: FieldValue.serverTimestamp() });
+  const member = await admin.firestore().runTransaction(async tx => {
+    const member = await tx.get(ref);
+    if (!member.exists) {
+      throw new HttpsError("not-found", "Membre introuvable.");
+    }
+    if (member.get("role") === "admin" && role !== "admin") {
+      await assertNotLastAdmin(tx, cabinetId, memberUid);
+    }
+    tx.update(ref, { role, updatedAt: FieldValue.serverTimestamp() });
+    return member;
+  });
   if (member.get("status") === "active") {
     await setCabinetClaims(memberUid, cabinetId, role);
   }
@@ -163,16 +174,24 @@ export const activerMembre = onCall(CALLABLE_OPTIONS, async request => {
   if (!member.exists) {
     throw new HttpsError("not-found", "Membre introuvable.");
   }
-  if (status === "disabled" && member.get("role") === "admin") {
-    await assertNotLastAdmin(cabinetId, memberUid);
-  }
-
   await db.runTransaction(async tx => {
+    if (status === "disabled" && member.get("role") === "admin") {
+      await assertNotLastAdmin(tx, cabinetId, memberUid);
+    }
     // Réactivation : il faut une place libre, comptée dans la même transaction que l'écriture.
     if (status === "active" && member.get("status") !== "active") {
       const usage = await getSeatUsage(cabinetId, tx);
       assertSeatAvailable(usage, usage.activeMembers + usage.pendingInvitations + 1);
       lockSeats(tx, cabinetId);
+    }
+    // Désactivation : la place libérée peut ramener un cabinet en dépassement dans sa limite.
+    if (status === "disabled" && member.get("status") === "active") {
+      const usage = await getSeatUsage(cabinetId, tx);
+      const grace = graceUpdate(usage.activeMembers - 1, usage.maxUtilisateurs, usage.graceEndsAt, usage.delaiGraceJours);
+      // Rien à écrire quand le cabinet n'était pas en dépassement : Firestore refuse une mise à jour vide.
+      if (Object.keys(grace).length > 0) {
+        tx.update(db.doc(cabinetPath(cabinetId)), grace);
+      }
     }
     tx.update(ref, {
       status,
@@ -201,4 +220,66 @@ export const annulerInvitation = onCall(CALLABLE_OPTIONS, async request => {
   }
   await ref.update({ status: "cancelled", cancelledAt: FieldValue.serverTimestamp() });
   return { success: true };
+});
+
+/** Mois en cours (« AAAA-MM », UTC) : période du quota de réinitialisations. */
+const currentMonth = () => new Date().toISOString().substring(0, 7);
+
+/**
+ * L'admin réinitialise l'appareil lié d'un membre (poste perdu ou changé) : le prochain appareil
+ * avec lequel il se connecte devient le sien. Limité par mois selon l'offre du cabinet.
+ */
+export const reinitialiserAppareil = onCall(CALLABLE_OPTIONS, async request => {
+  const { cabinetId, uid: adminUid } = await assertCabinetAdmin(request);
+  const memberUid = requireString(request.data?.uid, "uid");
+  // Un admin ne libère pas son propre appareil : un autre admin le fait, ou le support (ops/reset-device).
+  if (memberUid === adminUid) {
+    throw new HttpsError(
+      "permission-denied",
+      "Vous ne pouvez pas réinitialiser votre propre appareil. Demandez-le à un autre administrateur du cabinet ou au support.",
+      { reason: "self_reset" },
+    );
+  }
+  const month = currentMonth();
+
+  const db = admin.firestore();
+  const cabinetRef = db.doc(cabinetPath(cabinetId));
+  const memberRef = db.doc(memberPath(cabinetId, memberUid));
+
+  const result = await db.runTransaction(async tx => {
+    const [cabinet, member] = await Promise.all([tx.get(cabinetRef), tx.get(memberRef)]);
+    if (!member.exists) {
+      throw new HttpsError("not-found", "Membre introuvable.");
+    }
+    if (!member.get("device")) {
+      throw new HttpsError("failed-precondition", "Aucun appareil n'est lié à ce membre.");
+    }
+    const quota =
+      (cabinet.get("limits.resetsAppareilParMois") as number | undefined) ?? FALLBACK_LIMITS.resetsAppareilParMois;
+    const used = cabinet.get("deviceResets.month") === month ? (cabinet.get("deviceResets.count") as number) : 0;
+    if (used >= quota) {
+      return { refused: true as const, quota };
+    }
+    tx.update(cabinetRef, { deviceResets: { month, count: used + 1 } });
+    // L'appareil et la session sont supprimés : l'ancien appareil perd l'accès immédiatement.
+    tx.update(memberRef, deviceResetUpdate());
+    return { refused: false as const, remaining: quota - used - 1 };
+  });
+
+  if (result.refused) {
+    await writeAudit(cabinetId, {
+      type: "reinitialisation_refusee_quota",
+      uid: memberUid,
+      by: adminUid,
+      data: { quota: result.quota, month },
+    });
+    throw new HttpsError(
+      "resource-exhausted",
+      `Quota atteint : ${result.quota} réinitialisation(s) d'appareil par mois pour votre offre. ` +
+        "Réessayez le mois prochain ou changez d'offre.",
+      { reason: "device_reset_quota" },
+    );
+  }
+  await completeDeviceReset(cabinetId, memberUid, adminUid, { month });
+  return { success: true, remaining: result.remaining };
 });

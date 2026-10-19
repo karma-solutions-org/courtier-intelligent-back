@@ -18,8 +18,12 @@
  * over them. When adding/removing an Elasticsearch function, update this list.
  */
 export const VPC_FUNCTIONS: string[] = [
-  // src/functions/sepa/sepa.ts
-  
+  // src/recherche/recherche.ts : indexation (triggers) et recherche des clients et dossiers.
+  "recherche-indexerAssure",
+  "recherche-indexerDossier",
+  "recherche-clients",
+  "recherche-dossiers",
+  "recherche-corbeille",
 ];
 
 /**

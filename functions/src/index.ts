@@ -9,3 +9,43 @@ export * as equipe from "./equipe/equipe.callable";
 
 // ── Sessions : un seul appareil connecté par utilisateur ────────────────────
 export * as sessions from "./sessions/sessions.callable";
+
+// ── Dossiers (Epic E4) : création, sauvegarde du brouillon, statuts, assignation ──────────────
+export * as dossiers from "./dossiers/dossiers.callable";
+
+// ── Tarification (Epic E9) : lancement et relance des jobs, champs manquants, saisie manuelle d'une offre ──
+export * as tarification from "./tarification/tarification.callable";
+
+// ── Offres (Epic E13) : analyse de chaque offre écrite (garanties normalisées, écarts avec le besoin, score) ──
+export * as offres from "./offres/offres.trigger";
+
+// ── Propositions (Epic E14) : envoi de la proposition à l'assuré, réponse (souscrit, refusé, sans suite) ──
+export * as propositions from "./propositions/propositions.callable";
+
+
+// ── Documents (Epic E12) : documents du dossier et lecture automatique (OCR) par l'IA ─────────────
+export * as documents from "./documents/documents.callable";
+
+// ── Pièces des clients : CIN / Kbis lus à la création du client, puis rangés avec sa fiche ─────────────
+export * as assures from "./assures/assures-documents.callable";
+
+// ── Corbeille : clients et dossiers supprimés, restaurables (admin) ─────────────
+export * as corbeille from "./corbeille/corbeille.callable";
+
+// ── Assureurs propres à un cabinet (admin) : en plus du catalogue global ─────────────
+export * as assureurs from "./assureurs/assureurs.callable";
+
+// ── Produits propres à un cabinet (admin) : questionnaire et garanties saisis par le cabinet ─────────────
+export * as produits from "./produits/produits.callable";
+
+// ── Recherche Elasticsearch (clients, dossiers) : triggers d'indexation et recherche — passent par le VPC partagé ──
+export * as recherche from "./recherche/recherche";
+
+// ── Champs découverts sur les extranets : ajoutés automatiquement au questionnaire ─────────────
+export * as champs from "./champs/champs.callable";
+
+// ── IA : proxy pour l'extension (la clé reste côté serveur) ─────────────────────────────────
+export * as ia from "./ia/ia.callable";
+
+// ── Mémoire partagée des formulaires d'extranet (structure seulement) ─────────────────────────
+export * as memoires from "./memoires/memoires.callable";

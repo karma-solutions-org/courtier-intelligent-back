@@ -1,9 +1,8 @@
 import * as admin from "firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { assertSignedIn, requireString, setCabinetClaims } from "../core/auth.utils";
-import { CALLABLE_OPTIONS, CLAIM_CABINET_ID, DEFAULT_MAX_UTILISATEURS } from "../core/config";
-import { memberPath, cabinetPath } from "../core/firestore-paths";
+import { assertSignedIn, requireString } from "../core/auth.utils";
+import { createCabinet } from "../core/cabinet.utils";
+import { CALLABLE_OPTIONS, CLAIM_CABINET_ID } from "../core/config";
 
 /**
  * Inscription d'un nouveau cabinet : appelée juste après la création du compte.
@@ -13,39 +12,27 @@ import { memberPath, cabinetPath } from "../core/firestore-paths";
  */
 export const creerMonCabinet = onCall(CALLABLE_OPTIONS, async request => {
   const uid = assertSignedIn(request);
+  if (request.auth?.token.email_verified !== true) {
+    throw new HttpsError("failed-precondition", "Vérifiez votre adresse email avant de créer votre cabinet.", { reason: "email_not_verified" });
+  }
   if (request.auth?.token[CLAIM_CABINET_ID]) {
     throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.");
+  }
+  // Membre d'un cabinet (claims pas encore rafraîchis, ou compte d'avant le verrou ci_userCabinets) : refusé.
+  const user = await admin.auth().getUser(uid);
+  if (user.customClaims?.[CLAIM_CABINET_ID]) {
+    throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", { reason: "already_member" });
+  }
+  if (user.email) {
+    const memberships = await admin.firestore().collectionGroup("ci_members").where("email", "==", user.email).limit(1).get();
+    if (!memberships.empty) {
+      throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", { reason: "already_member" });
+    }
   }
 
   const name = requireString(request.data?.name, "nom du cabinet", 120);
   const orias = typeof request.data?.orias === "string" ? request.data.orias.trim().substring(0, 20) : null;
-  const user = await admin.auth().getUser(uid);
 
-  const db = admin.firestore();
-  const cabinetRef = db.collection("cabinets").doc();
-  const cabinetId = cabinetRef.id;
-
-  await db.runTransaction(async tx => {
-    tx.set(db.doc(cabinetPath(cabinetId)), {
-      name,
-      orias,
-      active: true,
-      // Limite d'utilisateurs (admin compris) : modifiable uniquement côté serveur.
-      maxUtilisateurs: DEFAULT_MAX_UTILISATEURS,
-      ownerUid: uid,
-      enabledInsurers: [],
-      enabledProducts: [],
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    tx.set(db.doc(memberPath(cabinetId, uid)), {
-      email: user.email ?? null,
-      displayName: user.displayName ?? null,
-      role: "admin",
-      status: "active",
-      createdAt: FieldValue.serverTimestamp(),
-    });
-  });
-
-  await setCabinetClaims(uid, cabinetId, "admin");
+  const cabinetId = await createCabinet({ name, orias, ownerUid: uid });
   return { cabinetId };
 });
