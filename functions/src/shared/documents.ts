@@ -98,7 +98,12 @@ const DOCUMENT_HINTS: Partial<Record<DossierDocumentType, string[]>> = {
     "date de naissance, numéro du document (client.nationalId). L'adresse n'est imprimée qu'au verso de l'ancien modèle ; sinon, l'omettre.",
     "N'extrais jamais l'email ni le téléphone : ils ne figurent pas sur ce document.",
   ],
-  permis: ["Rubriques du permis de conduire français : 1 nom, 2 prénoms, 3 date de naissance ; au verso, date d'obtention de chaque catégorie (B, A…)."],
+  permis: [
+    "Rubriques du permis de conduire français : 1 nom, 2 prénoms, 3 date de naissance ; au verso, date d'obtention de chaque catégorie (B, A…).",
+    "- driver.birthCountry : pays du lieu de naissance imprimé en 3 entre parenthèses, en français (TUNIS → « Tunisie » ; une ville",
+    "  française ou un département → « France »). Omets-le si le lieu n'est pas imprimé ;",
+    '- driver.licenseCountry : pays qui a délivré le permis (permis « République française » → « France »).',
+  ],
 };
 
 /** Consigne envoyée à l'IA : uniquement les champs du questionnaire lisibles sur ce type de document. */

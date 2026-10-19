@@ -86,7 +86,9 @@
       { "canonicalPath": "driver.lastName", "label": "Nom du conducteur", "type": "text", "required": true },
       { "canonicalPath": "driver.firstName", "label": "Prénom du conducteur", "type": "text", "required": true },
       { "canonicalPath": "driver.birthDate", "label": "Date de naissance du conducteur", "type": "date", "required": true },
+      { "canonicalPath": "driver.birthCountry", "label": "Pays de naissance du conducteur", "type": "text", "required": false },
       { "canonicalPath": "driver.licenseDate", "label": "Date d'obtention du permis", "type": "date", "required": true },
+      { "canonicalPath": "driver.licenseCountry", "label": "Pays d'obtention du permis", "type": "text", "required": false },
       {
         "canonicalPath": "driver.licenseType",
         "label": "Type de permis",
