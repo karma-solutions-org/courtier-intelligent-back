@@ -18,3 +18,4 @@ export * from './discovered-fields.js';
 export * from './cabinet-insurers.js';
 export * from './cabinet-products.js';
 export * from './vehicle-lookup.js';
+export * from './ai-prompts.js';
