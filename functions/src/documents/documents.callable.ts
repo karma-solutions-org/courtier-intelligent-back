@@ -4,7 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { assurePath, documentsPath, dossierPath } from "../core/firestore-paths";
-import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, reserveIaCall } from "../core/gemini.utils";
+import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, runIaCall } from "../core/gemini.utils";
 import {
   buildDetectOcrPrompt,
   buildOcrPrompt,
@@ -137,31 +137,31 @@ export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY],
   if (!DOSSIER_DOCUMENT_MIME_TYPES.includes(mimeType) || Number(metadata.size ?? 0) > DOSSIER_DOCUMENT_MAX_BYTES) {
     throw new HttpsError("failed-precondition", "Document illisible : PDF, JPG ou PNG de 10 Mo maximum.");
   }
-  const [bytes] = await file.download();
-
   const fail = async (reason: string) => {
     await documentRef.update({ status: "failed", error: reason, analyzedAt: FieldValue.serverTimestamp() });
   };
 
-  const { remaining, release } = await reserveIaCall(cabinetId).catch(async (error: unknown) => {
+  // Le quota est réservé avant le téléchargement : un cabinet hors quota ne télécharge rien.
+  const { result, remaining } = await runIaCall(cabinetId, async () => {
+    const [bytes] = await file.download();
+    return generateWithGemini(apiKey, {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType, data: bytes.toString("base64") } },
+            { text: detectType ? buildDetectOcrPrompt(questionsByType) : buildOcrPrompt(type, questions) },
+          ],
+        },
+      ],
+      generationConfig: { maxOutputTokens: MAX_OCR_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
+    });
+  }).catch(async (error: unknown) => {
     if (error instanceof HttpsError && error.code === "resource-exhausted") await fail("ia_quota");
     throw error;
   });
-  const result = await generateWithGemini(apiKey, {
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { inlineData: { mimeType, data: bytes.toString("base64") } },
-          { text: detectType ? buildDetectOcrPrompt(questionsByType) : buildOcrPrompt(type, questions) },
-        ],
-      },
-    ],
-    generationConfig: { maxOutputTokens: MAX_OCR_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
-  });
   if (!result) {
-    // Aucun modèle n'a répondu : l'appel réservé est rendu.
-    await release();
+    // Aucun modèle n'a répondu : l'appel réservé a été rendu.
     await fail("ia_upstream");
     throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", { reason: "ia_upstream" });
   }
@@ -224,22 +224,36 @@ export const reprendrePiecesClient = onCall(CALLABLE_OPTIONS, async request => {
     if (!isDossierDocumentPath(target, cabinetId, dossierId)) continue;
     const [exists] = await bucket.file(source).exists();
     if (!exists) continue;
-    await bucket.file(source).copy(bucket.file(target));
 
-    const documentRef = db.collection(documentsPath(cabinetId, dossierId)).doc();
-    await documentRef.create({
-      type,
-      storagePath: target,
-      fileName,
-      contentType: piece.get("contentType") ?? null,
-      size: piece.get("size") ?? null,
-      ocrFields: [],
-      status: "uploaded",
-      error: null,
-      sourceAssureDocumentId: piece.id,
-      uploadedBy: uid,
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    // Identifiant tiré de la pièce : si deux appels arrivent en même temps, le second `create` échoue et la pièce
+    // n'est pas reprise deux fois. Le fichier n'est copié qu'une fois l'entrée réservée.
+    const documentRef = db.collection(documentsPath(cabinetId, dossierId)).doc(`client-${piece.id}`);
+    const reserved = await documentRef
+      .create({
+        type,
+        storagePath: target,
+        fileName,
+        contentType: piece.get("contentType") ?? null,
+        size: piece.get("size") ?? null,
+        ocrFields: [],
+        status: "uploaded",
+        error: null,
+        sourceAssureDocumentId: piece.id,
+        uploadedBy: uid,
+        createdAt: FieldValue.serverTimestamp(),
+      })
+      .then(() => true)
+      .catch((error: { code?: number }) => {
+        if (error.code === 6) return false; // ALREADY_EXISTS : déjà reprise par un appel concurrent
+        throw error;
+      });
+    if (!reserved) continue;
+    try {
+      await bucket.file(source).copy(bucket.file(target));
+    } catch (error) {
+      await documentRef.delete();
+      throw error;
+    }
     created.push({ documentId: documentRef.id, type });
   }
   return { documents: created };

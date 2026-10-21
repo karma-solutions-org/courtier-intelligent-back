@@ -4,7 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { assurePath } from "../core/firestore-paths";
-import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, reserveIaCall } from "../core/gemini.utils";
+import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, runIaCall } from "../core/gemini.utils";
 import {
   ASSURE_DOCUMENT_MAX_BYTES,
   ASSURE_DOCUMENT_MIME_TYPES,
@@ -55,17 +55,17 @@ export const lirePiece = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY]
   }
   const { file, contentType } = await checkedImport(storagePath);
   const apiKey = geminiApiKey();
-  const [bytes] = await file.download();
 
-  const { remaining, release } = await reserveIaCall(cabinetId);
-  const result = await generateWithGemini(apiKey, {
-    contents: [
-      { role: "user", parts: [{ inlineData: { mimeType: contentType, data: bytes.toString("base64") } }, { text: buildAssureOcrPrompt(type) }] },
-    ],
-    generationConfig: { maxOutputTokens: MAX_OCR_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
+  const { result, remaining } = await runIaCall(cabinetId, async () => {
+    const [bytes] = await file.download();
+    return generateWithGemini(apiKey, {
+      contents: [
+        { role: "user", parts: [{ inlineData: { mimeType: contentType, data: bytes.toString("base64") } }, { text: buildAssureOcrPrompt(type) }] },
+      ],
+      generationConfig: { maxOutputTokens: MAX_OCR_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
+    });
   });
   if (!result) {
-    await release();
     throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", { reason: "ia_upstream" });
   }
   const values = parseAssureOcrResponse(result.text, type);
@@ -84,17 +84,17 @@ export const reconnaitrePiece = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_A
   }
   const { file, contentType } = await checkedImport(storagePath);
   const apiKey = geminiApiKey();
-  const [bytes] = await file.download();
 
-  const { remaining, release } = await reserveIaCall(cabinetId);
-  const result = await generateWithGemini(apiKey, {
-    contents: [
-      { role: "user", parts: [{ inlineData: { mimeType: contentType, data: bytes.toString("base64") } }, { text: buildAssureClassifyPrompt() }] },
-    ],
-    generationConfig: { maxOutputTokens: MAX_CLASSIFY_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
+  const { result, remaining } = await runIaCall(cabinetId, async () => {
+    const [bytes] = await file.download();
+    return generateWithGemini(apiKey, {
+      contents: [
+        { role: "user", parts: [{ inlineData: { mimeType: contentType, data: bytes.toString("base64") } }, { text: buildAssureClassifyPrompt() }] },
+      ],
+      generationConfig: { maxOutputTokens: MAX_CLASSIFY_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
+    });
   });
   if (!result) {
-    await release();
     throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", { reason: "ia_upstream" });
   }
   return { type: parseAssureClassifyResponse(result.text), remaining };

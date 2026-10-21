@@ -251,7 +251,8 @@ export const reinitialiserAppareil = onCall(CALLABLE_OPTIONS, async request => {
     if (!member.exists) {
       throw new HttpsError("not-found", "Membre introuvable.");
     }
-    if (!member.get("device")) {
+    // Depuis la session unique, l'appareil est porté par `session` ; `device` reste pour les anciens membres.
+    if (!member.get("session") && !member.get("device")) {
       throw new HttpsError("failed-precondition", "Aucun appareil n'est lié à ce membre.");
     }
     const quota =
