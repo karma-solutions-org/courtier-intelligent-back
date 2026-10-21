@@ -20,7 +20,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:emulator": "node --test test/firestore-rules.test.mjs",
-    "test:unit": "tsc && node --test test/catalog.test.mjs test/limits.test.mjs test/questionnaire.test.mjs test/need.test.mjs test/form-memory.test.mjs test/memories-select.test.mjs test/comparison.test.mjs test/propositions.test.mjs test/recherche.test.mjs test/auth-utils.test.mjs",
+    "test:unit": "tsc && node --test test/catalog.test.mjs test/limits.test.mjs test/questionnaire.test.mjs test/need.test.mjs test/form-memory.test.mjs test/memories-select.test.mjs test/comparison.test.mjs test/propositions.test.mjs test/recherche.test.mjs test/auth-utils.test.mjs test/app-origin.test.mjs",
     "catalog:validate": "tsc && node lib/ops/validate-catalog.js",
     "ops:seed-catalog": "tsc && node lib/ops/seed-catalog.js",
     "ops:preview-questionnaire": "tsc && node lib/ops/preview-questionnaire.js",
