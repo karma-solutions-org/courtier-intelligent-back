@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { DocumentSnapshot, FieldValue, Transaction } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { getActiveMembership, requireString } from "../core/auth.utils";
+import { getActiveMembership, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { addEvent, cancelledJobUpdate, dossierSchema, loadProduct } from "../core/dossier.utils";
 import { cabinetPath, documentsPath, dossierPath, offerPath, quoteJobPath } from "../core/firestore-paths";
@@ -104,8 +104,8 @@ function enterPricing(tx: Transaction, cabinetId: string, dossier: DocumentSnaps
  */
 export const lancer = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
-  const insurerId = requireString(request.data?.insurerId, "assureur");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
+  const insurerId = requireId(request.data?.insurerId, "assureur");
 
   const db = admin.firestore();
   const jobRef = db.doc(quoteJobPath(cabinetId, dossierId, insurerId));
@@ -154,8 +154,8 @@ export const lancer = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const completer = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
-  const insurerId = requireString(request.data?.insurerId, "assureur");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
+  const insurerId = requireId(request.data?.insurerId, "assureur");
   const answers = request.data?.answers;
   if (typeof answers !== "object" || answers === null || Array.isArray(answers) || Object.keys(answers).length > MAX_ANSWERS) {
     throw new HttpsError("invalid-argument", "Réponses invalides.");
@@ -211,8 +211,8 @@ export const completer = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const saisirOffre = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
-  const insurerId = requireString(request.data?.insurerId, "assureur");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
+  const insurerId = requireId(request.data?.insurerId, "assureur");
   const received = request.data?.offer;
   const document = request.data?.document as { storagePath?: unknown; fileName?: unknown } | null | undefined;
   if (document != null && !isQuoteDocumentPath(document.storagePath, cabinetId, dossierId)) {
@@ -277,8 +277,8 @@ export const saisirOffre = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const annuler = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
-  const insurerId = requireString(request.data?.insurerId, "assureur");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
+  const insurerId = requireId(request.data?.insurerId, "assureur");
 
   const db = admin.firestore();
   const jobRef = db.doc(quoteJobPath(cabinetId, dossierId, insurerId));

@@ -114,6 +114,18 @@ export function requireString(value: unknown, field: string, maxLength = 200): s
   return text.substring(0, maxLength);
 }
 
+/**
+ * Identifiant reçu du client et placé dans un chemin Firestore ou Storage. Refusé (jamais tronqué ni nettoyé) s'il
+ * est trop long, contient un « / » (segments de chemin en plus) ou est réservé par Firestore (« . », « .. », `__…__`).
+ */
+export function requireId(value: unknown, field: string, maxLength = 200): string {
+  const id = requireString(value, field, maxLength + 1);
+  if (id.length > maxLength || id.includes("/") || id === "." || id === ".." || /^__.*__$/.test(id)) {
+    throw new HttpsError("invalid-argument", `Identifiant « ${field} » invalide.`);
+  }
+  return id;
+}
+
 export function requireEmail(value: unknown): string {
   const email = requireString(value, "email", 254).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {

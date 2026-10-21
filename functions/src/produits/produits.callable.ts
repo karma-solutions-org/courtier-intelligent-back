@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { assertCabinetAdmin, requireString } from "../core/auth.utils";
+import { assertCabinetAdmin, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { cabinetPath } from "../core/firestore-paths";
 import {
@@ -180,7 +180,7 @@ async function replaceGlobalProduct(cabinetId: string, uid: string, globalId: st
  */
 export const modifier = onCall({ ...CALLABLE_OPTIONS, memory: "512MiB" }, async request => {
   const { cabinetId, uid } = await assertCabinetAdmin(request);
-  const productId = requireString(request.data?.id, "produit", 100);
+  const productId = requireId(request.data?.id, "produit", 100);
   const global = !isCabinetProductId(productId);
   const ref = global ? (await existingGlobalProduct(cabinetId, productId)).ref : await existingCabinetProduct(cabinetId, productId);
   const name = requireName(request.data?.name);
@@ -208,7 +208,7 @@ export const modifier = onCall({ ...CALLABLE_OPTIONS, memory: "512MiB" }, async 
  */
 export const archiver = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await assertCabinetAdmin(request);
-  const productId = requireString(request.data?.id, "produit", 100);
+  const productId = requireId(request.data?.id, "produit", 100);
   if (!isCabinetProductId(productId)) {
     const global = await existingGlobalProduct(cabinetId, productId);
     await replaceGlobalProduct(cabinetId, uid, productId, {

@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { getActiveMembership, requireString } from "../core/auth.utils";
+import { getActiveMembership, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { looksLikePersonalData, memoryKey } from "../core/form-memory.utils";
 import { isInsurerExtranetOrigin } from "../core/origin.utils";
@@ -67,7 +67,7 @@ function validateFields(raw: unknown): DiscoveredFieldInput[] {
 export const signaler = onCall(CALLABLE_OPTIONS, async request => {
   // Appelée par l'extension : c'est sa session (extensionAuthTime) qui est vérifiée, pas celle de l'app.
   const { cabinetId } = await getActiveMembership(request, { extension: true });
-  const insurerId = requireString(request.data?.insurerId, "assureur", 100);
+  const insurerId = requireId(request.data?.insurerId, "assureur", 100);
   const origin = request.data?.origin;
   const fingerprint = request.data?.formFingerprint;
   if (typeof origin !== "string" || !ORIGIN.test(origin)) throw new HttpsError("invalid-argument", "Origine invalide.");

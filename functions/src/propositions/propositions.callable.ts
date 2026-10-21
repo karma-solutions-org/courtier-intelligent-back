@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { getActiveMembership, requireEmail, requireString } from "../core/auth.utils";
+import { getActiveMembership, requireEmail, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS, MAIL_COLLECTION } from "../core/config";
 import { addEvent } from "../core/dossier.utils";
 import { assurePath, cabinetPath, dossierPath, offerPath } from "../core/firestore-paths";
@@ -29,7 +29,7 @@ const OUTCOME_RESULTS: DossierOutcomeResult[] = ["souscrit", "refuse"];
  */
 export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const requestedTo = request.data?.to ? requireEmail(request.data.to) : null;
   const message =
     typeof request.data?.message === "string" ? request.data.message.trim().substring(0, PROPOSAL_MESSAGE_MAX) : "";
@@ -141,7 +141,7 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const enregistrerReponse = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const result = request.data?.result as DossierOutcomeResult;
   if (!OUTCOME_RESULTS.includes(result)) {
     throw new HttpsError("invalid-argument", "Réponse invalide.");

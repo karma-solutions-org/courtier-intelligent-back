@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { getActiveMembership, requireString } from "../core/auth.utils";
+import { getActiveMembership, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { assurePath, documentsPath, dossierPath } from "../core/firestore-paths";
 import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, runIaCall } from "../core/gemini.utils";
@@ -35,7 +35,7 @@ const MAX_OCR_OUTPUT_TOKENS = 2_000;
  */
 export const enregistrer = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const type = request.data?.type;
   const storagePath = request.data?.storagePath;
   if (!isDossierDocumentType(type)) {
@@ -98,8 +98,8 @@ export const enregistrer = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY], timeoutSeconds: 90, memory: "512MiB" }, async request => {
   const { cabinetId } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
-  const documentId = requireString(request.data?.documentId, "document");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
+  const documentId = requireId(request.data?.documentId, "document");
 
   const db = admin.firestore();
   const documentRef = db.doc(`${documentsPath(cabinetId, dossierId)}/${documentId}`);
@@ -190,7 +190,7 @@ export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY],
  */
 export const reprendrePiecesClient = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
 
   const db = admin.firestore();
   const dossier = await db.doc(dossierPath(cabinetId, dossierId)).get();

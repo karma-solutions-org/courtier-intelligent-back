@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { assertCabinetAdmin, requireString } from "../core/auth.utils";
+import { assertCabinetAdmin, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { cabinetPath } from "../core/firestore-paths";
 import {
@@ -166,7 +166,7 @@ async function replaceGlobalInsurer(cabinetId: string, uid: string, globalId: st
  */
 export const modifier = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await assertCabinetAdmin(request);
-  const insurerId = requireString(request.data?.id, "assureur", 100);
+  const insurerId = requireId(request.data?.id, "assureur", 100);
   const global = !isCabinetInsurerId(insurerId);
   const existing = global ? await existingGlobalInsurer(cabinetId, insurerId) : (await existingCabinetInsurer(cabinetId, insurerId)).snapshot;
   const name = requireName(request.data?.name);
@@ -192,7 +192,7 @@ export const modifier = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const archiver = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await assertCabinetAdmin(request);
-  const insurerId = requireString(request.data?.id, "assureur", 100);
+  const insurerId = requireId(request.data?.id, "assureur", 100);
   if (!isCabinetInsurerId(insurerId)) {
     const global = await existingGlobalInsurer(cabinetId, insurerId);
     await replaceGlobalInsurer(cabinetId, uid, insurerId, {

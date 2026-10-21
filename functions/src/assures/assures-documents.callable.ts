@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { getActiveMembership, requireString } from "../core/auth.utils";
+import { getActiveMembership, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { assurePath } from "../core/firestore-paths";
 import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, runIaCall } from "../core/gemini.utils";
@@ -106,7 +106,7 @@ export const reconnaitrePiece = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_A
  */
 export const rattacherPiece = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const assureId = requireString(request.data?.assureId, "client");
+  const assureId = requireId(request.data?.assureId, "client");
   const type = request.data?.type;
   const storagePath = request.data?.storagePath;
   if (!isAssureDocumentType(type)) {

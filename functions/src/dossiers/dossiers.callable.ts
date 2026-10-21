@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { getActiveMembership, requireString } from "../core/auth.utils";
+import { getActiveMembership, requireId, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { addEvent, cancelledJobUpdate, dossierSchema } from "../core/dossier.utils";
 import { formatReference } from "../core/dossier-reference";
@@ -61,8 +61,8 @@ function prefillFromAssure(schema: QuestionnaireSection[], assure: admin.firesto
  */
 export const creer = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const assureId = requireString(request.data?.assureId, "assuré");
-  const productId = requireString(request.data?.productId, "produit");
+  const assureId = requireId(request.data?.assureId, "assuré");
+  const productId = requireId(request.data?.productId, "produit");
 
   const db = admin.firestore();
   const dossierRef = db.collection(dossiersPath(cabinetId)).doc();
@@ -139,7 +139,7 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const patch = request.data?.patch;
   if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
     throw new HttpsError("invalid-argument", "Modifications invalides.");
@@ -218,7 +218,7 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const target = request.data?.status as DossierStatus;
   if (!DOSSIER_STATUSES.includes(target)) {
     throw new HttpsError("invalid-argument", "Statut invalide.");
@@ -283,8 +283,8 @@ export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
 /** Assigne ou réassigne un dossier à un membre actif : l'admin à n'importe quel dossier, un courtier à ses propres dossiers. */
 export const assigner = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid, role } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
-  const assignee = requireString(request.data?.uid, "membre");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
+  const assignee = requireId(request.data?.uid, "membre");
 
   const db = admin.firestore();
   const ref = db.doc(dossierPath(cabinetId, dossierId));
@@ -322,7 +322,7 @@ export const assigner = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const classerSansSuite = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const motif = requireString(request.data?.motif, "motif", SANS_SUITE_MOTIF_MAX);
 
   const db = admin.firestore();

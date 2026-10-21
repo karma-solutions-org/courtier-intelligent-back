@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { getActiveMembership, requireString } from "../core/auth.utils";
+import { getActiveMembership, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { addEvent, loadProduct } from "../core/dossier.utils";
 import { dossierPath } from "../core/firestore-paths";
@@ -33,7 +33,7 @@ function storedNeed(raw: Record<string, unknown> | undefined): NeedInput | null 
  */
 export const enregistrerBesoin = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const received = request.data?.need;
 
   const db = admin.firestore();
@@ -93,7 +93,7 @@ export const enregistrerBesoin = onCall(CALLABLE_OPTIONS, async request => {
 /** Valide le besoin : le dossier passe de « complet » à « besoin validé » (étape préalable à la tarification). */
 export const validerBesoin = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
 
   const db = admin.firestore();
   const ref = db.doc(dossierPath(cabinetId, dossierId));

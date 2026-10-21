@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { assertCabinetAdmin, requireString } from "../core/auth.utils";
+import { assertCabinetAdmin, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { assurePath, dossierPath, dossiersPath } from "../core/firestore-paths";
 import { cancelledJobUpdate } from "../core/dossier.utils";
@@ -52,7 +52,7 @@ function dossiersOf(cabinetId: string, assureId: string) {
 export const supprimer = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await assertCabinetAdmin(request);
   const kind = requireKind(request.data?.kind);
-  const id = requireString(request.data?.id, "élément");
+  const id = requireId(request.data?.id, "élément");
   const ref = refOf(cabinetId, kind, id);
   const snapshot = await existing(ref);
   if (snapshot.get("deletedAt")) {
@@ -90,7 +90,7 @@ export const supprimer = onCall(CALLABLE_OPTIONS, async request => {
 export const restaurer = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId } = await assertCabinetAdmin(request);
   const kind = requireKind(request.data?.kind);
-  const id = requireString(request.data?.id, "élément");
+  const id = requireId(request.data?.id, "élément");
   const ref = refOf(cabinetId, kind, id);
   const snapshot = await existing(ref);
   const unmark = { deletedAt: FieldValue.delete(), deletedBy: FieldValue.delete(), deletedWith: FieldValue.delete() };
@@ -124,7 +124,7 @@ export const restaurer = onCall(CALLABLE_OPTIONS, async request => {
 export const supprimerDefinitivement = onCall({ ...CALLABLE_OPTIONS, timeoutSeconds: 300 }, async request => {
   const { cabinetId } = await assertCabinetAdmin(request);
   const kind = requireKind(request.data?.kind);
-  const id = requireString(request.data?.id, "élément");
+  const id = requireId(request.data?.id, "élément");
   const ref = refOf(cabinetId, kind, id);
   const snapshot = await existing(ref);
   if (!snapshot.get("deletedAt")) {
