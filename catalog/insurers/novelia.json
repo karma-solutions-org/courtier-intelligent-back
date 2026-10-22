@@ -1,7 +1,7 @@
 {
   "id": "novelia",
   "name": "Novelia",
-  "logo": null,
+  "logo": "insurers/novelia.png",
   "extranetUrl": "https://www.novelia.fr",
   "extranetDomains": ["novelia.fr"],
   "productsSupported": ["auto"]

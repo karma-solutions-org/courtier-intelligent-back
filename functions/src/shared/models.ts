@@ -266,6 +266,8 @@ export interface Dossier {
   outcome: DossierOutcome | null;
   /** Où le courtier s'est arrêté dans le questionnaire : la reprise du brouillon s'y replace exactement. */
   draft?: { sectionIndex: number } | null;
+  /** Extranets choisis pour ce dossier (étape « Extranets ») : questionnaire et tarification. Absent ou vide : ceux du cabinet. */
+  insurerIds?: string[];
   createdBy?: string;
   createdAt?: TimestampLike;
   updatedAt?: TimestampLike;

@@ -31,6 +31,7 @@ import {
 } from "../shared/index.js";
 
 const MAX_PATCH_FIELDS = 100;
+const MAX_INSURERS = 50;
 
 /** Champs de l'assuré repris dans le dossier (uniquement ceux que le questionnaire du produit demande). */
 function prefillFromAssure(schema: QuestionnaireSection[], assure: admin.firestore.DocumentSnapshot): CanonicalData {
@@ -127,7 +128,8 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
 /**
  * Enregistre des réponses du questionnaire (sauvegarde automatique du brouillon) et recalcule la complétude.
  * Chaque champ est contrôlé : il doit appartenir au questionnaire du produit et avoir le bon type.
- * `sectionIndex` mémorise où le courtier s'est arrêté ; `event` trace la modification dans l'historique.
+ * `sectionIndex` mémorise où le courtier s'est arrêté ; `insurerIds`, les extranets choisis ; `event` trace la
+ * modification dans l'historique.
  */
 export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
@@ -143,6 +145,13 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
   const sectionIndex = request.data?.sectionIndex;
   if (sectionIndex !== undefined && (!Number.isInteger(sectionIndex) || sectionIndex < 0 || sectionIndex > 100)) {
     throw new HttpsError("invalid-argument", "Section invalide.");
+  }
+  const insurerIds = request.data?.insurerIds;
+  if (
+    insurerIds !== undefined &&
+    (!Array.isArray(insurerIds) || insurerIds.length > MAX_INSURERS || insurerIds.some(id => typeof id !== "string" || !/^[\w-]{1,64}$/.test(id)))
+  ) {
+    throw new HttpsError("invalid-argument", "Extranets invalides.");
   }
 
   const db = admin.firestore();
@@ -198,6 +207,7 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
       completeness,
       status: newStatus,
       ...(sectionIndex !== undefined ? { draft: { sectionIndex } } : {}),
+      ...(insurerIds !== undefined ? { insurerIds: [...new Set(insurerIds as string[])] } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
     return { status: newStatus, completeness };
