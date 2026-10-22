@@ -96,6 +96,15 @@ describe('Inscription : creerMonCabinet et accepterInvitation', () => {
     assert.ok(again.error, 'déjà rattaché');
   });
 
+  it("l'adhésion d'un compte supprimé (même adresse) ne bloque pas une nouvelle inscription", async () => {
+    // Ancien compte supprimé de Firebase Auth : sa fiche de membre est restée dans son cabinet.
+    await db.doc('ci_cabinets/cabinet-abandonne/ci_members/compte-supprime').set({ email: 'reinscription@test.fr', role: 'admin', status: 'active' });
+    await admin.auth().createUser({ email: 'reinscription@test.fr', password: PASSWORD, emailVerified: true });
+
+    const result = await call('cabinets-creerMonCabinet', await signIn('reinscription@test.fr'), { name: 'Nouveau départ' });
+    assert.ok(result.data?.cabinetId, JSON.stringify(result.error));
+  });
+
   it("refuse d'accepter une invitation sans email vérifié, ou déjà membre d'un cabinet", async () => {
     await db.doc(`ci_cabinets/${cabinetId}/ci_invitations/inv-1`).set({
       email: 'invite@test.fr', role: 'courtier', status: 'pending', expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 86400000),
@@ -116,6 +125,7 @@ describe('Un compte, une session à la fois', () => {
   });
 
   it('un autre appareil est refusé tant que la session est active, et le refus est tracé', async () => {
+    await sleep(1100); // auth_time est en secondes
     const result = await ouvrir(await signIn('courtier@test.fr'), DEVICE_B);
     assert.equal(result.error?.status, 'PERMISSION_DENIED');
     assert.equal(result.error.details?.reason, 'session_active');
