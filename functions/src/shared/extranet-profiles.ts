@@ -26,6 +26,31 @@ export interface ExtranetProfile {
   entry: NavAction[];
 }
 
+/**
+ * Chemin d'accès commun, publié dans le catalogue (`entryPaths` de l'assureur, par produit) : enregistré une fois par
+ * Courtier Intelligent, il sert à tous les cabinets sans apprentissage. Même format que le profil appris.
+ */
+export interface CatalogEntryPath {
+  origin: string;
+  entry: NavAction[];
+}
+
+/** Chemin commun valide (origine https, ou http pour localhost ; clics valides), ou null. */
+export function sanitizeCatalogEntryPath(input: unknown): CatalogEntryPath | null {
+  if (!input || typeof input !== 'object') return null;
+  const raw = input as Record<string, unknown>;
+  const entry = sanitizeEntry(raw['entry']);
+  if (!entry || typeof raw['origin'] !== 'string') return null;
+  try {
+    const url = new URL(raw['origin']);
+    const local = url.protocol === 'http:' && url.hostname === 'localhost';
+    if ((url.protocol !== 'https:' && !local) || url.origin !== raw['origin']) return null;
+  } catch {
+    return null;
+  }
+  return { origin: raw['origin'], entry };
+}
+
 /** Identifiant d'un profil : un par assureur et par produit (le chemin d'un devis Auto n'est pas celui d'un devis Habitation). */
 export const extranetProfileId = (insurerId: string, productId: string): string => `${insurerId}_${productId}`;
 

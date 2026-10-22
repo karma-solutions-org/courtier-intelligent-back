@@ -2,6 +2,7 @@
 import { CanonicalData, CanonicalPath } from './canonical-paths.js';
 import { DossierStatus, InvitationStatus, MemberStatus, QuoteJobStatus, CabinetRole } from './statuses.js';
 import type { DossierDocumentStatus, DossierDocumentType, OcrField } from './documents.js';
+import type { CatalogEntryPath } from './extranet-profiles.js';
 
 /**
  * Horodatage Firestore. Côté client et côté Admin SDK les classes diffèrent :
@@ -204,6 +205,13 @@ export interface Insurer {
   extranetUrl: string;
   extranetDomains: string[];
   productsSupported: string[];
+  /** Chemins d'accès communs au formulaire de devis, par produit (voir `CatalogEntryPath`). */
+  entryPaths?: Record<string, CatalogEntryPath>;
+  /**
+   * Questions connues de l'extranet, par produit : chemins canoniques qu'il demande (ex. `vehicle.version` pour
+   * « Désignation »). Sans liste pour le produit, l'assureur ne filtre rien (toutes les questions sont posées).
+   */
+  questions?: Record<string, string[]>;
 }
 
 // ── Assuré & dossier ───────────────────────────────────────────────────────

@@ -225,3 +225,30 @@ export function schemaForCabinet(schema: QuestionnaireSection[], enabledInsurers
     .map(section => ({ ...section, questions: section.questions.filter(visible) }))
     .filter(section => !section.discovered || section.questions.length > 0);
 }
+
+/**
+ * Questionnaire d'un dossier : seulement les questions connues des extranets choisis (`Insurer.questions`), plus celles
+ * découvertes sur ces extranets. Si l'un d'eux n'a pas encore de liste pour le produit, on ne peut pas savoir ce qu'il
+ * demande : rien n'est retiré. Les questions qui conditionnent une question gardée (`visibleIf`) sont gardées aussi.
+ */
+export function schemaForInsurers(
+  schema: QuestionnaireSection[],
+  insurers: { id: string; questions?: Record<string, string[]> }[],
+  productId: string,
+): QuestionnaireSection[] {
+  const ids = insurers.map(insurer => insurer.id);
+  const byDiscovery = schemaForCabinet(schema, ids);
+  const lists = insurers.map(insurer => insurer.questions?.[productId]);
+  if (!lists.length || lists.some(list => !list)) return byDiscovery;
+  const known = new Set(lists.flat() as string[]);
+  const all = byDiscovery.flatMap(section => section.questions);
+  for (const question of all) {
+    if (known.has(question.canonicalPath) && question.visibleIf) known.add(question.visibleIf.path);
+  }
+  return byDiscovery
+    .map(section => ({
+      ...section,
+      questions: section.questions.filter(question => section.discovered || known.has(question.canonicalPath)),
+    }))
+    .filter(section => section.questions.length > 0);
+}

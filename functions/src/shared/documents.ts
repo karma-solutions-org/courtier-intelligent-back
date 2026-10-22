@@ -17,15 +17,23 @@ export const OCR_CONFIDENCE_THRESHOLD = 0.8;
 /** Nombre maximal de champs gardés d'une réponse de l'IA. */
 export const OCR_MAX_FIELDS = 40;
 
-/** Champs que l'IA peut lire sur chaque type de document (« autre » : aucun, il n'est pas analysé). */
+/**
+ * Champs que l'IA peut lire sur chaque type de document (« autre » : aucun, il n'est pas analysé). Les questions ajoutées
+ * depuis les extranets (`extra.*` : numéro de permis, civilité…) sont proposées sur tous : l'IA ne garde que celles imprimées.
+ */
 export const OCR_PATH_PREFIXES: Record<DossierDocumentType, string[]> = {
-  carte_grise: ['vehicle.'],
-  permis: ['driver.'],
+  carte_grise: ['vehicle.', 'extra.'],
+  permis: ['driver.', 'extra.'],
   // Pièce d'identité du souscripteur : nom, prénom, date de naissance, numéro, adresse (ancien modèle).
-  cin: ['client.'],
-  releve_information: ['insuranceHistory.'],
+  cin: ['client.', 'extra.'],
+  releve_information: ['insuranceHistory.', 'extra.'],
   autre: [],
 };
+
+/** Rappel pour les questions ajoutées depuis les extranets : beaucoup ne figurent sur aucun document. */
+const EXTRA_HINT =
+  "- extra.* : questions propres à un assureur. Ne les remplis que si la réponse est imprimée sur CE document (ex. numéro de permis, " +
+  'préfecture ou département de délivrance sur le permis, sexe → civilité). Sinon, omets-les : jamais de supposition.';
 
 /** Valeur lue sur un document, proposée au courtier (jamais écrite sans son accord). */
 export interface OcrField {
@@ -133,6 +141,7 @@ export function buildOcrPrompt(type: DossierDocumentType, questions: Question[])
     `Tu lis un ${DOCUMENT_LABELS[type]} joint. Extrais uniquement les champs suivants :`,
     ...fields,
     ...(DOCUMENT_HINTS[type] ? ['', ...DOCUMENT_HINTS[type]] : []),
+    ...(questions.some(q => q.canonicalPath.startsWith('extra.')) ? [EXTRA_HINT] : []),
     '',
     'Réponds UNIQUEMENT avec un JSON de la forme {"fields":[{"canonicalPath":"...","value":...,"confidence":0.0}]}.',
     'confidence est ta confiance entre 0 et 1. N\'invente jamais : un champ absent, illisible ou incertain est omis.',
