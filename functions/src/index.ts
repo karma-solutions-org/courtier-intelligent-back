@@ -32,12 +32,6 @@ export * as assures from "./assures/assures-documents.callable";
 // ── Corbeille : clients et dossiers supprimés, restaurables (admin) ─────────────
 export * as corbeille from "./corbeille/corbeille.callable";
 
-// ── Assureurs propres à un cabinet (admin) : en plus du catalogue global ─────────────
-export * as assureurs from "./assureurs/assureurs.callable";
-
-// ── Produits propres à un cabinet (admin) : questionnaire et garanties saisis par le cabinet ─────────────
-export * as produits from "./produits/produits.callable";
-
 // ── Recherche Elasticsearch (clients, dossiers) : triggers d'indexation et recherche — passent par le VPC partagé ──
 export * as recherche from "./recherche/recherche";
 

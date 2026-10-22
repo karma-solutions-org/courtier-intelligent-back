@@ -5,7 +5,7 @@ import { getActiveMembership, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { looksLikePersonalData, memoryKey } from "../core/form-memory.utils";
 import { isInsurerExtranetOrigin } from "../core/origin.utils";
-import { cabinetMemoryPath } from "../core/firestore-paths";
+import { cabinetMemoryPath, productPath, insurerPath } from "../core/firestore-paths";
 import {
   applyInsurerRequirements,
   DISCOVERED_MAX_FIELDS_PER_REPORT,
@@ -16,10 +16,6 @@ import {
   type DiscoveredFieldInput,
   type FormMemoryField,
   type QuestionnaireSection,
-  isCabinetInsurerId,
-  insurerDocPath,
-  isCabinetProductId,
-  productDocPath,
 } from "../shared/index.js";
 
 const ORIGIN = /^https:\/\/[a-z0-9]([a-z0-9.-]{0,198}[a-z0-9])?(:\d{1,5})?$|^http:\/\/localhost(:\d{1,5})?$/;
@@ -79,26 +75,21 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
   if (!fields.length && !requiredPaths.length) return { added: 0 };
 
   const db = admin.firestore();
-  const cabinetInsurer = isCabinetInsurerId(insurerId);
-  const insurer = await db.doc(insurerDocPath(cabinetId, insurerId)).get();
+  const insurer = await db.doc(insurerPath(insurerId)).get();
   if (!insurer.exists) throw new HttpsError("not-found", "Assureur introuvable.");
-  // Un extranet ne fait évoluer que les produits de son assureur, et seulement depuis l'un de ses domaines.
-  // Page locale (extranet de démo) : dans les emulators, ou pour un assureur du cabinet qui déclare ce domaine:port.
+  // Un extranet ne fait évoluer que les produits de son assureur, et seulement depuis l'un de ses domaines
+  // (page locale de démo : dans les emulators seulement).
   const domains = (insurer.get("extranetDomains") as string[] | undefined) ?? [];
-  if (!isInsurerExtranetOrigin(origin, domains, { cabinetInsurer })) {
+  if (!isInsurerExtranetOrigin(origin, domains)) {
     throw new HttpsError("permission-denied", "Cette page n'est pas un extranet de l'assureur.");
   }
-  // Un assureur ajouté par un cabinet (domaine saisi par le cabinet) ne complète que les produits de ce cabinet :
-  // jamais le questionnaire commun à tous les cabinets.
-  const productIds = ((insurer.get("productsSupported") as string[] | undefined) ?? [])
-    .filter(productId => !cabinetInsurer || isCabinetProductId(productId))
-    .slice(0, 10);
+  const productIds = ((insurer.get("productsSupported") as string[] | undefined) ?? []).slice(0, 10);
 
   let added = 0;
   const mapping: Record<string, string> = {};
   for (const productId of productIds) {
     const result = await db.runTransaction(async tx => {
-      const product = await tx.get(db.doc(productDocPath(cabinetId, productId)));
+      const product = await tx.get(db.doc(productPath(productId)));
       const schema = product.get("questionnaireSchema") as QuestionnaireSection[] | undefined;
       if (!product.exists || !Array.isArray(schema)) return null;
       const merged = mergeDiscoveredFields(schema, fields, { insurerId, origin });

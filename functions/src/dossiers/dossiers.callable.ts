@@ -12,6 +12,7 @@ import {
   dossiersPath,
   memberPath,
   cabinetPath,
+  productPath,
 } from "../core/firestore-paths";
 import {
   ACTIVE_QUOTE_JOB_STATUSES,
@@ -27,8 +28,6 @@ import {
   type DossierStatus,
   type QuestionnaireSection,
   type QuoteJobStatus,
-  productDocPath,
-  isCabinetProductId,
 } from "../shared/index.js";
 
 const MAX_PATCH_FIELDS = 100;
@@ -72,7 +71,7 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
   const reference = await db.runTransaction(async tx => {
     const [assure, product, cabinet, counter] = await Promise.all([
       tx.get(db.doc(assurePath(cabinetId, assureId))),
-      tx.get(db.doc(productDocPath(cabinetId, productId))),
+      tx.get(db.doc(productPath(productId))),
       tx.get(db.doc(cabinetPath(cabinetId))),
       tx.get(counterRef),
     ]);
@@ -84,15 +83,8 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
         reason: "assure_deleted",
       });
     }
-    if (!product.exists || product.get("active") !== true || product.get("archived") === true) {
+    if (!product.exists || product.get("active") !== true) {
       throw new HttpsError("not-found", "Produit introuvable ou inactif.");
-    }
-    // Produit du catalogue modifié ou retiré par le cabinet : remplacé par sa fiche du cabinet.
-    if (!isCabinetProductId(productId)) {
-      const replaced = await tx.get(db.collection(`${cabinetPath(cabinetId)}/ci_products`).where("replaces", "==", productId).limit(1));
-      if (!replaced.empty) {
-        throw new HttpsError("not-found", "Produit introuvable ou inactif.");
-      }
     }
     const enabled = (cabinet.get("enabledProducts") as string[] | undefined) ?? [];
     if (enabled.length > 0 && !enabled.includes(productId)) {

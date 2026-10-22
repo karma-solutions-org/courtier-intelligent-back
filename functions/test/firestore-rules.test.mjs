@@ -218,6 +218,13 @@ describe('Catalogue global', () => {
     await assertSucceeds(getDoc(doc(courtierA(), 'ci_products/auto')));
     await assertFails(setDoc(doc(adminA(), 'ci_products/auto'), { name: 'Modifié' }));
   });
+
+  it("un cabinet n'a plus de catalogue à lui : ni lecture ni écriture d'assureurs ou de produits du cabinet", async () => {
+    for (const collection of ['ci_insurers', 'ci_products']) {
+      await assertFails(getDoc(doc(adminA(), `ci_cabinets/A/${collection}/x`)));
+      await assertFails(setDoc(doc(adminA(), `ci_cabinets/A/${collection}/x`), { name: 'Ajouté' }));
+    }
+  });
 });
 
 describe('Offres', () => {

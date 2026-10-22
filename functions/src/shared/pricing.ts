@@ -1,5 +1,4 @@
 // ⚠️ Copie générée par scripts/sync-shared.mjs — ne pas modifier ici.
-import { replacedInsurerIds } from './cabinet-insurers.js';
 import { CanonicalData, CanonicalPath, isCanonicalPath } from './canonical-paths.js';
 import type { Guarantee, Insurer, MissingField, Offer, OfferGuarantee, Question, QuestionnaireSection, QuoteJob } from './models.js';
 import { buildQuoteData, isAnswered, questionsOf } from './questionnaire.js';
@@ -22,30 +21,23 @@ export function canLaunchQuoteJob(job: Pick<QuoteJob, 'status'> | null | undefin
 }
 
 /**
- * Assureurs proposés pour un produit : ceux qui le tarifent, parmi ceux activés par le cabinet (aucun choix = tous).
- * Un assureur du catalogue modifié ou retiré par le cabinet n'est plus proposé.
- * `replacedProductId` : produit du catalogue que ce produit du cabinet remplace (ex. « auto » copié en « cab-auto ») ;
- * un assureur qui tarifait l'original tarifie sa copie.
+ * Tarif lu par l'extension que le courtier n'a pas encore vérifié : affiché « À vérifier », hors comparatif tant
+ * qu'il n'est pas validé (ou corrigé, ce qui en fait une offre saisie à la main).
  */
-export function insurersForProduct(
-  insurers: Insurer[],
-  productId: string,
-  enabledInsurers: string[],
-  replacedProductId?: string | null,
-): Insurer[] {
-  const replaced = replacedInsurerIds(insurers);
+export function isOfferToReview(offer: Pick<Offer, 'source' | 'review'> | null | undefined): boolean {
+  return !!offer && offer.source === 'auto' && offer.review === 'pending';
+}
+
+/** Assureurs proposés pour un produit : ceux qui le tarifent, parmi ceux activés par le cabinet (aucun choix = tous). */
+export function insurersForProduct(insurers: Insurer[], productId: string, enabledInsurers: string[]): Insurer[] {
   return insurers.filter(
-    insurer =>
-      !insurer.archived &&
-      !replaced.has(insurer.id) &&
-      supportsProduct(insurer, productId, replacedProductId) &&
-      (enabledInsurers.length === 0 || enabledInsurers.includes(insurer.id)),
+    insurer => supportsProduct(insurer, productId) && (enabledInsurers.length === 0 || enabledInsurers.includes(insurer.id)),
   );
 }
 
-/** L'assureur tarifie-t-il ce produit, ou le produit du catalogue qu'il remplace ? */
-export function supportsProduct(insurer: Pick<Insurer, 'productsSupported'>, productId: string, replacedProductId?: string | null): boolean {
-  return insurer.productsSupported.includes(productId) || (!!replacedProductId && insurer.productsSupported.includes(replacedProductId));
+/** L'assureur tarifie-t-il ce produit ? */
+export function supportsProduct(insurer: Pick<Insurer, 'productsSupported'>, productId: string): boolean {
+  return insurer.productsSupported.includes(productId);
 }
 
 /**

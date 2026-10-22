@@ -1,0 +1,8 @@
+{
+  "id": "coverity",
+  "name": "Coverity",
+  "logo": "insurers/coverity.jpg",
+  "extranetUrl": "https://extranet.coverity.fr/Connexion",
+  "extranetDomains": ["extranet.coverity.fr"],
+  "productsSupported": ["auto"]
+}

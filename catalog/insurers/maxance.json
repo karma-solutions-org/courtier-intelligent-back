@@ -1,0 +1,8 @@
+{
+  "id": "maxance",
+  "name": "Maxance",
+  "logo": "insurers/maxance.png",
+  "extranetUrl": "https://extranet.maxance.com",
+  "extranetDomains": ["extranet.maxance.com"],
+  "productsSupported": ["auto"]
+}

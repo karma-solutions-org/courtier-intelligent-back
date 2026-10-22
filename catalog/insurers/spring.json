@@ -1,0 +1,8 @@
+{
+  "id": "spring",
+  "name": "Spring",
+  "logo": "insurers/spring.webp",
+  "extranetUrl": "https://extranet.springassur.com/connexion",
+  "extranetDomains": ["extranet.springassur.com"],
+  "productsSupported": ["auto"]
+}

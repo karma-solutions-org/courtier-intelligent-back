@@ -1,0 +1,8 @@
+{
+  "id": "novelia",
+  "name": "Novelia",
+  "logo": null,
+  "extranetUrl": "https://www.novelia.fr",
+  "extranetDomains": ["novelia.fr"],
+  "productsSupported": ["auto"]
+}

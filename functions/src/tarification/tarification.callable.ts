@@ -4,7 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { addEvent, cancelledJobUpdate, dossierSchema, loadProduct } from "../core/dossier.utils";
-import { cabinetPath, documentsPath, dossierPath, offerPath, quoteJobPath } from "../core/firestore-paths";
+import { cabinetPath, documentsPath, dossierPath, offerPath, quoteJobPath, insurerPath } from "../core/firestore-paths";
 import {
   ACTIVE_QUOTE_JOB_STATUSES,
   buildJobQuoteData,
@@ -25,9 +25,6 @@ import {
   type ManualOfferInput,
   type MissingField,
   type QuoteJobStatus,
-  insurerDocPath,
-  isCabinetInsurerId,
-  productDocPath,
   supportsProduct,
 } from "../shared/index.js";
 
@@ -59,26 +56,16 @@ async function loadPricingDossier(tx: Transaction, cabinetId: string, dossierId:
 /** L'assureur doit tarifer le produit du dossier et être activé par le cabinet (aucun choix = tous). */
 async function loadPricingInsurer(tx: Transaction, cabinetId: string, insurerId: string, productId: string): Promise<DocumentSnapshot> {
   const db = admin.firestore();
-  const [insurer, cabinet, product] = await Promise.all([
-    tx.get(db.doc(insurerDocPath(cabinetId, insurerId))),
+  const [insurer, cabinet] = await Promise.all([
+    tx.get(db.doc(insurerPath(insurerId))),
     tx.get(db.doc(cabinetPath(cabinetId))),
-    tx.get(db.doc(productDocPath(cabinetId, productId))),
   ]);
-  if (!insurer.exists || insurer.get("archived") === true) {
+  if (!insurer.exists) {
     throw new HttpsError("not-found", "Assureur introuvable.");
-  }
-  // Assureur du catalogue modifié ou retiré par le cabinet : remplacé par sa fiche du cabinet.
-  if (!isCabinetInsurerId(insurerId)) {
-    const replaced = await tx.get(db.collection(`${cabinetPath(cabinetId)}/ci_insurers`).where("replaces", "==", insurerId).limit(1));
-    if (!replaced.empty) {
-      throw new HttpsError("not-found", "Assureur introuvable.");
-    }
   }
   const productsSupported = (insurer.get("productsSupported") as string[] | undefined) ?? [];
   const enabled = (cabinet.get("enabledInsurers") as string[] | undefined) ?? [];
-  // Produit du cabinet copié d'un produit du catalogue : un assureur qui tarifait l'original tarifie la copie.
-  const replacedProductId = (product.get("replaces") as string | undefined) ?? null;
-  if (!supportsProduct({ productsSupported }, productId, replacedProductId) || (enabled.length > 0 && !enabled.includes(insurerId))) {
+  if (!supportsProduct({ productsSupported }, productId) || (enabled.length > 0 && !enabled.includes(insurerId))) {
     throw new HttpsError("failed-precondition", "Cet assureur n'est pas disponible pour ce produit dans votre cabinet.", {
       reason: "insurer_not_available",
     });

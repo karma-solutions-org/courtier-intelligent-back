@@ -1,0 +1,8 @@
+{
+  "id": "zephir",
+  "name": "Zéphir",
+  "logo": "insurers/zephir.jpg",
+  "extranetUrl": "https://zeole.zephir.fr",
+  "extranetDomains": ["zeole.zephir.fr"],
+  "productsSupported": ["auto"]
+}

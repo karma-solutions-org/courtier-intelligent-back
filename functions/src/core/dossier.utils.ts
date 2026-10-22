@@ -1,8 +1,8 @@
 import * as admin from "firebase-admin";
 import { FieldValue, Transaction } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
-import { cabinetPath, dossierPath } from "./firestore-paths";
-import { productDocPath, schemaForCabinet, type DossierEventType, type Product, type QuestionnaireSection } from "../shared/index.js";
+import { cabinetPath, dossierPath, productPath } from "./firestore-paths";
+import { schemaForCabinet, type DossierEventType, type Product, type QuestionnaireSection } from "../shared/index.js";
 
 /**
  * Produit d'un dossier (questionnaire et référentiel des garanties) : la référence pour valider ce qui est enregistré.
@@ -14,7 +14,7 @@ export async function loadProduct(
   productId: string,
 ): Promise<Pick<Product, "questionnaireSchema" | "guaranteeCatalog">> {
   const [product, cabinet] = await Promise.all([
-    tx.get(admin.firestore().doc(productDocPath(cabinetId, productId))),
+    tx.get(admin.firestore().doc(productPath(productId))),
     tx.get(admin.firestore().doc(cabinetPath(cabinetId))),
   ]);
   if (!product.exists || !product.get("questionnaireSchema")) {

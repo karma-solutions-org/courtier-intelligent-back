@@ -15,7 +15,6 @@ export * from './proposal.js';
 export * from './assure-format.js';
 export * from './assure-documents.js';
 export * from './discovered-fields.js';
-export * from './cabinet-insurers.js';
-export * from './cabinet-products.js';
 export * from './vehicle-lookup.js';
 export * from './ai-prompts.js';
+export * from './extranet-profiles.js';

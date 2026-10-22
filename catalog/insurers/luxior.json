@@ -1,0 +1,8 @@
+{
+  "id": "luxior",
+  "name": "Luxior",
+  "logo": "insurers/luxior.png",
+  "extranetUrl": "https://www.luxior.fr",
+  "extranetDomains": ["luxior.fr"],
+  "productsSupported": ["auto"]
+}

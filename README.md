@@ -113,7 +113,7 @@ Le catalogue global est maintenu en JSON dans `catalog/` et publié par `seed-ca
 ```
 catalog/
 ├── plans/<offre>.json                    id, name, limits
-├── insurers/<assureur>.json              id, name, extranetUrl, extranetDomains, productsSupported
+├── insurers/<assureur>.json              id, name, logo, extranetUrl, extranetDomains, productsSupported
 └── products/<produit>/
     ├── product.json                      id, name, active
     ├── questionnaire.json                sections → questions (canonicalPath, type, required, choices, visibleIf, withKnowledge)
@@ -121,7 +121,7 @@ catalog/
     └── synonyms.json                     code de garantie → formulations des assureurs
 ```
 
-Un JSON invalide (schéma, `canonicalPath` hors du modèle canonique, références croisées) bloque la publication. ⚠️ Les 3 assureurs fournis sont des données d'exemple (`*.example`) : remplacer l'URL et les domaines de l'extranet par ceux des vrais assureurs.
+Un JSON invalide (schéma, `canonicalPath` hors du modèle canonique, références croisées) bloque la publication. Le catalogue est le seul endroit où l'on ajoute ou modifie un assureur ou un produit : les cabinets ne font qu'activer ceux qu'ils utilisent. Un assureur publié mais retiré des JSON est supprimé à la publication suivante. `logo` : chemin de l'image dans l'app (`app/public/insurers/<id>.<ext>` du repo front).
 
 ## Tests des règles Firestore
 
@@ -133,7 +133,7 @@ npm run test:integration  # emulators auth + firestore + functions : session uni
 ```
 
 > `functions/.env.demo-courtier-intelligent` (URL du faux service d'IA et clé factice) n'est lu que par les emulators du projet `demo-courtier-intelligent`.
-> ⚠️ `firestore.shared.rules` contient depuis son premier commit une ligne parasite (`database}/documents {`) avant la section Courtier Intelligent : ce fichier n'est pas chargeable tel quel, la source de vérité testée est `firestore.rules`.
+> `firestore.shared.rules` : règles COMPLÈTES du projet partagé, à coller dans la console Firebase. Sa section Courtier Intelligent est une copie de `firestore.courtier-intelligent.rules` (repo front) : la recopier après chaque modification du fragment. Le catch-all `match /{collection}/{document=**}` des autres applications exclut les collections `ci_` : sans cette exclusion, tout utilisateur connecté lirait et écrirait toutes les données des cabinets.
 
 ## Développement local
 

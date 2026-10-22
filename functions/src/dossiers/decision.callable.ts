@@ -4,9 +4,8 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { addEvent } from "../core/dossier.utils";
-import { dossierPath, offerPath } from "../core/firestore-paths";
+import { dossierPath, offerPath, insurerPath } from "../core/firestore-paths";
 import {
-  insurerDocPath,
   isTransitionAllowed,
   needSnapshotOf,
   offerSnapshotOf,
@@ -41,7 +40,7 @@ export const decider = onCall(CALLABLE_OPTIONS, async request => {
     const [dossier, offer, insurer] = await Promise.all([
       tx.get(ref),
       tx.get(db.doc(offerPath(cabinetId, dossierId, insurerId))),
-      tx.get(db.doc(insurerDocPath(cabinetId, insurerId))),
+      tx.get(db.doc(insurerPath(insurerId))),
     ]);
     if (!dossier.exists) {
       throw new HttpsError("not-found", "Dossier introuvable.");

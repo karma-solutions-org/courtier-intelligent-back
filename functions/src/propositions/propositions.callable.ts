@@ -4,7 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireEmail, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS, MAIL_COLLECTION } from "../core/config";
 import { addEvent } from "../core/dossier.utils";
-import { assurePath, cabinetPath, dossierPath, offerPath } from "../core/firestore-paths";
+import { assurePath, cabinetPath, dossierPath, offerPath, insurerPath } from "../core/firestore-paths";
 import {
   isTransitionAllowed,
   PROPOSAL_MESSAGE_MAX,
@@ -12,7 +12,6 @@ import {
   validateEffectiveDate,
   type DossierOutcomeResult,
   type DossierStatus,
-  insurerDocPath,
   needSnapshotOf,
   offerSnapshotOf,
   type NeedAnalysis,
@@ -61,7 +60,7 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
       tx.get(db.doc(cabinetPath(cabinetId))),
       tx.get(db.doc(assurePath(cabinetId, dossier.get("assureId")))),
       tx.get(db.doc(offerPath(cabinetId, dossierId, decision.insurerId))),
-      tx.get(db.doc(insurerDocPath(cabinetId, decision.insurerId))),
+      tx.get(db.doc(insurerPath(decision.insurerId))),
     ]);
     if (!offer.exists) {
       throw new HttpsError("failed-precondition", "L'offre retenue est introuvable.");

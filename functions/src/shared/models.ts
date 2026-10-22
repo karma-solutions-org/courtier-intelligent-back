@@ -189,15 +189,6 @@ export interface Product {
   active: boolean;
   questionnaireSchema: QuestionnaireSection[];
   guaranteeCatalog: Guarantee[];
-  /** Produit créé par le cabinet (voir cabinet-products.ts), absent du catalogue global. */
-  custom?: boolean;
-  /** Produit du cabinet retiré : caché des listes, gardé pour ses dossiers. */
-  archived?: boolean;
-  /**
-   * Produit du catalogue global que cette fiche du cabinet remplace (modifié) ou masque (retiré, fiche archivée) :
-   * le cabinet ne voit plus l'original, les autres cabinets ne sont pas touchés.
-   */
-  replaces?: string | null;
 }
 
 /** guaranteeSynonyms/{productId} : formulations d'un assureur → code du référentiel (ex. « vitrage » → BDG). */
@@ -213,15 +204,6 @@ export interface Insurer {
   extranetUrl: string;
   extranetDomains: string[];
   productsSupported: string[];
-  /** Assureur ajouté par le cabinet (voir cabinet-insurers.ts), absent du catalogue global. */
-  custom?: boolean;
-  /** Assureur du cabinet retiré : caché des listes, gardé pour l'historique des dossiers. */
-  archived?: boolean;
-  /**
-   * Assureur du catalogue global que cette fiche du cabinet remplace (modifié) ou masque (retiré, fiche archivée) :
-   * le cabinet ne voit plus l'original, les autres cabinets ne sont pas touchés.
-   */
-  replaces?: string | null;
 }
 
 // ── Assuré & dossier ───────────────────────────────────────────────────────
@@ -430,7 +412,16 @@ export interface Offer {
   /** Données du dossier modifiées après la capture (`tarification-completer`) : l'offre est à refaire. */
   stale?: boolean;
   staleSince?: TimestampLike | null;
+  /**
+   * Offre lue par l'extension (`source: 'auto'`) : `pending` tant que le courtier ne l'a pas vérifiée dans l'onglet
+   * Tarification, `validated` ensuite. Absent : offre manuelle, ou capturée avant cette vérification (déjà confirmée).
+   */
+  review?: OfferReview | null;
+  reviewedBy?: string | null;
+  reviewedAt?: TimestampLike | null;
 }
+
+export type OfferReview = 'pending' | 'validated';
 
 /**
  * cabinets/{t}/dossiers/{d}/documents/{id} : écrit par les functions (devis joint à une offre saisie à la main,

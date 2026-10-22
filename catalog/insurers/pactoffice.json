@@ -1,0 +1,8 @@
+{
+  "id": "pactoffice",
+  "name": "PactOffice (Carene)",
+  "logo": "insurers/pactoffice.jpg",
+  "extranetUrl": "https://www.carene.fr/courtiers/",
+  "extranetDomains": ["carene.fr"],
+  "productsSupported": ["auto"]
+}

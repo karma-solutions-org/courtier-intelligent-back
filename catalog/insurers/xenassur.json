@@ -1,0 +1,8 @@
+{
+  "id": "xenassur",
+  "name": "Xenassur",
+  "logo": null,
+  "extranetUrl": "https://www.xenassur.fr",
+  "extranetDomains": ["xenassur.fr"],
+  "productsSupported": ["auto"]
+}

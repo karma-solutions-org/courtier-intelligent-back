@@ -1,8 +1,0 @@
-{
-  "id": "assureur-b",
-  "name": "Assureur B",
-  "logo": null,
-  "extranetUrl": "https://extranet.assureur-b.example/connexion",
-  "extranetDomains": ["extranet.assureur-b.example"],
-  "productsSupported": ["auto"]
-}

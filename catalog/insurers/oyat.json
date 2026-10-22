@@ -1,0 +1,8 @@
+{
+  "id": "oyat",
+  "name": "Oyat",
+  "logo": "insurers/oyat.png",
+  "extranetUrl": "https://connexion.oyat-assurances.fr",
+  "extranetDomains": ["connexion.oyat-assurances.fr"],
+  "productsSupported": ["auto"]
+}

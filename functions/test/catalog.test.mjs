@@ -29,10 +29,10 @@ function withCatalog(mutate) {
 const questionnaire = 'products/auto/questionnaire.json';
 
 describe('Catalogue du dépôt', () => {
-  it('est valide et contient le produit Auto, 3 assureurs + l’assureur de démo locale et des offres', () => {
+  it('est valide et contient le produit Auto, les 14 extranets par défaut + l’assureur de démo locale et des offres', () => {
     const { catalog, issues } = loadCatalog();
     assert.deepEqual(issues, []);
-    assert.equal(catalog.insurers.length, 4);
+    assert.equal(catalog.insurers.length, 15);
     assert.ok(catalog.insurers.some(i => i.id === 'assureur-test-local'));
     assert.ok(catalog.plans.length >= 2);
     assert.deepEqual(catalog.products.map(p => p.id), ['auto']);
@@ -80,7 +80,7 @@ describe('Validation : un JSON invalide est détecté', () => {
   });
 
   it("un assureur dont les domaines ne couvrent pas l'URL, ou avec un produit inconnu", () => {
-    const { issues } = withCatalog(edit => edit('insurers/assureur-a.json', i => {
+    const { issues } = withCatalog(edit => edit('insurers/allianz.json', i => {
       i.extranetDomains = ['autre-domaine.example'];
       i.productsSupported = ['habitation'];
       return i;
@@ -90,19 +90,19 @@ describe('Validation : un JSON invalide est détecté', () => {
   });
 
   it("un extranet en http est refusé, sauf sur localhost (démo locale)", () => {
-    const http = withCatalog(edit => edit('insurers/assureur-a.json', i => {
-      i.extranetUrl = 'http://extranet.assureur-a.example/connexion';
+    const http = withCatalog(edit => edit('insurers/allianz.json', i => {
+      i.extranetUrl = 'http://authentification-courtage.allianz.fr/';
       return i;
     }));
     assert.ok(http.issues.some(i => /https/.test(i.message)));
-    const local = withCatalog(edit => edit('insurers/assureur-a.json', i => {
+    const local = withCatalog(edit => edit('insurers/allianz.json', i => {
       i.extranetUrl = 'http://localhost:8090/index.html';
       i.extranetDomains = ['localhost:8090'];
       return i;
     }));
     assert.deepEqual(local.issues, []);
     // Comme dans l'extension : pour localhost, le port fait partie du domaine.
-    const noPort = withCatalog(edit => edit('insurers/assureur-a.json', i => {
+    const noPort = withCatalog(edit => edit('insurers/allianz.json', i => {
       i.extranetUrl = 'http://localhost:8090/index.html';
       i.extranetDomains = ['localhost'];
       return i;

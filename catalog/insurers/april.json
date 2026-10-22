@@ -1,0 +1,8 @@
+{
+  "id": "april",
+  "name": "April",
+  "logo": "insurers/april.png",
+  "extranetUrl": "https://www.april-on.fr",
+  "extranetDomains": ["april-on.fr"],
+  "productsSupported": ["auto"]
+}

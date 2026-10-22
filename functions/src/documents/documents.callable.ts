@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
-import { assurePath, documentsPath, dossierPath } from "../core/firestore-paths";
+import { assurePath, documentsPath, dossierPath, productPath } from "../core/firestore-paths";
 import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, runIaCall } from "../core/gemini.utils";
 import {
   buildDetectOcrPrompt,
@@ -23,7 +23,6 @@ import {
   parseOcrResponse,
   type DossierDocumentType,
   type QuestionnaireSection,
-  productDocPath,
   safeDocumentFileName,
 } from "../shared/index.js";
 
@@ -118,7 +117,7 @@ export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY],
     throw new HttpsError("failed-precondition", "Emplacement du document invalide.");
   }
 
-  const product = await db.doc(productDocPath(cabinetId, dossier.get("productId") as string)).get();
+  const product = await db.doc(productPath(dossier.get("productId") as string)).get();
   const schema = (product.get("questionnaireSchema") as QuestionnaireSection[] | undefined) ?? [];
   const questionsByType: Partial<Record<DossierDocumentType, Question[]>> = {};
   for (const candidate of DOSSIER_DOCUMENT_TYPES) {
