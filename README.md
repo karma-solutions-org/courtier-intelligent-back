@@ -133,7 +133,8 @@ npm run test:integration  # emulators auth + firestore + functions : session uni
 ```
 
 > `functions/.env.demo-courtier-intelligent` (URL du faux service d'IA et clé factice) n'est lu que par les emulators du projet `demo-courtier-intelligent`.
-> `firestore.shared.rules` : règles COMPLÈTES du projet partagé, à coller dans la console Firebase. Sa section Courtier Intelligent est une copie de `firestore.courtier-intelligent.rules` (repo front) : la recopier après chaque modification du fragment. Le catch-all `match /{collection}/{document=**}` des autres applications exclut les collections `ci_` : sans cette exclusion, tout utilisateur connecté lirait et écrirait toutes les données des cabinets.
+> Source unique des règles : `firestore.courtier-intelligent.rules` (repo front). `npm run build-rules` (lancé par `npm run test`) en génère `firestore.rules` (emulators et tests : les tests portent donc sur le bloc déployé) et remplace sa section dans `firestore.shared.rules` — ne modifier aucun des deux à la main. `node scripts/build-rules.mjs --check` échoue si l'un n'est pas à jour.
+> `firestore.shared.rules` : règles COMPLÈTES du projet partagé, à coller dans la console Firebase. Le catch-all `match /{collection}/{document=**}` des autres applications exclut les collections `ci_` : sans cette exclusion, tout utilisateur connecté lirait et écrirait toutes les données des cabinets.
 
 ## Développement local
 

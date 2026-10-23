@@ -964,6 +964,22 @@ service cloud.firestore {
         && ciExtOfferValid(request.resource.data);
     }
 
+    // Nouvelle sauvegarde du tarif depuis l'extranet (le courtier passe d'une formule à l'autre, annuel ↔ mensuel) :
+    // le job est déjà 'captured' ; l'offre automatique est réécrite tant que le courtier ne l'a pas validée dans l'app.
+    function ciExtOfferRewrite(t, dossierId, insurerId) {
+      let job = get(/databases/$(database)/documents/ci_cabinets/$(t)/ci_dossiers/$(dossierId)/ci_quoteJobs/$(insurerId)).data;
+      return ciExtActive(t)
+        && job.ownerUid == request.auth.uid
+        && job.get('status', null) == 'captured'
+        && resource.data.get('source', null) == 'auto'
+        && resource.data.get('review', null) == 'pending'
+        && request.resource.data.source == 'auto'
+        && request.resource.data.keys().hasOnly(['quoteNumber', 'premiumAnnual', 'premiumMonthly', 'deductibles',
+                                                 'guarantees', 'exclusions', 'source', 'capturedAt', 'review'])
+        && request.resource.data.get('review', 'pending') == 'pending'
+        && ciExtOfferValid(request.resource.data);
+    }
+
     // Le courtier valide dans l'app un tarif lu par l'extension (à vérifier) : seuls l'état de vérification, son
     // auteur et sa date changent. Une correction passe par la saisie manuelle (function tarification-saisirOffre).
     function ciOfferReviewValid() {
@@ -1026,30 +1042,54 @@ service cloud.firestore {
         allow read, write: if false;
       }
 
+      // Mémoire des formulaires propre au cabinet (structure seulement) : lue par son extension, écrite par memoires-*
+      // et champs-signaler. Elle sert tout de suite au cabinet ; la mémoire commune attend l'accord de 2 cabinets.
+      match /ci_formMemories/{memoryKey} {
+        allow read: if ciExtActive(cabinetId);
+        allow write: if false;
+      }
+
+      // Assurés : mêmes formats que shared/assure-format.ts.
       match /ci_assures/{assureId} {
+        function ciAssureOptString(d, key, max) {
+          return d.get(key, null) == null || (d[key] is string && d[key].size() <= max);
+        }
+        function ciAssureOptMatch(d, key, pattern) {
+          return d.get(key, null) == null || (d[key] is string && d[key].matches(pattern));
+        }
+        function ciAssureValid(d) {
+          return d.keys().hasOnly(['type', 'civilite', 'firstName', 'lastName', 'companyName', 'siret', 'birthDate',
+              'email', 'phone', 'address', 'createdBy', 'createdAt', 'updatedAt', 'deletedAt', 'deletedBy'])
+            && d.keys().hasAll(['type', 'firstName', 'lastName', 'createdBy'])
+            && d.type in ['particulier', 'pro']
+            && d.firstName is string && d.firstName.size() <= 100
+            && d.lastName is string && d.lastName.size() <= 100
+            && (d.firstName.size() > 0 || d.lastName.size() > 0 || d.get('companyName', null) != null)
+            && (d.get('civilite', null) == null || d.civilite in ['M.', 'Mme'])
+            && ciAssureOptString(d, 'companyName', 200)
+            && ciAssureOptMatch(d, 'siret', '[0-9]{14}')
+            && (d.type == 'pro' || d.get('siret', null) == null)
+            && ciAssureOptMatch(d, 'birthDate', '[0-9]{4}-[0-9]{2}-[0-9]{2}')
+            && ciAssureOptString(d, 'email', 254) && ciAssureOptMatch(d, 'email', '[^ @]+@[^ @]+[.][^ @]{2,}')
+            && ciAssureOptString(d, 'phone', 30)
+            && (d.get('address', null) == null || (d.address is map
+              && d.address.keys().hasOnly(['street', 'postalCode', 'city', 'country'])
+              && ciAssureOptString(d.address, 'street', 200)
+              && ciAssureOptMatch(d.address, 'postalCode', '[0-9]{5}')
+              && ciAssureOptString(d.address, 'city', 100)
+              && ciAssureOptString(d.address, 'country', 2)));
+        }
+
         allow read: if ciActive(cabinetId);
-        // Champs écrits par AssuresService.create (toAssureData + createdBy + createdAt), mêmes limites qu'à l'update.
-        allow create: if ciActive(cabinetId) &&
-          request.resource.data.createdBy == request.auth.uid &&
-          request.resource.data.keys().hasOnly(['type', 'civilite', 'firstName', 'lastName', 'companyName', 'siret',
-            'birthDate', 'email', 'phone', 'address', 'createdBy', 'createdAt']) &&
-          (request.resource.data.get('address', null) == null ||
-            (request.resource.data.address is map && request.resource.data.address.size() <= 10)) &&
-          request.resource.data.get('firstName', '') is string &&
-          request.resource.data.get('firstName', '').size() <= 200 &&
-          request.resource.data.get('lastName', '') is string &&
-          request.resource.data.get('lastName', '').size() <= 200;
-        // Champs écrits par AssuresService.update (toAssureData + updatedAt).
-        allow update: if ciActive(cabinetId) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['type', 'civilite', 'firstName',
-            'lastName', 'companyName', 'siret', 'birthDate', 'email', 'phone', 'address', 'updatedAt']) &&
-          (request.resource.data.get('address', null) == null ||
-            (request.resource.data.address is map && request.resource.data.address.size() <= 10)) &&
-          request.resource.data.get('firstName', '') is string &&
-          request.resource.data.get('firstName', '').size() <= 200 &&
-          request.resource.data.get('lastName', '') is string &&
-          request.resource.data.get('lastName', '').size() <= 200;
-        allow delete: if ciActiveAdmin(cabinetId);
+        // Création : uniquement par la function assures-creer (doublon SIRET / email bloquant, vérifié en transaction).
+        // SIRET et email : modifiés uniquement par la function assures-modifier (même contrôle de doublon).
+        allow create: if false;
+        allow update: if ciActive(cabinetId)
+          && ciAssureValid(request.resource.data)
+          && ciKeysUnchanged(['createdBy', 'createdAt', 'deletedAt', 'deletedBy', 'siret', 'email'])
+          && request.resource.data.updatedAt == request.time;
+        // Un assuré est rattaché à ses dossiers : corbeille et suppression passent par les functions.
+        allow delete: if false;
 
         // Pièces du client (CNI, Kbis) : rattachées par la function assures-rattacherPiece.
         match /ci_documents/{documentId} {
@@ -1063,10 +1103,10 @@ service cloud.firestore {
         // Création, données, besoin, statut, assignation et référence passent par les functions dossiers-* :
         // elles appliquent la machine à états, la complétude et la numérotation.
         allow create: if false;
-        // Liste blanche (vide) : l'app n'écrit aucun champ du dossier directement — tout passe par les functions
+        // Liste blanche (updatedAt seul) : l'app n'écrit aucun autre champ du dossier — tout passe par les functions
         // dossiers-*, tarification-*, propositions-*, documents-* (Admin SDK). decision, proposal, outcome… : serveur.
         allow update: if ciActive(cabinetId) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly([]);
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt']);
         // Un dossier ne se supprime pas : on le passe en « sans_suite ».
         allow delete: if false;
 
@@ -1098,11 +1138,19 @@ service cloud.firestore {
           allow update: if ciExtActive(cabinetId) && resource.data.ownerUid == request.auth.uid && ciExtJobUpdate();
         }
 
+        // Seulement pendant la tarification (dossier hors corbeille).
+        function ciExtDossierPricing() {
+          let dossier = get(/databases/$(database)/documents/ci_cabinets/$(cabinetId)/ci_dossiers/$(dossierId)).data;
+          return dossier.get('status', null) in ['tarification', 'comparaison']
+            && dossier.get('deletedAt', null) == null;
+        }
+
         match /ci_offers/{insurerId} {
-          allow create: if ciExtOfferWrite(cabinetId, dossierId, insurerId);
+          allow create: if ciExtDossierPricing() && ciExtOfferWrite(cabinetId, dossierId, insurerId);
           // Jamais par-dessus une offre saisie à la main dans l'app.
-          allow update: if resource.data.get('source', null) == 'auto'
-            && ciExtOfferWrite(cabinetId, dossierId, insurerId);
+          allow update: if ciExtDossierPricing()
+            && resource.data.get('source', null) == 'auto'
+            && (ciExtOfferWrite(cabinetId, dossierId, insurerId) || ciExtOfferRewrite(cabinetId, dossierId, insurerId));
         }
 
         // Historique non modifiable : création seule.
@@ -1113,7 +1161,7 @@ service cloud.firestore {
             request.resource.data.keys().hasOnly(['type', 'by', 'at', 'data']) &&
             request.resource.data.type == 'note' &&
             request.resource.data.by == request.auth.uid &&
-            request.resource.data.at == request.time &&
+            request.resource.data.get('at', request.time) == request.time &&
             (request.resource.data.get('data', null) == null ||
               (request.resource.data.data is map && request.resource.data.data.size() <= 5));
           allow update, delete: if false;
@@ -1150,6 +1198,14 @@ service cloud.firestore {
       allow read: if ciExtAny();
       allow write: if false;
     }
+    // Propositions de mémoire commune (en attente d'un deuxième cabinet) et verrou « un compte = un cabinet » :
+    // functions seulement.
+    match /ci_formMemoryCandidates/{memoryKey} {
+      allow read, write: if false;
+    }
+    match /ci_userCabinets/{uid} {
+      allow read, write: if false;
+    }
 
     // ── Signalements de l'extension (AUCUNE donnée client) : création seule.
     match /ci_extensionReports/{reportId} {
@@ -1163,8 +1219,10 @@ service cloud.firestore {
         // L'origine seule (jamais le chemin ni les paramètres de l'URL), ou vide si elle est inconnue.
         && request.resource.data.origin is string
         && request.resource.data.origin.matches('^(https://[a-zA-Z0-9.:-]{1,200}|http://localhost(:[0-9]+)?)?$')
-        && request.resource.data.step in ['detect', 'extract', 'confirm', 'write']
-        && request.resource.data.issue in ['premium_not_found', 'ai_unavailable', 'ai_unusable', 'capture_rejected', 'offer_write_failed']
+        // EXTENSION_REPORT_STEPS / EXTENSION_REPORT_ISSUES de shared/models.ts.
+        && request.resource.data.step in ['analyze', 'mapping', 'fill', 'detect', 'extract', 'confirm', 'write']
+        && request.resource.data.issue in ['premium_not_found', 'ai_unavailable', 'ai_unusable', 'capture_rejected', 'offer_write_failed',
+                                           'no_fields', 'no_field_mapped', 'memory_invalidated', 'fill_failed', 'job_update_failed']
         && request.resource.data.at == request.time;
       allow read, update, delete: if false;
     }
