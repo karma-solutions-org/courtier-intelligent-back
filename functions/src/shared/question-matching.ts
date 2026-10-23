@@ -50,11 +50,15 @@ function normalize(text: string): string {
     .trim();
 }
 
-/** Racine d'un mot : famille connue, sinon le mot sans pluriel, coupé à 6 lettres (accord et suffixes confondus). */
+/**
+ * Racine d'un mot : famille connue, sinon le mot sans pluriel ni féminin (« assurées » = « assuré »), coupé à 7 lettres.
+ * 7 et non moins : « assuré » et « assureur » doivent rester distincts.
+ */
 function stem(word: string): string {
   if (SYNONYMS[word]) return SYNONYMS[word];
   const singular = word.length > 4 ? word.replace(/[sx]$/, '') : word;
-  return SYNONYMS[singular] ?? singular.slice(0, 6);
+  const masculine = singular.length > 5 ? singular.replace(/ee$/, 'e') : singular;
+  return SYNONYMS[masculine] ?? masculine.slice(0, 7);
 }
 
 /** Racines des mots qui font le sens de la question. */

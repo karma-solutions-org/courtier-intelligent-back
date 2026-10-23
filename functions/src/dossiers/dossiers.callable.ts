@@ -177,7 +177,7 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
     if (pricing && insurerIds !== undefined) {
       throw new HttpsError("failed-precondition", "Les extranets ne se changent plus pendant la tarification.", { reason: "pricing" });
     }
-    const schema = await dossierSchema(tx, cabinetId, dossier);
+    const schema = await dossierSchema(tx, cabinetId, dossier, insurerIds !== undefined ? { insurerIds: insurerIds as string[] } : {});
     // Lectures avant toute écriture (transaction) : tarifications et tarifs du dossier.
     const jobs = pricing ? await tx.get(ref.collection("ci_quoteJobs")) : null;
     const offers = pricing ? await tx.get(ref.collection("ci_offers")) : null;
@@ -199,7 +199,14 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
 
     // Un dossier « complet » qui cesse de l'être repasse en brouillon ; un dossier « besoin validé » ne peut pas perdre d'information obligatoire.
     let newStatus = status;
-    if (!completeness.ok && (status === "besoin_valide" || pricing)) {
+    // Pendant la tarification : seule compte une réponse obligatoire qu'on viderait (d'autres peuvent déjà manquer).
+    const emptied = pricing ? completeness.missing.filter(path => !computeCompleteness(schema, previous).missing.includes(path)) : [];
+    if (emptied.length) {
+      throw new HttpsError("failed-precondition", "Tarification en cours : une information obligatoire ne peut pas être retirée.", {
+        reason: "validated",
+      });
+    }
+    if (!completeness.ok && status === "besoin_valide") {
       throw new HttpsError("failed-precondition", "Ce dossier est validé : une information obligatoire ne peut pas être retirée.", {
         reason: "validated",
       });

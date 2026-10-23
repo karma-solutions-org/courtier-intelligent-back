@@ -124,7 +124,7 @@ export const validerBesoin = onCall(CALLABLE_OPTIONS, async request => {
       });
     }
     // Questionnaire figé : la suite du dossier (complétude, tarification) s'y réfère, même si le produit change.
-    const { questionnaireSchema } = await loadProduct(tx, cabinetId, dossier.get("productId"));
+    const { questionnaireSchema } = await loadProduct(tx, cabinetId, dossier.get("productId"), dossier.get("insurerIds") ?? []);
 
     tx.update(ref, {
       status: "besoin_valide",
