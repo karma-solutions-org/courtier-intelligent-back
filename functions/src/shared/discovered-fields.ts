@@ -11,6 +11,8 @@ export const DISCOVERED_SECTION_TITLE = 'Questions des assureurs';
 export const DISCOVERED_MAX_FIELDS_PER_REPORT = 30;
 export const DISCOVERED_MAX_QUESTIONS = 150;
 export const DISCOVERED_MAX_CHOICES = 40;
+/** Libellé le plus long d'une question découverte (déclarations de Zephir : « Le véhicule est-il utilisé pour le transport… »). */
+export const DISCOVERED_LABEL_MAX = 250;
 
 /** Champ sans équivalent, tel que l'extension le décrit : structure seulement, jamais la valeur saisie. */
 export interface DiscoveredFieldInput {
@@ -65,7 +67,7 @@ const NOISE_INPUT_TYPES = new Set(['hidden', 'password', 'submit', 'button', 're
 export function isRelevantField(field: Pick<DiscoveredFieldInput, 'label' | 'inputType' | 'name'>): boolean {
   if (NOISE_INPUT_TYPES.has(field.inputType)) return false;
   const label = normalizeLabel(field.label ?? '');
-  if (label.length < 3 || label.length > 120) return false;
+  if (label.length < 3 || label.length > DISCOVERED_LABEL_MAX) return false;
   const text = `${label} ${normalizeLabel(field.name ?? '')}`;
   return !NOISE.some(pattern => pattern.test(text));
 }
@@ -92,7 +94,7 @@ export function usableChoices(options: QuestionChoice[]): QuestionChoice[] {
 
 /** Libellé affiché : celui de l'extranet, nettoyé (astérisque d'obligation, deux-points, espaces). */
 export function cleanLabel(label: string): string {
-  const cleaned = label.replace(/[*:]+\s*$/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  const cleaned = label.replace(/[*:]+\s*$/g, '').replace(/\s+/g, ' ').trim().slice(0, DISCOVERED_LABEL_MAX);
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 

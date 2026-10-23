@@ -9,6 +9,7 @@ import { cabinetMemoryPath, productPath, insurerPath } from "../core/firestore-p
 import {
   applyInsurerRequirements,
   DISCOVERED_MAX_FIELDS_PER_REPORT,
+  DISCOVERED_LABEL_MAX,
   isCanonicalPath,
   REQUIRED_PATHS_MAX,
   FORM_FIELD_KINDS,
@@ -30,7 +31,7 @@ function validateFields(raw: unknown): DiscoveredFieldInput[] {
   const fields: DiscoveredFieldInput[] = [];
   for (const item of raw.slice(0, DISCOVERED_MAX_FIELDS_PER_REPORT)) {
     const f = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
-    const label = text(f.label, 120);
+    const label = text(f.label, DISCOVERED_LABEL_MAX);
     if (typeof f.fieldKey !== "string" || !FIELD_KEY.test(f.fieldKey) || !label) continue;
     if (!FORM_FIELD_KINDS.includes(f.kind as never) || typeof f.inputType !== "string" || f.inputType.length > 20) continue;
     const options = Array.isArray(f.options)
