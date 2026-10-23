@@ -20,7 +20,8 @@ import {
   DOSSIER_STATUSES,
   SANS_SUITE_MOTIF_MAX,
   TERMINAL_DOSSIER_STATUSES,
-  EDITABLE_DOSSIER_STATUSES,
+  ANSWERS_EDITABLE_DOSSIER_STATUSES,
+  buildJobQuoteData,
   isTransitionAllowed,
   questionFor,
   validateAnswer,
@@ -168,10 +169,18 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
       });
     }
     const status = dossier.get("status") as DossierStatus;
-    if (!EDITABLE_DOSSIER_STATUSES.includes(status)) {
+    if (!ANSWERS_EDITABLE_DOSSIER_STATUSES.includes(status)) {
       throw new HttpsError("failed-precondition", "Ce dossier n'est plus modifiable.", { reason: "not_editable" });
     }
+    const pricing = status === "tarification";
+    // Les extranets se choisissent avant la tarification (lancée sur ceux-là).
+    if (pricing && insurerIds !== undefined) {
+      throw new HttpsError("failed-precondition", "Les extranets ne se changent plus pendant la tarification.", { reason: "pricing" });
+    }
     const schema = await dossierSchema(tx, cabinetId, dossier);
+    // Lectures avant toute écriture (transaction) : tarifications et tarifs du dossier.
+    const jobs = pricing ? await tx.get(ref.collection("ci_quoteJobs")) : null;
+    const offers = pricing ? await tx.get(ref.collection("ci_offers")) : null;
 
     for (const [path, value] of entries) {
       const question = questionFor(schema, path);
@@ -184,12 +193,13 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
       }
     }
 
-    const data = { ...(dossier.get("data") as CanonicalData), ...(patch as CanonicalData) };
+    const previous = dossier.get("data") as CanonicalData;
+    const data = { ...previous, ...(patch as CanonicalData) };
     const completeness = computeCompleteness(schema, data);
 
     // Un dossier « complet » qui cesse de l'être repasse en brouillon ; un dossier « besoin validé » ne peut pas perdre d'information obligatoire.
     let newStatus = status;
-    if (!completeness.ok && status === "besoin_valide") {
+    if (!completeness.ok && (status === "besoin_valide" || pricing)) {
       throw new HttpsError("failed-precondition", "Ce dossier est validé : une information obligatoire ne peut pas être retirée.", {
         reason: "validated",
       });
@@ -200,6 +210,25 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
     }
     if (request.data?.event === true && entries.length > 0) {
       addEvent(tx, cabinetId, dossierId, uid, "data_updated", { fields: entries.map(([path]) => path) });
+    }
+
+    if (pricing && jobs && offers) {
+      const changed = entries
+        .map(([path]) => path)
+        .filter(path => JSON.stringify(previous[path as keyof CanonicalData] ?? null) !== JSON.stringify(data[path as keyof CanonicalData] ?? null));
+      if (changed.length) {
+        // Tarifications en cours : nouvelles données (signal de reprise pour l'extension, comme tarification-completer).
+        const quoteData = buildJobQuoteData(schema, data);
+        for (const job of jobs.docs) {
+          if (ACTIVE_QUOTE_JOB_STATUSES.includes(job.get("status") as QuoteJobStatus)) {
+            tx.update(job.ref, { quoteData, updatedAt: FieldValue.serverTimestamp() });
+          }
+        }
+        // Tarifs déjà obtenus : calculés sur les anciennes données, donc périmés.
+        const stale = offers.docs.filter(offer => offer.get("stale") !== true);
+        for (const offer of stale) tx.update(offer.ref, { stale: true, staleSince: FieldValue.serverTimestamp() });
+        if (stale.length) addEvent(tx, cabinetId, dossierId, uid, "offers_stale", { insurers: stale.map(o => o.id), fields: changed });
+      }
     }
 
     tx.update(ref, {
