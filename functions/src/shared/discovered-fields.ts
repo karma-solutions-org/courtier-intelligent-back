@@ -6,6 +6,7 @@
 import { ExtraCanonicalPath } from './canonical-paths.js';
 import { FormFieldKind, Question, QuestionChoice, QuestionnaireSection, QuestionType } from './models.js';
 import { findMatchingQuestion, shapeOf } from './question-matching.js';
+import { foldText } from './text.js';
 
 export const DISCOVERED_SECTION_TITLE = 'Questions des assureurs';
 /** Plafonds : au-delà, le signalement est tronqué (un extranet ne doit pas pouvoir gonfler le questionnaire). */
@@ -31,10 +32,7 @@ export interface DiscoveredFieldInput {
 
 /** Texte comparable : minuscules, sans accents ni ponctuation, espaces simples. */
 export function normalizeLabel(label: string): string {
-  return label
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
+  return foldText(label)
     .replace(/[*:?()[\]«»"'’.,;!/\\-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -44,11 +42,6 @@ export function normalizeLabel(label: string): string {
 const STOPWORDS = new Set(['le', 'la', 'les', 'l', 'de', 'du', 'des', 'd', 'un', 'une', 'votre', 'vos', 'en', 'au', 'aux', 'a', 'et', 'ou', 'par', 'pour', 'sur']);
 
 const tokens = (label: string) => normalizeLabel(label).split(' ').filter(word => word && !STOPWORDS.has(word));
-
-/** Clé de comparaison : mots significatifs, triés (l'ordre des mots ne fait pas un nouveau champ). */
-export function labelSignature(label: string): string {
-  return [...new Set(tokens(label))].sort().join(' ');
-}
 
 /** Code du chemin `extra.<code>` : dérivé du libellé, stable, 60 caractères au plus. */
 export function discoveredPath(label: string): ExtraCanonicalPath {

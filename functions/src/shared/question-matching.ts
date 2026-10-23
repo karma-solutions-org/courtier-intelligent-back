@@ -3,6 +3,7 @@
 // l'un, « sous l'emprise d'un état alcoolique » chez l'autre). Règle UNIQUE, partagée par l'extension (cette question
 // est-elle déjà dans le questionnaire ?) et le serveur (fusion des questions découvertes), pour qu'ils décident pareil.
 import type { QuestionChoice, QuestionType } from './models.js';
+import { foldText } from './text.js';
 
 /** Forme de réponse d'une question : deux questions qui se répondent différemment ne sont pas la même. */
 export interface AnswerShape {
@@ -42,10 +43,7 @@ const SYNONYMS: Record<string, string> = {
 
 /** Texte comparable : minuscules, sans accents ni ponctuation. */
 function normalize(text: string): string {
-  return text
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
+  return foldText(text)
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
