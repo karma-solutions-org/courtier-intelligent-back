@@ -73,7 +73,7 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
   const requiredPaths = Array.isArray(request.data?.requiredPaths)
     ? [...new Set((request.data.requiredPaths as unknown[]).filter((p): p is string => typeof p === "string" && isCanonicalPath(p)))].slice(0, REQUIRED_PATHS_MAX)
     : [];
-  if (!fields.length && !requiredPaths.length) return { added: 0 };
+  if (!fields.length && !requiredPaths.length) return { added: 0, mapping: {} };
 
   const db = admin.firestore();
   const insurer = await db.doc(insurerPath(insurerId)).get();
@@ -137,5 +137,7 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
       if (changed) tx.update(memoryRef, { fields: next, updatedAt: FieldValue.serverTimestamp() });
     });
   }
-  return { added };
+  // Champ de l'extranet → question (créée ou existante) : l'extension la demande aussitôt au courtier si le dossier
+  // n'a pas la réponse (champs manquants du job), au lieu d'attendre une prochaine tarification.
+  return { added, mapping };
 });
