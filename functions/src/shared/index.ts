@@ -9,6 +9,7 @@ export * from './limits.js';
 export * from './questionnaire.js';
 export * from './need.js';
 export * from './pricing.js';
+export * from './question-matching.js';
 export * from './comparison.js';
 export * from './documents.js';
 export * from './proposal.js';

@@ -5,6 +5,7 @@
 // (filtre, fusion des doublons, construction de la question).
 import { ExtraCanonicalPath } from './canonical-paths.js';
 import { FormFieldKind, Question, QuestionChoice, QuestionnaireSection, QuestionType } from './models.js';
+import { findMatchingQuestion, shapeOf } from './question-matching.js';
 
 export const DISCOVERED_SECTION_TITLE = 'Questions des assureurs';
 /** Plafonds : au-delà, le signalement est tronqué (un extranet ne doit pas pouvoir gonfler le questionnaire). */
@@ -74,7 +75,10 @@ export function isRelevantField(field: Pick<DiscoveredFieldInput, 'label' | 'inp
 
 /** Type de la question d'après le champ : une liste devient un choix (si ses options sont exploitables). */
 export function questionTypeOf(field: Pick<DiscoveredFieldInput, 'kind' | 'inputType' | 'options'>): QuestionType {
-  if ((field.kind === 'select' || field.kind === 'radio') && usableChoices(field.options).length >= 2) return 'choice';
+  const choices = usableChoices(field.options);
+  // Oui / Non (boutons de Zephir, radios) : une question oui / non, pas une liste à deux choix.
+  if ((field.kind === 'select' || field.kind === 'radio') && isYesNoChoices(choices)) return 'boolean';
+  if ((field.kind === 'select' || field.kind === 'radio') && choices.length >= 2) return 'choice';
   if (field.kind === 'checkbox') return 'boolean';
   if (field.kind === 'date' || field.inputType === 'date') return 'date';
   if (field.kind === 'number' || field.inputType === 'number') return 'number';
@@ -98,17 +102,26 @@ export function cleanLabel(label: string): string {
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
+const isYesNoChoices = (choices: QuestionChoice[]) =>
+  choices.length === 2 && choices.every(choice => /^(oui|non|yes|no)$/i.test(choice.label.trim()));
+
 /**
- * La question existe-t-elle déjà (même sens, à l'ordre des mots près) ? Compare aux libellés de tout le questionnaire,
- * y compris les questions déjà ajoutées depuis d'autres extranets : c'est ce qui fusionne les doublons entre assureurs.
+ * La question existe-t-elle déjà (même sens, même forme de réponse, voir question-matching.ts) ? Compare à tout le
+ * questionnaire, y compris les questions ajoutées depuis d'autres extranets : c'est ce qui fusionne les doublons entre
+ * assureurs, même quand chacun la pose avec ses mots.
  */
-export function findSameQuestion(schema: QuestionnaireSection[], label: string): Question | null {
-  const signature = labelSignature(label);
-  if (!signature) return null;
-  for (const question of schema.flatMap(section => section.questions)) {
-    if (labelSignature(question.label) === signature) return question;
-  }
-  return null;
+export function findSameQuestion(
+  schema: QuestionnaireSection[],
+  field: Pick<DiscoveredFieldInput, 'label' | 'kind' | 'inputType' | 'options'>,
+): Question | null {
+  const questions = schema.flatMap(section => section.questions).map(question => ({
+    question,
+    label: question.label,
+    shape: shapeOf(question.type, question.choices),
+  }));
+  const type = questionTypeOf(field);
+  const wanted = { label: field.label, shape: shapeOf(type, type === 'choice' ? usableChoices(field.options) : undefined) };
+  return findMatchingQuestion(questions, wanted)?.question.question ?? null;
 }
 
 /** Question créée pour un champ découvert : obligatoire si l'extranet l'exige, facultative sinon. */
@@ -160,7 +173,7 @@ export function mergeDiscoveredFields(
 
   for (const field of fields.slice(0, DISCOVERED_MAX_FIELDS_PER_REPORT)) {
     if (!isRelevantField(field)) continue;
-    const same = findSameQuestion(sections, field.label);
+    const same = findSameQuestion(sections, field);
     if (same) {
       mapping[field.fieldKey] = same.canonicalPath;
       // L'extranet l'exige : la question existante devient obligatoire. Un champ facultatif ne retire jamais l'exigence.
