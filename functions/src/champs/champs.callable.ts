@@ -8,6 +8,8 @@ import { isInsurerExtranetOrigin } from "../core/origin.utils";
 import { cabinetMemoryPath, productPath, insurerPath } from "../core/firestore-paths";
 import {
   applyInsurerRequirements,
+  applySighting,
+  SIGHTING_MAX_FIELDS,
   DISCOVERED_MAX_FIELDS_PER_REPORT,
   DISCOVERED_LABEL_MAX,
   isCanonicalPath,
@@ -140,4 +142,58 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
   // Champ de l'extranet → question (créée ou existante) : l'extension la demande aussitôt au courtier si le dossier
   // n'a pas la réponse (champs manquants du job), au lieu d'attendre une prochaine tarification.
   return { added, mapping };
+});
+
+/**
+ * Constat d'un parcours mené jusqu'au tarif : tous les champs vus sur l'extranet (structure seulement). Les questions
+ * découvertes sur cet extranet sont mises à jour (libellé, choix) ; celles dont le champ a disparu sont comptées et,
+ * après ABSENT_AFTER_RUNS parcours, ne sont plus posées pour cet extranet. Rien n'est supprimé (voir applySighting).
+ */
+export const constater = onCall(CALLABLE_OPTIONS, async request => {
+  await getActiveMembership(request, { extension: true });
+  const insurerId = requireId(request.data?.insurerId, "assureur", 100);
+  const origin = request.data?.origin;
+  if (typeof origin !== "string" || !ORIGIN.test(origin)) throw new HttpsError("invalid-argument", "Origine invalide.");
+  const raw: unknown[] = Array.isArray(request.data?.fields) ? request.data.fields.slice(0, SIGHTING_MAX_FIELDS) : [];
+  const fields = raw
+    .map(item => (typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {}))
+    .map(f => ({
+      fieldKey: typeof f.fieldKey === "string" && FIELD_KEY.test(f.fieldKey) ? f.fieldKey : null,
+      label: text(f.label, DISCOVERED_LABEL_MAX),
+      options: Array.isArray(f.options)
+        ? f.options
+            .slice(0, 60)
+            .map(o => (typeof o === "object" && o !== null ? (o as Record<string, unknown>) : {}))
+            .map(o => ({ value: text(o.value, 100), label: text(o.label, 100) }))
+            .filter((o): o is { value: string; label: string } => !!o.value && !!o.label)
+        : [],
+    }))
+    .filter((f): f is { fieldKey: string; label: string; options: { value: string; label: string }[] } => !!f.fieldKey && !!f.label);
+  // Un parcours vide ne prouve rien : il compterait toutes les questions de l'extranet comme disparues.
+  if (!fields.length) return { changed: false };
+
+  const db = admin.firestore();
+  const insurer = await db.doc(insurerPath(insurerId)).get();
+  if (!insurer.exists) throw new HttpsError("not-found", "Assureur introuvable.");
+  const domains = (insurer.get("extranetDomains") as string[] | undefined) ?? [];
+  if (!isInsurerExtranetOrigin(origin, domains)) {
+    throw new HttpsError("permission-denied", "Cette page n'est pas un extranet de l'assureur.");
+  }
+  const productIds = ((insurer.get("productsSupported") as string[] | undefined) ?? []).slice(0, 10);
+
+  let changed = false;
+  for (const productId of productIds) {
+    const updated = await db.runTransaction(async tx => {
+      const product = await tx.get(db.doc(productPath(productId)));
+      const schema = product.get("questionnaireSchema") as QuestionnaireSection[] | undefined;
+      if (!product.exists || !Array.isArray(schema)) return false;
+      const result = applySighting(schema, fields, origin);
+      if (result.changed) {
+        tx.update(product.ref, { questionnaireSchema: result.schema, questionnaireUpdatedAt: FieldValue.serverTimestamp() });
+      }
+      return result.changed;
+    });
+    changed ||= updated;
+  }
+  return { changed };
 });

@@ -39,6 +39,8 @@ const SYNONYMS: Record<string, string> = {
   annulation: 'annul', annule: 'annul', annulee: 'annul',
   suspension: 'suspen', suspendu: 'suspen', suspendue: 'suspen',
   conducteurs: 'conduc', conducteur: 'conduc', conductrice: 'conduc',
+  // « Situation familiale » (Oyat) = « Situation matrimoniale » (Zephir).
+  familiale: 'matrim', matrimoniale: 'matrim',
 };
 
 /** Texte comparable : minuscules, sans accents ni ponctuation. */
@@ -117,12 +119,25 @@ function kindOf(shape: AnswerShape): QuestionType {
 }
 
 /** Deux questions se répondent-elles de la même façon ? Un choix doit partager au moins la moitié de ses options. */
+/**
+ * Réponses qui disent la même chose avec d'autres mots selon l'extranet (Zephir : « Monsieur / Madame », Oyat :
+ * « Homme / Femme ») : comparées sous le premier mot de leur groupe.
+ */
+const EQUIVALENT_CHOICES: readonly (readonly string[])[] = [
+  ['monsieur', 'homme', 'masculin', 'mr', 'm'],
+  ['madame', 'femme', 'feminin', 'mme', 'f'],
+];
+const choiceKey = (choice: string): string => {
+  const text = normalize(choice);
+  return EQUIVALENT_CHOICES.find(group => group.includes(text))?.[0] ?? text;
+};
+
 export function sameAnswerShape(a: AnswerShape, b: AnswerShape): boolean {
   const kind = kindOf(a);
   if (kind !== kindOf(b)) return false;
   if (kind !== 'choice') return true;
-  const left = new Set((a.choices ?? []).map(normalize));
-  const right = (b.choices ?? []).map(normalize);
+  const left = new Set((a.choices ?? []).map(choiceKey));
+  const right = (b.choices ?? []).map(choiceKey);
   const common = right.filter(choice => left.has(choice)).length;
   return common >= Math.min(left.size, right.length) / 2;
 }

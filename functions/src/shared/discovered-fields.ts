@@ -4,7 +4,7 @@
 // dans la section « Questions des assureurs ». Règles communes à l'extension (ce qui est signalé) et au serveur
 // (filtre, fusion des doublons, construction de la question).
 import { ExtraCanonicalPath } from './canonical-paths.js';
-import { FormFieldKind, Question, QuestionChoice, QuestionnaireSection, QuestionType } from './models.js';
+import { DiscoverySource, FormFieldKind, Question, QuestionChoice, QuestionnaireSection, QuestionType } from './models.js';
 import { findMatchingQuestion, shapeOf } from './question-matching.js';
 import { foldText } from './text.js';
 
@@ -132,7 +132,7 @@ export function questionFromField(
     type,
     required: field.required === true,
     ...(type === 'choice' ? { choices: usableChoices(field.options) } : {}),
-    discoveredOn: [{ insurerId: source.insurerId, origin: source.origin, fieldKey: field.fieldKey.slice(0, 200) }],
+    discoveredOn: [{ insurerId: source.insurerId, origin: source.origin, fieldKey: field.fieldKey.slice(0, 200), required: field.required === true }],
   };
 }
 
@@ -158,7 +158,10 @@ export function mergeDiscoveredFields(
   fields: DiscoveredFieldInput[],
   source: { insurerId: string | null; origin: string },
 ): MergeResult {
-  const sections = schema.map(section => ({ ...section, questions: section.questions.map(question => ({ ...question })) }));
+  const sections = schema.map(section => ({
+    ...section,
+    questions: section.questions.map(question => ({ ...question, ...(question.discoveredOn ? { discoveredOn: question.discoveredOn.map(s => ({ ...s })) } : {}) })),
+  }));
   let discovered = sections.find(section => section.discovered);
   const added: Question[] = [];
   const mapping: Record<string, string> = {};
@@ -166,6 +169,18 @@ export function mergeDiscoveredFields(
 
   for (const field of fields.slice(0, DISCOVERED_MAX_FIELDS_PER_REPORT)) {
     if (!isRelevantField(field)) continue;
+    // Même champ du même extranet (libellé ou choix modifiés par l'assureur) : la question est mise à jour, pas doublée.
+    const known = findBySource(sections, source.origin, field.fieldKey);
+    if (known) {
+      refreshFromField(known.question, known.entry, field);
+      if (field.required) known.entry.required = true;
+      mapping[field.fieldKey] = known.question.canonicalPath;
+      if (field.required) {
+        known.question.required = true;
+        if (known.question.withKnowledge) known.question.mustBeKnown = true;
+      }
+      continue;
+    }
     const same = findSameQuestion(sections, field);
     if (same) {
       mapping[field.fieldKey] = same.canonicalPath;
@@ -175,7 +190,7 @@ export function mergeDiscoveredFields(
         if (same.withKnowledge) same.mustBeKnown = true;
       }
       if (same.discoveredOn && !same.discoveredOn.some(s => s.origin === source.origin && s.fieldKey === field.fieldKey)) {
-        same.discoveredOn = [...same.discoveredOn, { ...source, fieldKey: field.fieldKey }].slice(-20);
+        same.discoveredOn = [...same.discoveredOn, { ...source, fieldKey: field.fieldKey, required: field.required === true }].slice(-20);
       }
       continue;
     }
@@ -191,6 +206,90 @@ export function mergeDiscoveredFields(
     mapping[field.fieldKey] = question.canonicalPath;
   }
   return { schema: sections, added, mapping };
+}
+
+/** Parcours menés jusqu'au tarif sans le champ avant que sa question ne soit plus posée pour cet extranet. */
+export const ABSENT_AFTER_RUNS = 3;
+/** Plafond des champs d'un constat (tous les champs vus sur un parcours). */
+export const SIGHTING_MAX_FIELDS = 300;
+
+/** Question découverte rattachée à ce champ de cet extranet (section « Questions des assureurs » seulement). */
+function findBySource(schema: QuestionnaireSection[], origin: string, fieldKey: string): { question: Question; entry: DiscoverySource } | null {
+  for (const section of schema) {
+    if (!section.discovered) continue;
+    for (const question of section.questions) {
+      const entry = question.discoveredOn?.find(s => s.origin === origin && s.fieldKey === fieldKey);
+      if (entry) return { question, entry };
+    }
+  }
+  return null;
+}
+
+/**
+ * Le champ est revu sur l'extranet : il redevient présent, et si la question n'appartient qu'à cet extranet, elle
+ * prend son libellé et ses choix actuels (une question partagée garde ceux de la fusion). Renvoie vrai si quelque
+ * chose a changé.
+ */
+function refreshFromField(question: Question, entry: DiscoverySource, field: Pick<DiscoveredFieldInput, 'label' | 'options'>): boolean {
+  let changed = false;
+  if (entry.absent || entry.missedRuns) {
+    delete entry.absent;
+    delete entry.missedRuns;
+    changed = true;
+  }
+  if (question.discoveredOn?.length !== 1) return changed;
+  const label = cleanLabel(field.label);
+  if (label.length >= 3 && isRelevantField({ label, inputType: 'text', name: null }) && label !== question.label) {
+    question.label = label;
+    changed = true;
+  }
+  if (question.type === 'choice') {
+    const choices = usableChoices(field.options);
+    if (choices.length && JSON.stringify(choices) !== JSON.stringify(question.choices ?? [])) {
+      question.choices = choices;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/**
+ * Constat d'un parcours mené jusqu'au tarif sur un extranet : tous les champs vus, à toutes les étapes. Pure.
+ * - champ revu : la question est mise à jour (libellé, choix) et redevient présente ;
+ * - champ absent : compté ; après ABSENT_AFTER_RUNS parcours d'affilée, la question n'est plus posée pour cet extranet
+ *   (`absent`). Rien n'est supprimé : les réponses déjà données restent, et la question revient si le champ réapparaît.
+ * Seules les questions découvertes sont touchées, jamais celles du catalogue.
+ */
+export function applySighting(
+  schema: QuestionnaireSection[],
+  fields: Pick<DiscoveredFieldInput, 'fieldKey' | 'label' | 'options'>[],
+  origin: string,
+): { schema: QuestionnaireSection[]; changed: boolean } {
+  const byKey = new Map(fields.slice(0, SIGHTING_MAX_FIELDS).map(field => [field.fieldKey, field]));
+  let changed = false;
+  const next = schema.map(section => {
+    if (!section.discovered) return section;
+    return {
+      ...section,
+      questions: section.questions.map(original => {
+        if (!original.discoveredOn?.some(s => s.origin === origin)) return original;
+        const question = { ...original, discoveredOn: original.discoveredOn.map(s => ({ ...s })) };
+        for (const entry of question.discoveredOn) {
+          if (entry.origin !== origin) continue;
+          const field = byKey.get(entry.fieldKey);
+          if (field) {
+            if (refreshFromField(question, entry, field)) changed = true;
+            continue;
+          }
+          entry.missedRuns = (entry.missedRuns ?? 0) + 1;
+          if (entry.missedRuns >= ABSENT_AFTER_RUNS) entry.absent = true;
+          changed = true;
+        }
+        return question;
+      }),
+    };
+  });
+  return { schema: next, changed };
 }
 
 /** Plafond des chemins exigés dans un signalement. */
@@ -225,13 +324,25 @@ export function applyInsurerRequirements(
  * Aucun assureur choisi = tous les assureurs, comme pour `enabledInsurers` ailleurs.
  */
 export function schemaForCabinet(schema: QuestionnaireSection[], enabledInsurers: string[]): QuestionnaireSection[] {
-  if (!enabledInsurers.length) return schema;
-  const enabled = new Set(enabledInsurers);
-  const visible = (question: Question): boolean =>
-    !question.discoveredOn?.length || question.discoveredOn.some(source => source.insurerId === null || enabled.has(source.insurerId));
+  const enabled = enabledInsurers.length ? new Set(enabledInsurers) : null;
+  // Un extranet où le champ a disparu (`absent`) ne compte plus.
+  const sourcesOf = (question: Question) =>
+    (question.discoveredOn ?? []).filter(source => !source.absent && (!enabled || source.insurerId === null || enabled.has(source.insurerId)));
+  const visible = (question: Question): boolean => !question.discoveredOn?.length || sourcesOf(question).length > 0;
   return schema
-    .map(section => ({ ...section, questions: section.questions.filter(visible) }))
+    .map(section => ({ ...section, questions: section.questions.filter(visible).map(question => withRequirement(question, sourcesOf(question))) }))
     .filter(section => !section.discovered || section.questions.length > 0);
+}
+
+/**
+ * Question découverte : obligatoire seulement si l'un des extranets visés l'exige (une question obligatoire pour Oyat ne
+ * bloque pas un dossier qui ne vise que Zephir). Sources enregistrées avant cette règle (sans `required`) : on garde
+ * l'exigence globale de la question.
+ */
+function withRequirement(question: Question, sources: DiscoverySource[]): Question {
+  if (!question.discoveredOn?.length || !question.discoveredOn.some(source => source.required !== undefined)) return question;
+  const required = sources.some(source => source.required ?? question.required);
+  return required === question.required ? question : { ...question, required, ...(question.withKnowledge ? { mustBeKnown: required } : {}) };
 }
 
 /**
