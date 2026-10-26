@@ -12,6 +12,7 @@ import {
   SIGHTING_MAX_FIELDS,
   DISCOVERED_MAX_FIELDS_PER_REPORT,
   DISCOVERED_LABEL_MAX,
+  DISCOVERED_MAX_CHOICES,
   isCanonicalPath,
   REQUIRED_PATHS_MAX,
   FORM_FIELD_KINDS,
@@ -41,7 +42,7 @@ function validateFields(raw: unknown): DiscoveredFieldInput[] {
       continue;
     const options = Array.isArray(f.options)
       ? f.options
-          .slice(0, 60)
+          .slice(0, DISCOVERED_MAX_CHOICES)
           .map(o => (typeof o === "object" && o !== null ? (o as Record<string, unknown>) : {}))
           .map(o => ({ value: text(o.value, 100), label: text(o.label, 100) }))
           .filter((o): o is { value: string; label: string } => !!o.value && !!o.label)
@@ -174,7 +175,7 @@ export const constater = onCall(CALLABLE_OPTIONS, async request => {
       label: text(f.label, DISCOVERED_LABEL_MAX),
       options: Array.isArray(f.options)
         ? f.options
-            .slice(0, 60)
+            .slice(0, DISCOVERED_MAX_CHOICES)
             .map(o => (typeof o === "object" && o !== null ? (o as Record<string, unknown>) : {}))
             .map(o => ({ value: text(o.value, 100), label: text(o.label, 100) }))
             .filter((o): o is { value: string; label: string } => !!o.value && !!o.label)
