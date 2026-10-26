@@ -25,7 +25,9 @@ const ORIGIN = /^https:\/\/[a-z0-9]([a-z0-9.-]{0,198}[a-z0-9])?(:\d{1,5})?$|^htt
 const FINGERPRINT = /^v\d{1,3}:[0-9a-f]{14}$/;
 const FIELD_KEY = /^[a-z]{3,12}:[a-z0-9-]{1,100}(#\d{1,3})?$/;
 const text = (value: unknown, max: number): string | null =>
-  typeof value === "string" && value.trim() && value.length <= max && !looksLikePersonalData(value) ? value.trim() : null;
+  typeof value === "string" && value.trim() && value.length <= max && !looksLikePersonalData(value)
+    ? value.trim()
+    : null;
 
 /** Champs reçus : structure seulement (libellé, type, options), rien de personnel ; un champ douteux est écarté. */
 function validateFields(raw: unknown): DiscoveredFieldInput[] {
@@ -35,7 +37,8 @@ function validateFields(raw: unknown): DiscoveredFieldInput[] {
     const f = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
     const label = text(f.label, DISCOVERED_LABEL_MAX);
     if (typeof f.fieldKey !== "string" || !FIELD_KEY.test(f.fieldKey) || !label) continue;
-    if (!FORM_FIELD_KINDS.includes(f.kind as never) || typeof f.inputType !== "string" || f.inputType.length > 20) continue;
+    if (!FORM_FIELD_KINDS.includes(f.kind as never) || typeof f.inputType !== "string" || f.inputType.length > 20)
+      continue;
     const options = Array.isArray(f.options)
       ? f.options
           .slice(0, 60)
@@ -70,10 +73,17 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
   const origin = request.data?.origin;
   const fingerprint = request.data?.formFingerprint;
   if (typeof origin !== "string" || !ORIGIN.test(origin)) throw new HttpsError("invalid-argument", "Origine invalide.");
-  if (typeof fingerprint !== "string" || !FINGERPRINT.test(fingerprint)) throw new HttpsError("invalid-argument", "Empreinte invalide.");
+  if (typeof fingerprint !== "string" || !FINGERPRINT.test(fingerprint))
+    throw new HttpsError("invalid-argument", "Empreinte invalide.");
   const fields = validateFields(request.data?.fields ?? []);
   const requiredPaths = Array.isArray(request.data?.requiredPaths)
-    ? [...new Set((request.data.requiredPaths as unknown[]).filter((p): p is string => typeof p === "string" && isCanonicalPath(p)))].slice(0, REQUIRED_PATHS_MAX)
+    ? [
+        ...new Set(
+          (request.data.requiredPaths as unknown[]).filter(
+            (p): p is string => typeof p === "string" && isCanonicalPath(p),
+          ),
+        ),
+      ].slice(0, REQUIRED_PATHS_MAX)
     : [];
   if (!fields.length && !requiredPaths.length) return { added: 0, mapping: {} };
 
@@ -125,7 +135,9 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
       const known = new Set(memoryFields.map(field => field.fieldKey));
       const order = memoryFields.reduce((max, field) => Math.max(max, field.order), -1);
       const appended: FormMemoryField[] = fields
-        .filter(field => mapping[field.fieldKey] && !known.has(field.fieldKey) && field.fieldKey.split(":")[0] === field.kind)
+        .filter(
+          field => mapping[field.fieldKey] && !known.has(field.fieldKey) && field.fieldKey.split(":")[0] === field.kind,
+        )
         .map((field, index) => ({
           fieldKey: field.fieldKey,
           label: field.label,
@@ -168,7 +180,10 @@ export const constater = onCall(CALLABLE_OPTIONS, async request => {
             .filter((o): o is { value: string; label: string } => !!o.value && !!o.label)
         : [],
     }))
-    .filter((f): f is { fieldKey: string; label: string; options: { value: string; label: string }[] } => !!f.fieldKey && !!f.label);
+    .filter(
+      (f): f is { fieldKey: string; label: string; options: { value: string; label: string }[] } =>
+        !!f.fieldKey && !!f.label,
+    );
   // Un parcours vide ne prouve rien : il compterait toutes les questions de l'extranet comme disparues.
   if (!fields.length) return { changed: false };
 
@@ -189,7 +204,10 @@ export const constater = onCall(CALLABLE_OPTIONS, async request => {
       if (!product.exists || !Array.isArray(schema)) return false;
       const result = applySighting(schema, fields, origin);
       if (result.changed) {
-        tx.update(product.ref, { questionnaireSchema: result.schema, questionnaireUpdatedAt: FieldValue.serverTimestamp() });
+        tx.update(product.ref, {
+          questionnaireSchema: result.schema,
+          questionnaireUpdatedAt: FieldValue.serverTimestamp(),
+        });
       }
       return result.changed;
     });
