@@ -158,6 +158,7 @@ export function shapeOf(type: QuestionType, choices?: readonly QuestionChoice[])
 export function findMatchingQuestion<T extends ComparableQuestion>(
   candidates: readonly T[],
   wanted: ComparableQuestion,
+  options: { sameShapeOnly?: boolean } = {},
 ): { question: T; score: number } | null {
   let best: { question: T; score: number } | null = null;
   // Même sens mais autre forme (liste chez Oyat, texte dans l'application) : gardée en réserve.
@@ -166,7 +167,7 @@ export function findMatchingQuestion<T extends ComparableQuestion>(
     const score = labelSimilarity(question.label, wanted.label);
     if (score === 0) continue;
     if (question.shape && wanted.shape && !sameAnswerShape(question.shape, wanted.shape)) {
-      if (score >= SAME_MEANING_MIN && (!otherShape || score > otherShape.score)) otherShape = { question, score };
+      if (!options.sameShapeOnly && score >= SAME_MEANING_MIN && (!otherShape || score > otherShape.score)) otherShape = { question, score };
       continue;
     }
     if (!best || score > best.score) best = { question, score };

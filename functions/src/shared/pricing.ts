@@ -52,6 +52,13 @@ export function buildJobQuoteData(schema: QuestionnaireSection[], data: Canonica
       quoteData[path] = value;
     }
   }
+  // Question fusionnée (voir mergeDuplicateQuestions) : son champ sur l'extranet reçoit la réponse de la question qui
+  // la remplace, à défaut celle donnée avant la fusion.
+  for (const question of questionsOf(schema)) {
+    if (!question.mergedInto) continue;
+    const value = isAnswered(data[question.mergedInto]) ? data[question.mergedInto] : data[question.canonicalPath];
+    if (isAnswered(value)) quoteData[question.canonicalPath] = value;
+  }
   return quoteData;
 }
 

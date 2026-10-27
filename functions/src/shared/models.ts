@@ -169,6 +169,16 @@ export interface Question {
   mustBeKnown?: boolean;
   /** Question ajoutée automatiquement : l'extranet (et l'assureur) où le champ a été découvert. */
   discoveredOn?: DiscoverySource[];
+  /**
+   * Question découverte qui double une question du catalogue (même sens, autre forme) : elle n'est plus posée, la
+   * réponse de `mergedInto` sert à remplir son champ (voir mergeDuplicateQuestions, buildJobQuoteData).
+   */
+  mergedInto?: CanonicalPath;
+  /**
+   * L'extranet n'accepte que sa propre liste (aucune de ses options ne correspondait à la réponse du dossier) : la
+   * question n'est jamais fusionnée avec une question du catalogue d'une autre forme.
+   */
+  keepSeparate?: boolean;
 }
 
 /** Extranet où une question a été découverte, et ce qu'on sait de sa présence sur les derniers parcours. */
@@ -204,6 +214,11 @@ export interface Product {
   name: string;
   active: boolean;
   questionnaireSchema: QuestionnaireSection[];
+  /**
+   * Questions de chaque extranet, apprises des parcours menés jusqu'au tarif (`champs-constater`) : assureur → chemins
+   * canoniques remplis sur son formulaire. S'ajoute à `Insurer.questions` (voir schemaForInsurers).
+   */
+  insurerQuestions?: Record<string, string[]>;
   guaranteeCatalog: Guarantee[];
 }
 

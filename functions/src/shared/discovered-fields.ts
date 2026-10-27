@@ -31,6 +31,13 @@ export interface DiscoveredFieldInput {
   required?: boolean;
   /** Longueur maximale de la saisie sur l'extranet (« 6 maximum » tient en 1 caractère) : la question la reprend. */
   maxLength?: number;
+  /**
+   * Liste de l'extranet dont aucune option ne correspondait à la réponse du dossier : la question doit garder cette
+   * liste, elle n'est pas rattachée à une question du catalogue d'une autre forme.
+   */
+  needsChoice?: boolean;
+  /** Constat seulement : chemin que l'extension a rempli dans ce champ (ce que l'extranet demande). */
+  canonicalPath?: string;
 }
 
 /** Texte comparable : minuscules, sans accents ni ponctuation, espaces simples. */
@@ -108,16 +115,16 @@ const isYesNoChoices = (choices: QuestionChoice[]) =>
  */
 export function findSameQuestion(
   schema: QuestionnaireSection[],
-  field: Pick<DiscoveredFieldInput, 'label' | 'kind' | 'inputType' | 'options'>,
+  field: Pick<DiscoveredFieldInput, 'label' | 'kind' | 'inputType' | 'options' | 'needsChoice'>,
 ): Question | null {
-  const questions = schema.flatMap(section => section.questions).map(question => ({
-    question,
-    label: question.label,
-    shape: shapeOf(question.type, question.choices),
-  }));
+  // Une question fusionnée n'est plus posée : le champ est rattaché à la question qui la remplace.
+  const questions = schema
+    .flatMap(section => section.questions)
+    .filter(question => !question.mergedInto)
+    .map(question => ({ question, label: question.label, shape: shapeOf(question.type, question.choices) }));
   const type = questionTypeOf(field);
   const wanted = { label: field.label, shape: shapeOf(type, type === 'choice' ? usableChoices(field.options) : undefined) };
-  return findMatchingQuestion(questions, wanted)?.question.question ?? null;
+  return findMatchingQuestion(questions, wanted, { sameShapeOnly: field.needsChoice === true })?.question.question ?? null;
 }
 
 /** Question créée pour un champ découvert : obligatoire si l'extranet l'exige, facultative sinon. */
@@ -137,6 +144,7 @@ export function questionFromField(
     ...(field.maxLength && type !== 'choice' ? { maxLength: field.maxLength } : {}),
     ...(type === 'choice' ? { choices: usableChoices(field.options) } : {}),
     discoveredOn: [{ insurerId: source.insurerId, origin: source.origin, fieldKey: field.fieldKey.slice(0, 200), required: field.required === true }],
+    ...(field.needsChoice ? { keepSeparate: true } : {}),
   };
 }
 
@@ -178,6 +186,11 @@ export function mergeDiscoveredFields(
     if (known) {
       refreshFromField(known.question, known.entry, field);
       if (field.required) known.entry.required = true;
+      // L'extranet refuse la réponse du catalogue : sa liste redevient une question à part.
+      if (field.needsChoice && known.question.mergedInto) {
+        delete known.question.mergedInto;
+        known.question.keepSeparate = true;
+      }
       mapping[field.fieldKey] = known.question.canonicalPath;
       if (field.required) {
         known.question.required = true;
@@ -212,6 +225,10 @@ export function mergeDiscoveredFields(
   return { schema: sections, added, mapping };
 }
 
+/** Champ vu pendant un parcours (constat) : sa structure, et le chemin que l'extension y a rempli. */
+export type SightedField = Pick<DiscoveredFieldInput, 'fieldKey' | 'label' | 'options'> &
+  Partial<Pick<DiscoveredFieldInput, 'kind' | 'inputType' | 'required' | 'canonicalPath'>>;
+
 /** Parcours menés jusqu'au tarif sans le champ avant que sa question ne soit plus posée pour cet extranet. */
 export const ABSENT_AFTER_RUNS = 3;
 /** Plafond des champs d'un constat (tous les champs vus sur un parcours). */
@@ -234,14 +251,29 @@ function findBySource(schema: QuestionnaireSection[], origin: string, fieldKey: 
  * prend son libellé et ses choix actuels (une question partagée garde ceux de la fusion). Renvoie vrai si quelque
  * chose a changé.
  */
-function refreshFromField(question: Question, entry: DiscoverySource, field: Pick<DiscoveredFieldInput, 'label' | 'options'>): boolean {
+function refreshFromField(question: Question, entry: DiscoverySource, field: SightedField): boolean {
   let changed = false;
   if (entry.absent || entry.missedRuns) {
     delete entry.absent;
     delete entry.missedRuns;
     changed = true;
   }
+  // Exigence de l'extranet telle qu'il l'affiche aujourd'hui (un champ devenu facultatif ne bloque plus ses dossiers).
+  if (typeof field.required === 'boolean' && entry.required !== field.required) {
+    entry.required = field.required;
+    changed = true;
+  }
   if (question.discoveredOn?.length !== 1) return changed;
+  // Champ lu en texte lors de sa découverte, Oui / Non ou liste sur l'extranet : la question prend sa vraie forme.
+  if (field.kind && field.inputType && question.type === 'text') {
+    const type = questionTypeOf({ kind: field.kind, inputType: field.inputType, options: field.options });
+    if (type !== 'text') {
+      question.type = type;
+      if (type === 'choice') question.choices = usableChoices(field.options);
+      delete question.maxLength;
+      changed = true;
+    }
+  }
   const label = cleanLabel(field.label);
   if (label.length >= 3 && isRelevantField({ label, inputType: 'text', name: null }) && label !== question.label) {
     question.label = label;
@@ -266,8 +298,9 @@ function refreshFromField(question: Question, entry: DiscoverySource, field: Pic
  */
 export function applySighting(
   schema: QuestionnaireSection[],
-  fields: Pick<DiscoveredFieldInput, 'fieldKey' | 'label' | 'options'>[],
+  fields: SightedField[],
   origin: string,
+  insurerId?: string,
 ): { schema: QuestionnaireSection[]; changed: boolean } {
   const byKey = new Map(fields.slice(0, SIGHTING_MAX_FIELDS).map(field => [field.fieldKey, field]));
   let changed = false;
@@ -280,6 +313,11 @@ export function applySighting(
         const question = { ...original, discoveredOn: original.discoveredOn.map(s => ({ ...s })) };
         for (const entry of question.discoveredOn) {
           if (entry.origin !== origin) continue;
+          // Question découverte avant que l'assureur ne soit noté : l'extranet qui la pose le dit.
+          if (insurerId && entry.insurerId === null) {
+            entry.insurerId = insurerId;
+            changed = true;
+          }
           const field = byKey.get(entry.fieldKey);
           if (field) {
             if (refreshFromField(question, entry, field)) changed = true;
@@ -332,7 +370,8 @@ export function schemaForCabinet(schema: QuestionnaireSection[], enabledInsurers
   // Un extranet où le champ a disparu (`absent`) ne compte plus.
   const sourcesOf = (question: Question) =>
     (question.discoveredOn ?? []).filter(source => !source.absent && (!enabled || source.insurerId === null || enabled.has(source.insurerId)));
-  const visible = (question: Question): boolean => !question.discoveredOn?.length || sourcesOf(question).length > 0;
+  const visible = (question: Question): boolean =>
+    !question.mergedInto && (!question.discoveredOn?.length || sourcesOf(question).length > 0);
   return schema
     .map(section => ({ ...section, questions: section.questions.filter(visible).map(question => withRequirement(question, sourcesOf(question))) }))
     .filter(section => !section.discovered || section.questions.length > 0);
@@ -358,10 +397,15 @@ export function schemaForInsurers(
   schema: QuestionnaireSection[],
   insurers: { id: string; questions?: Record<string, string[]> }[],
   productId: string,
+  learned: Record<string, string[]> = {},
 ): QuestionnaireSection[] {
   const ids = insurers.map(insurer => insurer.id);
   const byDiscovery = schemaForCabinet(schema, ids);
-  const lists = insurers.map(insurer => insurer.questions?.[productId]);
+  // Liste du catalogue et questions apprises des parcours : un extranet qui n'a ni l'une ni l'autre ne filtre rien.
+  const lists = insurers.map(insurer => {
+    const known = [...(insurer.questions?.[productId] ?? []), ...(learned[insurer.id] ?? [])];
+    return known.length ? known : undefined;
+  });
   if (!lists.length || lists.some(list => !list)) return byDiscovery;
   const known = new Set(lists.flat() as string[]);
   const all = byDiscovery.flatMap(section => section.questions);
@@ -374,4 +418,73 @@ export function schemaForInsurers(
       questions: section.questions.filter(question => section.discovered || known.has(question.canonicalPath)),
     }))
     .filter(section => section.questions.length > 0);
+}
+
+/** Forme de champ équivalente à une question (pour la comparer avec les règles des champs découverts). */
+function asField(question: Question): Pick<DiscoveredFieldInput, 'label' | 'kind' | 'inputType' | 'options'> {
+  if (question.type === 'boolean') {
+    return { label: question.label, kind: 'radio', inputType: 'radio', options: [{ value: 'oui', label: 'Oui' }, { value: 'non', label: 'Non' }] };
+  }
+  if (question.type === 'choice') return { label: question.label, kind: 'select', inputType: 'select', options: question.choices ?? [] };
+  return { label: question.label, kind: question.type === 'text' ? 'text' : question.type, inputType: question.type, options: [] };
+}
+
+/**
+ * Questions découvertes qui doublent une question du catalogue (même sens, même si l'extranet la pose sous une autre
+ * forme : « Profession » en liste chez Oyat, en texte dans l'application) : fusionnées (`mergedInto`). Elles ne sont
+ * plus posées ; leur champ est rempli avec la réponse de la question du catalogue. Rien n'est supprimé. Pure.
+ * Jamais une question `keepSeparate` (l'extranet n'accepte que sa liste).
+ */
+export function mergeDuplicateQuestions(schema: QuestionnaireSection[]): { schema: QuestionnaireSection[]; changed: boolean } {
+  const catalog = schema.filter(section => !section.discovered);
+  let changed = false;
+  const next = schema.map(section => {
+    if (!section.discovered) return section;
+    return {
+      ...section,
+      questions: section.questions.map(question => {
+        if (question.mergedInto || question.keepSeparate) return question;
+        const same = findSameQuestion(catalog, asField(question));
+        if (!same) return question;
+        changed = true;
+        return { ...question, mergedInto: same.canonicalPath };
+      }),
+    };
+  });
+  return { schema: next, changed };
+}
+
+/** Plafond des questions apprises pour un extranet. */
+export const INSURER_QUESTIONS_MAX = 200;
+
+/**
+ * Questions d'un extranet apprises d'un parcours mené jusqu'au tarif : pour chaque champ vu, la question découverte
+ * qui lui est rattachée, sinon le chemin que l'extension y a rempli (une question fusionnée compte pour celle qui la
+ * remplace). Ajoutées à celles déjà apprises, jamais retirées : un champ conditionnel (détail des sinistres) n'apparaît
+ * pas à chaque parcours. Seuls les chemins du questionnaire comptent. Pure.
+ */
+export function learnInsurerQuestions(
+  schema: QuestionnaireSection[],
+  known: readonly string[] | undefined,
+  fields: SightedField[],
+  origin: string,
+): { questions: string[]; changed: boolean } {
+  const questions = schema.flatMap(section => section.questions);
+  const byPath = new Map(questions.map(question => [question.canonicalPath as string, question]));
+  const resolve = (path: string | undefined): string | null => {
+    const question = path ? byPath.get(path) : undefined;
+    if (!question) return null;
+    return question.mergedInto && byPath.has(question.mergedInto) ? question.mergedInto : question.canonicalPath;
+  };
+  const learned = new Set(known ?? []);
+  const before = learned.size;
+  for (const field of fields.slice(0, SIGHTING_MAX_FIELDS)) {
+    const discovered = findBySource(schema, origin, field.fieldKey);
+    const path = resolve(discovered && !discovered.entry.absent ? discovered.question.canonicalPath : field.canonicalPath);
+    if (path && learned.size < INSURER_QUESTIONS_MAX) learned.add(path);
+  }
+  // Ordre du questionnaire : une liste stable, lisible dans la console.
+  const order = new Map(questions.map((question, index) => [question.canonicalPath as string, index]));
+  const sorted = [...learned].sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity));
+  return { questions: sorted, changed: learned.size !== before };
 }

@@ -14,11 +14,14 @@ import {
   DISCOVERED_LABEL_MAX,
   DISCOVERED_MAX_CHOICES,
   isCanonicalPath,
+  learnInsurerQuestions,
+  mergeDuplicateQuestions,
   REQUIRED_PATHS_MAX,
   FORM_FIELD_KINDS,
   mergeDiscoveredFields,
   type DiscoveredFieldInput,
   type FormMemoryField,
+  type SightedField,
   type QuestionnaireSection,
 } from "../shared/index.js";
 
@@ -56,6 +59,7 @@ function validateFields(raw: unknown): DiscoveredFieldInput[] {
       section: text(f.section, 120),
       options,
       required: f.required === true,
+      ...(f.needsChoice === true ? { needsChoice: true } : {}),
     });
   }
   return fields;
@@ -109,7 +113,8 @@ export const signaler = onCall(CALLABLE_OPTIONS, async request => {
       const merged = mergeDiscoveredFields(schema, fields, { insurerId, origin });
       // Exigences de l'extranet : questions obligatoires (et chiffre exigé), retenues aussi pour les republications du catalogue.
       const required = applyInsurerRequirements(merged.schema, requiredPaths);
-      merged.schema = required.schema;
+      // Anciennes questions découvertes qui doublent une question du catalogue : fusionnées.
+      merged.schema = mergeDuplicateQuestions(required.schema).schema;
       if (merged.added.length || JSON.stringify(merged.schema) !== JSON.stringify(schema)) {
         tx.update(product.ref, {
           questionnaireSchema: merged.schema,
@@ -173,6 +178,12 @@ export const constater = onCall(CALLABLE_OPTIONS, async request => {
     .map(f => ({
       fieldKey: typeof f.fieldKey === "string" && FIELD_KEY.test(f.fieldKey) ? f.fieldKey : null,
       label: text(f.label, DISCOVERED_LABEL_MAX),
+      // Forme du champ (corrige une question lue en texte) et chemin rempli (questions apprises de l'extranet).
+      ...(FORM_FIELD_KINDS.includes(f.kind as never) && typeof f.inputType === "string" && f.inputType.length <= 20
+        ? { kind: f.kind as SightedField["kind"], inputType: f.inputType }
+        : {}),
+      ...(typeof f.required === "boolean" ? { required: f.required } : {}),
+      ...(typeof f.canonicalPath === "string" && isCanonicalPath(f.canonicalPath) ? { canonicalPath: f.canonicalPath } : {}),
       options: Array.isArray(f.options)
         ? f.options
             .slice(0, DISCOVERED_MAX_CHOICES)
@@ -181,10 +192,7 @@ export const constater = onCall(CALLABLE_OPTIONS, async request => {
             .filter((o): o is { value: string; label: string } => !!o.value && !!o.label)
         : [],
     }))
-    .filter(
-      (f): f is { fieldKey: string; label: string; options: { value: string; label: string }[] } =>
-        !!f.fieldKey && !!f.label,
-    );
+    .filter((f): f is typeof f & SightedField => !!f.fieldKey && !!f.label);
   // Un parcours vide ne prouve rien : il compterait toutes les questions de l'extranet comme disparues.
   if (!fields.length) return { changed: false };
 
@@ -203,14 +211,20 @@ export const constater = onCall(CALLABLE_OPTIONS, async request => {
       const product = await tx.get(db.doc(productPath(productId)));
       const schema = product.get("questionnaireSchema") as QuestionnaireSection[] | undefined;
       if (!product.exists || !Array.isArray(schema)) return false;
-      const result = applySighting(schema, fields, origin);
-      if (result.changed) {
-        tx.update(product.ref, {
-          questionnaireSchema: result.schema,
-          questionnaireUpdatedAt: FieldValue.serverTimestamp(),
-        });
-      }
-      return result.changed;
+      // Questions découvertes à jour (forme, exigence, assureur), doublons du catalogue fusionnés, puis questions de
+      // l'extranet apprises de ce parcours (voir shared/discovered-fields.ts).
+      const sighted = applySighting(schema, fields, origin, insurerId);
+      const merged = mergeDuplicateQuestions(sighted.schema);
+      const learnedAll = (product.get("insurerQuestions") as Record<string, string[]> | undefined) ?? {};
+      const learned = learnInsurerQuestions(merged.schema, learnedAll[insurerId], fields, origin);
+      if (!sighted.changed && !merged.changed && !learned.changed) return false;
+      tx.update(product.ref, {
+        ...(sighted.changed || merged.changed
+          ? { questionnaireSchema: merged.schema, questionnaireUpdatedAt: FieldValue.serverTimestamp() }
+          : {}),
+        ...(learned.changed ? { [`insurerQuestions.${insurerId}`]: learned.questions } : {}),
+      });
+      return true;
     });
     changed ||= updated;
   }
