@@ -25,6 +25,8 @@ const STOPWORDS = new Set([
   'dans', 'avec', 'sous', 'ce', 'cet', 'cette', 'ces', 'son', 'sa', 'ses', 'votre', 'vos', 'notre', 'nos', 'leur', 'leurs',
   'il', 'elle', 'ils', 'elles', 'on', 'vous', 'nous', 't', 's', 'se', 'qu', 'que', 'qui', 'quel', 'quelle', 'y',
   'est', 'sont', 'etait', 'faisait', 'fait', 'suite', 'avez', 'etes', 'ete', 'deja', 'actuellement',
+  // « Nombre(s) de sinistres » = « Sinistres » : le mot ne change pas la question.
+  'nombre', 'nombres', 'nb',
 ]);
 
 /**
@@ -41,6 +43,8 @@ const SYNONYMS: Record<string, string> = {
   conducteurs: 'conduc', conducteur: 'conduc', conductrice: 'conduc',
   // « Situation familiale » (Oyat) = « Situation matrimoniale » (Zephir).
   familiale: 'matrim', matrimoniale: 'matrim',
+  // « Sinistres survenus » (Oyat) = « Sinistres déclarés » (application).
+  survenu: 'declar', survenus: 'declar', declare: 'declar', declares: 'declar',
 };
 
 /** Texte comparable : minuscules, sans accents ni ponctuation. */
@@ -156,10 +160,22 @@ export function findMatchingQuestion<T extends ComparableQuestion>(
   wanted: ComparableQuestion,
 ): { question: T; score: number } | null {
   let best: { question: T; score: number } | null = null;
+  // Même sens mais autre forme (liste chez Oyat, texte dans l'application) : gardée en réserve.
+  let otherShape: { question: T; score: number } | null = null;
   for (const question of candidates) {
-    if (question.shape && wanted.shape && !sameAnswerShape(question.shape, wanted.shape)) continue;
     const score = labelSimilarity(question.label, wanted.label);
-    if (score > 0 && (!best || score > best.score)) best = { question, score };
+    if (score === 0) continue;
+    if (question.shape && wanted.shape && !sameAnswerShape(question.shape, wanted.shape)) {
+      if (score >= SAME_MEANING_MIN && (!otherShape || score > otherShape.score)) otherShape = { question, score };
+      continue;
+    }
+    if (!best || score > best.score) best = { question, score };
   }
-  return best;
+  return best ?? otherShape;
 }
+
+/**
+ * Libellés qui disent exactement la même chose (mêmes mots de sens) : même question quelle que soit la forme de
+ * réponse de chaque extranet. En deçà, une forme différente reste une autre question (« alcool » texte ≠ oui / non).
+ */
+const SAME_MEANING_MIN = 0.99;

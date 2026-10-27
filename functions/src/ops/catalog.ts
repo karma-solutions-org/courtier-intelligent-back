@@ -184,6 +184,24 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
         }
       }
     }
+    // Questions connues de l'extranet : une faute de frappe retirerait la question de tous ses dossiers.
+    if (data.questions !== undefined) {
+      if (!isObject(data.questions)) {
+        add(file, "questions : objet { produit: [chemins canoniques] } attendu");
+      } else {
+        const supported = Array.isArray(data.productsSupported) ? (data.productsSupported as unknown[]) : [];
+        for (const [productId, paths] of Object.entries(data.questions)) {
+          if (!supported.includes(productId)) add(file, `questions : produit « ${productId} » absent de productsSupported`);
+          if (!Array.isArray(paths) || paths.length === 0) {
+            add(file, `questions.${productId} : liste non vide de chemins attendue`);
+            continue;
+          }
+          for (const p of paths) {
+            if (typeof p !== "string" || !isCanonicalPath(p)) add(file, `questions.${productId} : chemin inconnu « ${String(p)} »`);
+          }
+        }
+      }
+    }
     catalog.insurers.push(data as unknown as Insurer);
   }
 

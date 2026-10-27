@@ -29,6 +29,8 @@ export interface DiscoveredFieldInput {
   options: QuestionChoice[];
   /** Obligatoire sur l'extranet (astérisque, attribut required…) : la question le sera aussi. */
   required?: boolean;
+  /** Longueur maximale de la saisie sur l'extranet (« 6 maximum » tient en 1 caractère) : la question la reprend. */
+  maxLength?: number;
 }
 
 /** Texte comparable : minuscules, sans accents ni ponctuation, espaces simples. */
@@ -132,6 +134,7 @@ export function questionFromField(
     label: cleanLabel(field.label),
     type,
     required: field.required === true,
+    ...(field.maxLength && type !== 'choice' ? { maxLength: field.maxLength } : {}),
     ...(type === 'choice' ? { choices: usableChoices(field.options) } : {}),
     discoveredOn: [{ insurerId: source.insurerId, origin: source.origin, fieldKey: field.fieldKey.slice(0, 200), required: field.required === true }],
   };

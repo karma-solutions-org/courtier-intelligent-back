@@ -3,15 +3,72 @@
   "name": "Oyat",
   "logo": "insurers/oyat.png",
   "extranetUrl": "https://connexion.oyat-assurances.fr",
-  "extranetDomains": ["oyat-assurances.fr"],
-  "productsSupported": ["auto"],
+  "extranetDomains": [
+    "oyat-assurances.fr"
+  ],
+  "productsSupported": [
+    "auto"
+  ],
   "entryPaths": {
     "auto": {
       "origin": "https://extranet.oyat-assurances.fr",
       "entry": [
-        { "label": "Réaliser un Devis", "selector": null, "urlPattern": null },
-        { "label": "Devis Automobile", "selector": null, "urlPattern": null }
+        {
+          "label": "Réaliser un Devis",
+          "selector": null,
+          "urlPattern": null
+        },
+        {
+          "label": "Devis Automobile",
+          "selector": null,
+          "urlPattern": null
+        }
       ]
     }
+  },
+  "questions": {
+    "auto": [
+      "client.phone",
+      "client.email",
+      "client.address.street",
+      "client.address.postalCode",
+      "client.address.city",
+      "driver.lastName",
+      "driver.firstName",
+      "driver.birthDate",
+      "driver.birthCountry",
+      "driver.licenseDate",
+      "driver.licenseCountry",
+      "driver.profession",
+      "insuranceHistory.currentlyInsured",
+      "insuranceHistory.previousContractStartDate",
+      "insuranceHistory.seniority",
+      "insuranceHistory.bonusMalus",
+      "insuranceHistory.claimsCount",
+      "insuranceHistory.wasTerminated",
+      "insuranceHistory.claims.1.type",
+      "insuranceHistory.claims.1.responsibility",
+      "insuranceHistory.claims.1.date",
+      "insuranceHistory.claims.2.type",
+      "insuranceHistory.claims.2.responsibility",
+      "insuranceHistory.claims.2.date",
+      "insuranceHistory.claims.3.type",
+      "insuranceHistory.claims.3.responsibility",
+      "insuranceHistory.claims.3.date",
+      "insuranceHistory.claims.4.type",
+      "insuranceHistory.claims.4.responsibility",
+      "insuranceHistory.claims.4.date",
+      "insuranceHistory.claims.5.type",
+      "insuranceHistory.claims.5.responsibility",
+      "insuranceHistory.claims.5.date",
+      "insuranceHistory.claims.6.type",
+      "insuranceHistory.claims.6.responsibility",
+      "insuranceHistory.claims.6.date",
+      "vehicle.registration",
+      "vehicle.usage",
+      "vehicle.parkingPostalCode",
+      "vehicle.parkingCity",
+      "vehicle.parkingType"
+    ]
   }
 }

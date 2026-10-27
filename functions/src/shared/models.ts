@@ -159,6 +159,8 @@ export interface Question {
   type: QuestionType;
   required: boolean;
   choices?: QuestionChoice[];
+  /** Longueur maximale de la réponse imposée par l'extranet (champ texte ou nombre). */
+  maxLength?: number;
   /** Affiché seulement si un autre champ a une valeur donnée. */
   visibleIf?: { path: CanonicalPath; equals: string | number | boolean };
   /** Demande un niveau de connaissance (connu / inconnu / déclaré inconnu). */
