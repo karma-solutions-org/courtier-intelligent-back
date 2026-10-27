@@ -31,7 +31,9 @@ export async function loadProduct(
     const insurers = docs
       .filter(doc => doc.exists && ((doc.get("productsSupported") as string[] | undefined) ?? []).includes(productId))
       .map(doc => ({ id: doc.id, questions: doc.get("questions") as Record<string, string[]> | undefined }));
-    if (insurers.length) questionnaireSchema = schemaForInsurers(schema, insurers, productId);
+    // Questions apprises des parcours (champs-constater) : sans elles, le serveur exigerait ce que l'app ne pose pas.
+    const learned = (product.get("insurerQuestions") as Record<string, string[]> | undefined) ?? {};
+    if (insurers.length) questionnaireSchema = schemaForInsurers(schema, insurers, productId, learned);
   }
   return { questionnaireSchema, guaranteeCatalog: product.get("guaranteeCatalog") ?? [] };
 }
