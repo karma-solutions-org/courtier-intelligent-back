@@ -37,6 +37,7 @@ export const OCR_PATH_PREFIXES: Record<DossierDocumentType, string[]> = {
     'driver.firstName',
     'driver.lastName',
     'driver.birthDate',
+    'driver.licenseDate',
     'extra.',
   ],
   autre: [],
@@ -44,8 +45,10 @@ export const OCR_PATH_PREFIXES: Record<DossierDocumentType, string[]> = {
 
 /** Rappel pour les questions ajoutées depuis les extranets : beaucoup ne figurent sur aucun document. */
 const EXTRA_HINT =
-  "- extra.* : questions propres à un assureur. Ne les remplis que si la réponse est imprimée sur CE document (ex. numéro de permis, " +
-  'préfecture ou département de délivrance sur le permis, sexe → civilité). Sinon, omets-les : jamais de supposition.';
+  "- extra.* : questions propres à un assureur, à lire comme les autres d'après leur libellé. Remplis-les quand la réponse est imprimée " +
+  'sur CE document ou s\'en déduit directement (ville de naissance, immatriculation, pays d\'immatriculation, titulaire de la carte grise, ' +
+  "nombre de sinistres sur une période, usage professionnel, véhicule actuellement assuré…). Une question oui/non se répond true ou false. " +
+  'Sinon, omets-les : jamais de supposition.';
 
 /** Valeur lue sur un document, proposée au courtier (jamais écrite sans son accord). */
 export interface OcrField {
@@ -130,6 +133,9 @@ const DOCUMENT_HINTS: Partial<Record<DossierDocumentType, string[]>> = {
     "- driver.birthCountry : pays du lieu de naissance imprimé en 3 entre parenthèses, en français (TUNIS → « Tunisie » ; une ville",
     "  française ou un département → « France »). Omets-le si le lieu n'est pas imprimé ;",
     '- driver.licenseCountry : pays qui a délivré le permis (permis « République française » → « France »).',
+    "- driver.licenseDate : date d'obtention de la catégorie B, au verso (ligne B, colonne 10 « Depuis le », ex. 22.02.07 → 2007-02-22).",
+    "  JAMAIS la date 4a du recto : c'est la date de délivrance de la carte, pas celle de l'obtention. Recto seul : omets ce champ ;",
+    '- Ville de naissance (question extra.*) : lieu imprimé en 3 entre parenthèses (ex. « TUNIS » → « Tunis »).',
   ],
   releve_information: [
     "Relevé d'information : coefficient bonus-malus (CRM), assureur, dates du contrat, et le tableau des sinistres des dernières années.",
@@ -142,7 +148,13 @@ const DOCUMENT_HINTS: Partial<Record<DossierDocumentType, string[]>> = {
     "  trajet, tous déplacements) se répond avec l'option correspondante si elle existe ;",
     "- insuranceHistory.seniority (ancienneté d'assurance, en mois) : mois entiers entre le début de couverture du plus ancien contrat",
     "  imprimé et la date du relevé (« Paris, le … ») ; mets une confiance de 0.7 au plus (c'est un minimum) ;",
-    "- vehicle.registration, vehicle.brand : repris du bloc « Véhicule(s) assuré(s) » du relevé.",
+    "- vehicle.registration, vehicle.brand : repris du bloc « Véhicule(s) assuré(s) » du relevé (aussi pour une question extra.*",
+    "  « immatriculation ou nom, n° devis ») ;",
+    "- Nombre de sinistres sur N mois (insuranceHistory.* ou extra.*) : compte les lignes du tableau des sinistres datées dans les N mois",
+    "  précédant la date du relevé ; 0 si le tableau est vide ;",
+    "- driver.licenseDate : date d'obtention du permis imprimée dans le tableau des conducteurs, pour le conducteur principal ;",
+    "- Véhicule actuellement assuré (extra.*) : true si la date de fin de couverture est absente, « Inconnue » ou postérieure à la date",
+    "  du relevé ; false si elle est passée ;",
     "- N'invente aucune ligne : s'il n'y a pas de sinistre, omets ces champs ; une rubrique illisible d'une ligne est omise seule.",
   ],
 };

@@ -263,14 +263,19 @@ function refreshFromField(question: Question, entry: DiscoverySource, field: Sig
     entry.required = field.required;
     changed = true;
   }
-  if (question.discoveredOn?.length !== 1) return changed;
-  // Champ lu en texte lors de sa découverte, Oui / Non ou liste sur l'extranet : la question prend sa vraie forme.
-  if (field.kind && field.inputType && question.type === 'text') {
+  // Question d'un seul extranet (une ou plusieurs de ses pages) : elle prend la forme de son champ. Partagée : celle de la fusion.
+  if (new Set(question.discoveredOn?.map(source => source.origin)).size !== 1) return changed;
+  // Même forme que sur l'extranet : zone de texte, date, nombre, liste déroulante ou Oui / Non (« Utilisation
+  // professionnelle » lue en texte lors de sa découverte, Oui / Non sur Oyat).
+  if (field.kind && field.inputType) {
     const type = questionTypeOf({ kind: field.kind, inputType: field.inputType, options: field.options });
-    if (type !== 'text') {
+    // Liste encore vide sur la page (villes chargées d'après le code postal) : sa forme n'est pas lisible.
+    const unreadList = type === 'text' && (field.kind === 'select' || field.kind === 'radio');
+    if (type !== question.type && !unreadList) {
       question.type = type;
       if (type === 'choice') question.choices = usableChoices(field.options);
-      delete question.maxLength;
+      else delete question.choices;
+      if (type !== 'text') delete question.maxLength;
       changed = true;
     }
   }
