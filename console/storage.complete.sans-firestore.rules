@@ -1,0 +1,201 @@
+rules_version = '2';
+service firebase.storage {
+    match /b/{bucket}/o {
+        function isConnected() {
+            return request.auth != null;
+        }
+        function isAdmin() {
+            return isConnected() && request.auth.token.admin == true;
+        }
+        function isSameUid(userUid) {
+            return isConnected() && request.auth.uid == userUid;
+        }
+        function isAgent() {
+            return isConnected() && request.auth.token.agent == true;
+        }
+        match /Devis/{userUid}/{multi_path=**} {
+            allow read: if isAdmin() || isSameUid(userUid);
+            allow write: if isSameUid(userUid);
+        }
+        match /ExcelFile/{multi_path=**} {
+            allow read: if isAdmin();
+            allow write: if isAdmin();
+        }
+        match /SepaXmlBankFileModel/{multi_path=**} {
+            allow read: if isAdmin();
+            allow write: if isAdmin();
+        }
+        match /logos/{userId}/{fileName} {
+            // Lu par des clients emails/pages publiques (les rappels de
+            // rendez-vous embarquent ce logo) — pas une donnée sensible.
+            allow read: if true;
+            allow write: if request.auth != null
+                && request.auth.uid == userId
+                && request.resource.size < 5 * 1024 * 1024
+                && request.resource.contentType.matches('image/.*');
+        }
+        match /profil_images/{fileName} {
+            allow read: if true;
+            allow write: if isConnected()
+                && request.resource.size < 5 * 1024 * 1024
+                && request.resource.contentType.matches('image/.*');
+        }
+        match /service_images/{fileName} {
+            allow read: if true;
+            allow write: if isConnected()
+                && request.resource.size < 5 * 1024 * 1024
+                && request.resource.contentType.matches('image/.*');
+        }
+        match /product_images/{fileName} {
+            allow read: if true;
+            allow write: if isConnected()
+                && request.resource.size < 5 * 1024 * 1024
+                && request.resource.contentType.matches('image/.*');
+        }
+        match /portfolio_images/{fileName} {
+            allow read: if true;
+            allow write: if isConnected()
+                && request.resource.size < 5 * 1024 * 1024
+                && request.resource.contentType.matches('image/.*');
+        }
+        match /organisation_logos/{fileName} {
+            allow read: if true;
+            allow write: if isConnected()
+                && request.resource.size < 2 * 1024 * 1024
+                && request.resource.contentType.matches('image/.*');
+        }
+        // Documents du developpeur : envoi en CREATION seulement. Un fichier deja envoye
+        // (peut-etre deja valide) ne peut plus etre remplace ni supprime.
+        match /freelance-developer-documents/{developerId}/{fileName} {
+            allow read: if request.auth != null
+                && (request.auth.token.admin == true || request.auth.uid == developerId);
+            allow create: if request.auth != null
+                && request.auth.uid == developerId
+                && request.resource.size < 10 * 1024 * 1024;
+            allow update, delete: if false;
+        }
+        // PDF generes par les Cloud Functions (factures, actes de cession) : jamais
+        // accessibles directement, ils sont servis par les fonctions (page publique a token).
+        match /freelance-invoices/{allPaths=**} {
+            allow read, write: if false;
+        }
+        match /freelance-client-invoices/{allPaths=**} {
+            allow read, write: if false;
+        }
+        match /freelance-ip-transfers/{allPaths=**} {
+            allow read, write: if false;
+        }
+
+        // ─────────────────────── AIBS Cash ───────────────────────
+        // Documents des factures : facturesAibsCash/{agentUid}/{horodatage}/{fichier}
+        match /facturesAibsCash/{agentUid}/{multi_path=**} {
+            // L'agent envoie uniquement dans son propre dossier ; l'admin partout.
+            allow create: if (isAgent() && isSameUid(agentUid)) || isAdmin();
+            // Lecture, remplacement et suppression : admin uniquement.
+            allow read, update, delete: if isAdmin();
+        }
+
+        // ───────────────────────── SG PBX ─────────────────────────
+        // 🔴 À l'INTÉRIEUR de match /b/{bucket}/o : une règle déclarée au
+        // niveau de `service` ne correspond à aucune requête.
+
+        function isPbxAgent() {
+            return isConnected() && request.auth.token.pbxAgent == true;
+        }
+        function isOwnCompany(companyId) {
+            return isConnected() && request.auth.token.companyId == companyId;
+        }
+        function isCompanyAdmin(companyId) {
+            return isOwnCompany(companyId)
+                && (request.auth.token.role == 'COMPANY_OWNER'
+                    || request.auth.token.role == 'COMPANY_ADMIN');
+        }
+        function isTelephonyAudio() {
+            return request.resource.size < 20 * 1024 * 1024
+                && request.resource.contentType.matches('audio/.*');
+        }
+
+        // Écrits par l'agent depuis le spool Asterisk, lus depuis l'écran.
+        // ⚠️ Lecture ouverte à tout utilisateur authentifié : point 6 du lot
+        // sécurité de MIGRATION-PROD, connu et reporté.
+        match /voicemail-messages/{companyId}/{voicemailBoxId}/{fileName} {
+            allow read: if isConnected();
+            allow write: if isPbxAgent();
+        }
+
+        // 🔴 `isPbxAgent()` en lecture : l'agent télécharge le fichier sur la
+        // VM et n'a PAS de `companyId`. Sans lui, la musique ne descend jamais.
+        match /music-tracks/{companyId}/{fileName} {
+            allow read: if isOwnCompany(companyId) || isPbxAgent();
+            allow write: if isCompanyAdmin(companyId) && isTelephonyAudio();
+        }
+
+        // Même raisonnement, même agent (ticket 12-C4).
+        match /ivr-announcements/{companyId}/{fileName} {
+            allow read: if isOwnCompany(companyId) || isPbxAgent();
+            allow write: if isCompanyAdmin(companyId) && isTelephonyAudio();
+        }
+
+        // ─────────────────── Courtier Intelligent ───────────────────
+        // Version SANS firestore.get (le rôle IAM « multiservices » de Storage n'est pas accordé sur le projet) :
+        // contrôle sur les claims du jeton seulement. Moins strict que storage.rules du back : un cabinet désactivé
+        // ou une session fermée sur un autre appareil ne sont pas vérifiés ici (ils le restent côté Firestore).
+        // À remplacer par la version avec firestore.get dès qu'un propriétaire du projet accorde le rôle.
+        function ciInActiveCabinet(cabinetId) {
+            return request.auth != null
+                && request.auth.token.ci_cabinet_id == cabinetId;
+        }
+
+        // Logo du cabinet : lisible par ses membres, modifiable par ses admins (image ≤ 2 Mo).
+        match /cabinets/{cabinetId}/logo/{fileName} {
+            allow read: if ciInActiveCabinet(cabinetId);
+            allow write: if ciInActiveCabinet(cabinetId)
+                && request.auth.token.ci_role == 'admin'
+                && request.resource.size < 2 * 1024 * 1024
+                && request.resource.contentType.matches('image/.*');
+        }
+
+        // Devis joint à une offre saisie à la main : PDF, JPG ou PNG ≤ 10 Mo, nom de fichier simple, jamais remplacé.
+        match /cabinets/{cabinetId}/dossiers/{dossierId}/devis/{fileName} {
+            allow read: if ciInActiveCabinet(cabinetId);
+            allow create: if ciInActiveCabinet(cabinetId)
+                && resource == null
+                && fileName.matches('^[A-Za-z0-9_-][A-Za-z0-9._-]{0,199}$')
+                && request.resource.size <= 10 * 1024 * 1024
+                && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png'];
+        }
+
+        // Documents des dossiers (carte grise, permis, relevé d'information, autre) : PDF, JPG ou PNG ≤ 10 Mo,
+        // nom de fichier simple, ni remplacés ni supprimés depuis l'app.
+        match /cabinets/{cabinetId}/dossiers/{dossierId}/documents/{fileName} {
+            allow read: if ciInActiveCabinet(cabinetId);
+            allow create: if ciInActiveCabinet(cabinetId)
+                && resource == null
+                && fileName.matches('^[A-Za-z0-9_-][A-Za-z0-9._-]{0,199}$')
+                && request.resource.size <= 10 * 1024 * 1024
+                && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png'];
+        }
+
+        // Pièce de client (CIN, Kbis) déposée avant la création du client : propre au courtier qui l'envoie.
+        match /cabinets/{cabinetId}/imports/{uid}/{fileName} {
+            allow read: if ciInActiveCabinet(cabinetId) && request.auth.uid == uid;
+            allow create: if ciInActiveCabinet(cabinetId)
+                && request.auth.uid == uid
+                && resource == null
+                && fileName.matches('^[A-Za-z0-9_-][A-Za-z0-9._-]{0,199}$')
+                && request.resource.size <= 10 * 1024 * 1024
+                && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png'];
+        }
+
+        // Pièces rangées avec un client : lues par le cabinet, écrites uniquement par les Cloud Functions.
+        match /cabinets/{cabinetId}/assures/{assureId}/documents/{fileName} {
+            allow read: if ciInActiveCabinet(cabinetId);
+        }
+        // ───────────────── fin Courtier Intelligent ─────────────────
+
+        // Refus par défaut : tout chemin non couvert ci-dessus.
+        match /{allPaths=**} {
+            allow read, write: if false;
+        }
+    }
+}
