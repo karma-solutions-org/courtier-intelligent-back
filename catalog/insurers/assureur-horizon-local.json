@@ -1,0 +1,8 @@
+{
+  "id": "assureur-horizon-local",
+  "name": "Horizon Assurances (démo locale)",
+  "logo": null,
+  "extranetUrl": "http://localhost:8091/index.html",
+  "extranetDomains": ["localhost:8091"],
+  "productsSupported": ["auto"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "assureur-atlas-local",
+  "name": "Atlas Mutuelle (démo locale)",
+  "logo": null,
+  "extranetUrl": "http://localhost:8092/index.html",
+  "extranetDomains": ["localhost:8092"],
+  "productsSupported": ["auto"]
+}

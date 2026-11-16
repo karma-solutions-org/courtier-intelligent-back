@@ -1,6 +1,6 @@
 {
-  "sourceCommit": "bd1709b613eca71cb62d1302448a6b84d6f76d31",
-  "sourceBranch": "refactor/front-architecture",
+  "sourceCommit": "57e96a7cd690fd2aa5ed073a236163e14eab5efd",
+  "sourceBranch": "main",
   "files": {
     "ai-prompts.ts": "163ff7ca2df497aa912589770182544195cc4faef53eea85273c669e6a38fef4",
     "answer-constraints.ts": "d8f540b5afc5bb0a645f94e2eb828df54a2a701dea4ead60d5cdfe4da845f00e",
