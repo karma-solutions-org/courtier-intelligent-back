@@ -217,7 +217,12 @@ service cloud.firestore {
                          'enabledInsurers', 'enabledProducts']) &&
         request.resource.data.name is string &&
         request.resource.data.name.size() > 0 &&
-        request.resource.data.name.size() < 200;
+        request.resource.data.name.size() < 200 &&
+        // Identifiants du catalogue : listes de textes, bornées (les règles ne peuvent pas vérifier chaque élément).
+        request.resource.data.get('enabledInsurers', []) is list &&
+        request.resource.data.get('enabledInsurers', []).size() <= 100 &&
+        request.resource.data.get('enabledProducts', []) is list &&
+        request.resource.data.get('enabledProducts', []).size() <= 50;
 
       match /ci_members/{uid} {
         // L'extension relit sa propre fiche pour savoir si sa session est toujours ouverte.
@@ -422,7 +427,7 @@ service cloud.firestore {
     match /ci_extensionReports/{reportId} {
       // Codes fermés (voir EXTENSION_REPORT_ISSUES dans shared/models.ts) : un texte libre pourrait porter une donnée client.
       allow create: if ciExtAny()
-        && request.resource.data.keys().hasOnly(['insurerId', 'origin', 'step', 'issue', 'at'])
+        && request.resource.data.keys().hasOnly(['insurerId', 'origin', 'step', 'issue', 'at', 'snapshot'])
         && request.resource.data.keys().hasAll(['insurerId', 'origin', 'step', 'issue', 'at'])
         && request.resource.data.insurerId is string
         && request.resource.data.insurerId.size() > 0
@@ -433,8 +438,19 @@ service cloud.firestore {
         // EXTENSION_REPORT_STEPS / EXTENSION_REPORT_ISSUES de shared/models.ts.
         && request.resource.data.step in ['analyze', 'mapping', 'fill', 'detect', 'extract', 'confirm', 'write']
         && request.resource.data.issue in ['premium_not_found', 'ai_unavailable', 'ai_unusable', 'capture_rejected', 'offer_write_failed',
-                                           'no_fields', 'no_field_mapped', 'memory_invalidated', 'fill_failed', 'job_update_failed']
-        && request.resource.data.at == request.time;
+                                           'no_fields', 'no_field_mapped', 'memory_invalidated', 'fill_failed', 'job_update_failed',
+                                           'step_blocked', 'advance_refused']
+        && request.resource.data.at == request.time
+        // Photo de l'étape bloquée (BlockedStepSnapshot) : seulement avec step_blocked / advance_refused, plafonnée.
+        // Le contenu des champs est revérifié par l'extension (shared/extension-reports.ts) : les règles n'itèrent pas une liste.
+        && (!('snapshot' in request.resource.data)
+            || (request.resource.data.issue in ['step_blocked', 'advance_refused']
+                && request.resource.data.snapshot is map
+                && request.resource.data.snapshot.keys().hasOnly(['stepNumber', 'fields', 'buttons'])
+                && request.resource.data.snapshot.fields is list
+                && request.resource.data.snapshot.fields.size() <= 80
+                && request.resource.data.snapshot.buttons is list
+                && request.resource.data.snapshot.buttons.size() <= 30));
       allow read, update, delete: if false;
     }
   }

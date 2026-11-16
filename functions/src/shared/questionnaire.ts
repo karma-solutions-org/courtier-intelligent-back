@@ -1,5 +1,6 @@
 // ⚠️ Copie générée par scripts/sync-shared.mjs — ne pas modifier ici.
 import { CanonicalData, CanonicalPath, CanonicalValue, KnownValue, isCanonicalPath } from './canonical-paths.js';
+import { constraintFor, dateConstraintError, numberConstraintError } from './answer-constraints.js';
 import type { Question, QuestionnaireSection } from './models.js';
 
 /**
@@ -71,25 +72,39 @@ export function validateAnswer(question: Question, value: unknown): string | nul
       return `« ${label} » : nombre attendu.`;
     }
     if (value.knowledge === 'KNOWN' && value.value === null) return `« ${label} » : valeur manquante.`;
-    return null;
+    return answerConstraintError(question, value);
   }
 
   switch (question.type) {
     case 'text':
       return typeof value === 'string' && value.length <= 500 ? null : `« ${label} » : texte attendu (500 caractères maximum).`;
     case 'number':
-      return typeof value === 'number' && Number.isFinite(value) ? null : `« ${label} » : nombre attendu.`;
+      return typeof value === 'number' && Number.isFinite(value) ? answerConstraintError(question, value) : `« ${label} » : nombre attendu.`;
     case 'boolean':
       return typeof value === 'boolean' ? null : `« ${label} » : oui ou non attendu.`;
     case 'date':
       return typeof value === 'string' && (value === '' || (ISO_DATE.test(value) && !Number.isNaN(Date.parse(value))))
-        ? null
+        ? answerConstraintError(question, value)
         : `« ${label} » : date attendue (AAAA-MM-JJ).`;
     case 'choice':
       return typeof value === 'string' && (value === '' || (question.choices ?? []).some(c => c.value === value))
         ? null
         : `« ${label} » : choix invalide.`;
   }
+}
+
+/**
+ * Bornes métier du champ (voir `answer-constraints.ts`) : nombre hors bornes, date future ou trop ancienne.
+ * Ne juge que les valeurs renseignées (vide, `null`, « le client ne sait pas » : rien à contrôler). Sert aussi au
+ * formulaire, pour signaler l'erreur avant l'enregistrement.
+ */
+export function answerConstraintError(question: Question, value: unknown, now: number = Date.now()): string | null {
+  const constraint = constraintFor(question.canonicalPath);
+  if (!constraint) return null;
+  const plain = isKnownValue(value) ? value.value : value;
+  if (typeof plain === 'number' && Number.isFinite(plain)) return numberConstraintError(question.label, constraint, plain);
+  if (typeof plain === 'string' && ISO_DATE.test(plain)) return dateConstraintError(question.label, constraint, plain, now);
+  return null;
 }
 
 /** Chemins du dossier acceptés pour un produit : uniquement ceux de son questionnaire, jamais hors modèle canonique. */
