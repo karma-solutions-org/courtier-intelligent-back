@@ -64,6 +64,13 @@ export function isTransitionAllowed(from: DossierStatus, to: DossierStatus): boo
 /** Tant que le dossier est dans l'un de ces statuts, ses informations restent modifiables. */
 export const EDITABLE_DOSSIER_STATUSES: DossierStatus[] = ['brouillon', 'complet', 'besoin_valide'];
 
+/**
+ * Réponses du questionnaire modifiables : avant la tarification, et pendant (le courtier corrige ou complète ce que
+ * les extranets demandent). Pendant la tarification, une information obligatoire ne peut pas être retirée, les
+ * tarifications en cours reçoivent les nouvelles données et les tarifs déjà obtenus deviennent périmés.
+ */
+export const ANSWERS_EDITABLE_DOSSIER_STATUSES: DossierStatus[] = [...EDITABLE_DOSSIER_STATUSES, 'tarification'];
+
 export const DOSSIER_STATUS_LABELS: Record<DossierStatus, string> = {
   brouillon: 'Brouillon',
   complet: 'Complet',

@@ -4,13 +4,18 @@
 // dans la section « Questions des assureurs ». Règles communes à l'extension (ce qui est signalé) et au serveur
 // (filtre, fusion des doublons, construction de la question).
 import { ExtraCanonicalPath } from './canonical-paths.js';
-import { FormFieldKind, Question, QuestionChoice, QuestionnaireSection, QuestionType } from './models.js';
+import { DiscoverySource, FormFieldKind, Question, QuestionChoice, QuestionnaireSection, QuestionType } from './models.js';
+import { findMatchingQuestion, shapeOf } from './question-matching.js';
+import { foldText } from './text.js';
 
 export const DISCOVERED_SECTION_TITLE = 'Questions des assureurs';
 /** Plafonds : au-delà, le signalement est tronqué (un extranet ne doit pas pouvoir gonfler le questionnaire). */
 export const DISCOVERED_MAX_FIELDS_PER_REPORT = 30;
 export const DISCOVERED_MAX_QUESTIONS = 150;
-export const DISCOVERED_MAX_CHOICES = 40;
+/** Choix gardés d'une liste découverte : une liste de pays en compte environ 200. */
+export const DISCOVERED_MAX_CHOICES = 300;
+/** Libellé le plus long d'une question découverte (déclarations de Zephir : « Le véhicule est-il utilisé pour le transport… »). */
+export const DISCOVERED_LABEL_MAX = 250;
 
 /** Champ sans équivalent, tel que l'extension le décrit : structure seulement, jamais la valeur saisie. */
 export interface DiscoveredFieldInput {
@@ -24,14 +29,20 @@ export interface DiscoveredFieldInput {
   options: QuestionChoice[];
   /** Obligatoire sur l'extranet (astérisque, attribut required…) : la question le sera aussi. */
   required?: boolean;
+  /** Longueur maximale de la saisie sur l'extranet (« 6 maximum » tient en 1 caractère) : la question la reprend. */
+  maxLength?: number;
+  /**
+   * Liste de l'extranet dont aucune option ne correspondait à la réponse du dossier : la question doit garder cette
+   * liste, elle n'est pas rattachée à une question du catalogue d'une autre forme.
+   */
+  needsChoice?: boolean;
+  /** Constat seulement : chemin que l'extension a rempli dans ce champ (ce que l'extranet demande). */
+  canonicalPath?: string;
 }
 
 /** Texte comparable : minuscules, sans accents ni ponctuation, espaces simples. */
 export function normalizeLabel(label: string): string {
-  return label
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
+  return foldText(label)
     .replace(/[*:?()[\]«»"'’.,;!/\\-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -41,11 +52,6 @@ export function normalizeLabel(label: string): string {
 const STOPWORDS = new Set(['le', 'la', 'les', 'l', 'de', 'du', 'des', 'd', 'un', 'une', 'votre', 'vos', 'en', 'au', 'aux', 'a', 'et', 'ou', 'par', 'pour', 'sur']);
 
 const tokens = (label: string) => normalizeLabel(label).split(' ').filter(word => word && !STOPWORDS.has(word));
-
-/** Clé de comparaison : mots significatifs, triés (l'ordre des mots ne fait pas un nouveau champ). */
-export function labelSignature(label: string): string {
-  return [...new Set(tokens(label))].sort().join(' ');
-}
 
 /** Code du chemin `extra.<code>` : dérivé du libellé, stable, 60 caractères au plus. */
 export function discoveredPath(label: string): ExtraCanonicalPath {
@@ -65,14 +71,17 @@ const NOISE_INPUT_TYPES = new Set(['hidden', 'password', 'submit', 'button', 're
 export function isRelevantField(field: Pick<DiscoveredFieldInput, 'label' | 'inputType' | 'name'>): boolean {
   if (NOISE_INPUT_TYPES.has(field.inputType)) return false;
   const label = normalizeLabel(field.label ?? '');
-  if (label.length < 3 || label.length > 120) return false;
+  if (label.length < 3 || label.length > DISCOVERED_LABEL_MAX) return false;
   const text = `${label} ${normalizeLabel(field.name ?? '')}`;
   return !NOISE.some(pattern => pattern.test(text));
 }
 
 /** Type de la question d'après le champ : une liste devient un choix (si ses options sont exploitables). */
 export function questionTypeOf(field: Pick<DiscoveredFieldInput, 'kind' | 'inputType' | 'options'>): QuestionType {
-  if ((field.kind === 'select' || field.kind === 'radio') && usableChoices(field.options).length >= 2) return 'choice';
+  const choices = usableChoices(field.options);
+  // Oui / Non (boutons de Zephir, radios) : une question oui / non, pas une liste à deux choix.
+  if ((field.kind === 'select' || field.kind === 'radio') && isYesNoChoices(choices)) return 'boolean';
+  if ((field.kind === 'select' || field.kind === 'radio') && choices.length >= 2) return 'choice';
   if (field.kind === 'checkbox') return 'boolean';
   if (field.kind === 'date' || field.inputType === 'date') return 'date';
   if (field.kind === 'number' || field.inputType === 'number') return 'number';
@@ -85,28 +94,37 @@ export function usableChoices(options: QuestionChoice[]): QuestionChoice[] {
   return options
     .filter(option => typeof option?.value === 'string' && typeof option?.label === 'string')
     .map(option => ({ value: option.value.trim().slice(0, 100), label: option.label.trim().slice(0, 100) }))
-    .filter(option => option.value && option.label && !/^(choisir|selectionner|select|--)/.test(normalizeLabel(option.label)))
+    .filter(option => option.value && option.label && !/^(choisi|selectionn|select|--)/.test(normalizeLabel(option.label)))
     .filter(option => !seen.has(option.value) && seen.add(option.value))
     .slice(0, DISCOVERED_MAX_CHOICES);
 }
 
 /** Libellé affiché : celui de l'extranet, nettoyé (astérisque d'obligation, deux-points, espaces). */
 export function cleanLabel(label: string): string {
-  const cleaned = label.replace(/[*:]+\s*$/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  const cleaned = label.replace(/[*:]+\s*$/g, '').replace(/\s+/g, ' ').trim().slice(0, DISCOVERED_LABEL_MAX);
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
+const isYesNoChoices = (choices: QuestionChoice[]) =>
+  choices.length === 2 && choices.every(choice => /^(oui|non|yes|no)$/i.test(choice.label.trim()));
+
 /**
- * La question existe-t-elle déjà (même sens, à l'ordre des mots près) ? Compare aux libellés de tout le questionnaire,
- * y compris les questions déjà ajoutées depuis d'autres extranets : c'est ce qui fusionne les doublons entre assureurs.
+ * La question existe-t-elle déjà (même sens, même forme de réponse, voir question-matching.ts) ? Compare à tout le
+ * questionnaire, y compris les questions ajoutées depuis d'autres extranets : c'est ce qui fusionne les doublons entre
+ * assureurs, même quand chacun la pose avec ses mots.
  */
-export function findSameQuestion(schema: QuestionnaireSection[], label: string): Question | null {
-  const signature = labelSignature(label);
-  if (!signature) return null;
-  for (const question of schema.flatMap(section => section.questions)) {
-    if (labelSignature(question.label) === signature) return question;
-  }
-  return null;
+export function findSameQuestion(
+  schema: QuestionnaireSection[],
+  field: Pick<DiscoveredFieldInput, 'label' | 'kind' | 'inputType' | 'options' | 'needsChoice'>,
+): Question | null {
+  // Une question fusionnée n'est plus posée : le champ est rattaché à la question qui la remplace.
+  const questions = schema
+    .flatMap(section => section.questions)
+    .filter(question => !question.mergedInto)
+    .map(question => ({ question, label: question.label, shape: shapeOf(question.type, question.choices) }));
+  const type = questionTypeOf(field);
+  const wanted = { label: field.label, shape: shapeOf(type, type === 'choice' ? usableChoices(field.options) : undefined) };
+  return findMatchingQuestion(questions, wanted, { sameShapeOnly: field.needsChoice === true })?.question.question ?? null;
 }
 
 /** Question créée pour un champ découvert : obligatoire si l'extranet l'exige, facultative sinon. */
@@ -123,8 +141,10 @@ export function questionFromField(
     label: cleanLabel(field.label),
     type,
     required: field.required === true,
+    ...(field.maxLength && type !== 'choice' ? { maxLength: field.maxLength } : {}),
     ...(type === 'choice' ? { choices: usableChoices(field.options) } : {}),
-    discoveredOn: [{ insurerId: source.insurerId, origin: source.origin, fieldKey: field.fieldKey.slice(0, 200) }],
+    discoveredOn: [{ insurerId: source.insurerId, origin: source.origin, fieldKey: field.fieldKey.slice(0, 200), required: field.required === true }],
+    ...(field.needsChoice ? { keepSeparate: true } : {}),
   };
 }
 
@@ -150,7 +170,10 @@ export function mergeDiscoveredFields(
   fields: DiscoveredFieldInput[],
   source: { insurerId: string | null; origin: string },
 ): MergeResult {
-  const sections = schema.map(section => ({ ...section, questions: section.questions.map(question => ({ ...question })) }));
+  const sections = schema.map(section => ({
+    ...section,
+    questions: section.questions.map(question => ({ ...question, ...(question.discoveredOn ? { discoveredOn: question.discoveredOn.map(s => ({ ...s })) } : {}) })),
+  }));
   let discovered = sections.find(section => section.discovered);
   const added: Question[] = [];
   const mapping: Record<string, string> = {};
@@ -158,7 +181,24 @@ export function mergeDiscoveredFields(
 
   for (const field of fields.slice(0, DISCOVERED_MAX_FIELDS_PER_REPORT)) {
     if (!isRelevantField(field)) continue;
-    const same = findSameQuestion(sections, field.label);
+    // Même champ du même extranet (libellé ou choix modifiés par l'assureur) : la question est mise à jour, pas doublée.
+    const known = findBySource(sections, source.origin, field.fieldKey);
+    if (known) {
+      refreshFromField(known.question, known.entry, field);
+      if (field.required) known.entry.required = true;
+      // L'extranet refuse la réponse du catalogue : sa liste redevient une question à part.
+      if (field.needsChoice && known.question.mergedInto) {
+        delete known.question.mergedInto;
+        known.question.keepSeparate = true;
+      }
+      mapping[field.fieldKey] = known.question.canonicalPath;
+      if (field.required) {
+        known.question.required = true;
+        if (known.question.withKnowledge) known.question.mustBeKnown = true;
+      }
+      continue;
+    }
+    const same = findSameQuestion(sections, field);
     if (same) {
       mapping[field.fieldKey] = same.canonicalPath;
       // L'extranet l'exige : la question existante devient obligatoire. Un champ facultatif ne retire jamais l'exigence.
@@ -167,7 +207,7 @@ export function mergeDiscoveredFields(
         if (same.withKnowledge) same.mustBeKnown = true;
       }
       if (same.discoveredOn && !same.discoveredOn.some(s => s.origin === source.origin && s.fieldKey === field.fieldKey)) {
-        same.discoveredOn = [...same.discoveredOn, { ...source, fieldKey: field.fieldKey }].slice(-20);
+        same.discoveredOn = [...same.discoveredOn, { ...source, fieldKey: field.fieldKey, required: field.required === true }].slice(-20);
       }
       continue;
     }
@@ -183,6 +223,120 @@ export function mergeDiscoveredFields(
     mapping[field.fieldKey] = question.canonicalPath;
   }
   return { schema: sections, added, mapping };
+}
+
+/** Champ vu pendant un parcours (constat) : sa structure, et le chemin que l'extension y a rempli. */
+export type SightedField = Pick<DiscoveredFieldInput, 'fieldKey' | 'label' | 'options'> &
+  Partial<Pick<DiscoveredFieldInput, 'kind' | 'inputType' | 'required' | 'canonicalPath'>>;
+
+/** Parcours menés jusqu'au tarif sans le champ avant que sa question ne soit plus posée pour cet extranet. */
+export const ABSENT_AFTER_RUNS = 3;
+/** Plafond des champs d'un constat (tous les champs vus sur un parcours). */
+export const SIGHTING_MAX_FIELDS = 300;
+
+/** Question découverte rattachée à ce champ de cet extranet (section « Questions des assureurs » seulement). */
+function findBySource(schema: QuestionnaireSection[], origin: string, fieldKey: string): { question: Question; entry: DiscoverySource } | null {
+  for (const section of schema) {
+    if (!section.discovered) continue;
+    for (const question of section.questions) {
+      const entry = question.discoveredOn?.find(s => s.origin === origin && s.fieldKey === fieldKey);
+      if (entry) return { question, entry };
+    }
+  }
+  return null;
+}
+
+/**
+ * Le champ est revu sur l'extranet : il redevient présent, et si la question n'appartient qu'à cet extranet, elle
+ * prend son libellé et ses choix actuels (une question partagée garde ceux de la fusion). Renvoie vrai si quelque
+ * chose a changé.
+ */
+function refreshFromField(question: Question, entry: DiscoverySource, field: SightedField): boolean {
+  let changed = false;
+  if (entry.absent || entry.missedRuns) {
+    delete entry.absent;
+    delete entry.missedRuns;
+    changed = true;
+  }
+  // Exigence de l'extranet telle qu'il l'affiche aujourd'hui (un champ devenu facultatif ne bloque plus ses dossiers).
+  if (typeof field.required === 'boolean' && entry.required !== field.required) {
+    entry.required = field.required;
+    changed = true;
+  }
+  // Question d'un seul extranet (une ou plusieurs de ses pages) : elle prend la forme de son champ. Partagée : celle de la fusion.
+  if (new Set(question.discoveredOn?.map(source => source.origin)).size !== 1) return changed;
+  // Même forme que sur l'extranet : zone de texte, date, nombre, liste déroulante ou Oui / Non (« Utilisation
+  // professionnelle » lue en texte lors de sa découverte, Oui / Non sur Oyat).
+  if (field.kind && field.inputType) {
+    const type = questionTypeOf({ kind: field.kind, inputType: field.inputType, options: field.options });
+    // Liste encore vide sur la page (villes chargées d'après le code postal) : sa forme n'est pas lisible.
+    const unreadList = type === 'text' && (field.kind === 'select' || field.kind === 'radio');
+    if (type !== question.type && !unreadList) {
+      question.type = type;
+      if (type === 'choice') question.choices = usableChoices(field.options);
+      else delete question.choices;
+      if (type !== 'text') delete question.maxLength;
+      changed = true;
+    }
+  }
+  const label = cleanLabel(field.label);
+  if (label.length >= 3 && isRelevantField({ label, inputType: 'text', name: null }) && label !== question.label) {
+    question.label = label;
+    changed = true;
+  }
+  if (question.type === 'choice') {
+    const choices = usableChoices(field.options);
+    if (choices.length && JSON.stringify(choices) !== JSON.stringify(question.choices ?? [])) {
+      question.choices = choices;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/**
+ * Constat d'un parcours mené jusqu'au tarif sur un extranet : tous les champs vus, à toutes les étapes. Pure.
+ * - champ revu : la question est mise à jour (libellé, choix) et redevient présente ;
+ * - champ absent : compté ; après ABSENT_AFTER_RUNS parcours d'affilée, la question n'est plus posée pour cet extranet
+ *   (`absent`). Rien n'est supprimé : les réponses déjà données restent, et la question revient si le champ réapparaît.
+ * Seules les questions découvertes sont touchées, jamais celles du catalogue.
+ */
+export function applySighting(
+  schema: QuestionnaireSection[],
+  fields: SightedField[],
+  origin: string,
+  insurerId?: string,
+): { schema: QuestionnaireSection[]; changed: boolean } {
+  const byKey = new Map(fields.slice(0, SIGHTING_MAX_FIELDS).map(field => [field.fieldKey, field]));
+  let changed = false;
+  const next = schema.map(section => {
+    if (!section.discovered) return section;
+    return {
+      ...section,
+      questions: section.questions.map(original => {
+        if (!original.discoveredOn?.some(s => s.origin === origin)) return original;
+        const question = { ...original, discoveredOn: original.discoveredOn.map(s => ({ ...s })) };
+        for (const entry of question.discoveredOn) {
+          if (entry.origin !== origin) continue;
+          // Question découverte avant que l'assureur ne soit noté : l'extranet qui la pose le dit.
+          if (insurerId && entry.insurerId === null) {
+            entry.insurerId = insurerId;
+            changed = true;
+          }
+          const field = byKey.get(entry.fieldKey);
+          if (field) {
+            if (refreshFromField(question, entry, field)) changed = true;
+            continue;
+          }
+          entry.missedRuns = (entry.missedRuns ?? 0) + 1;
+          if (entry.missedRuns >= ABSENT_AFTER_RUNS) entry.absent = true;
+          changed = true;
+        }
+        return question;
+      }),
+    };
+  });
+  return { schema: next, changed };
 }
 
 /** Plafond des chemins exigés dans un signalement. */
@@ -217,11 +371,125 @@ export function applyInsurerRequirements(
  * Aucun assureur choisi = tous les assureurs, comme pour `enabledInsurers` ailleurs.
  */
 export function schemaForCabinet(schema: QuestionnaireSection[], enabledInsurers: string[]): QuestionnaireSection[] {
-  if (!enabledInsurers.length) return schema;
-  const enabled = new Set(enabledInsurers);
+  const enabled = enabledInsurers.length ? new Set(enabledInsurers) : null;
+  // Un extranet où le champ a disparu (`absent`) ne compte plus.
+  const sourcesOf = (question: Question) =>
+    (question.discoveredOn ?? []).filter(source => !source.absent && (!enabled || source.insurerId === null || enabled.has(source.insurerId)));
   const visible = (question: Question): boolean =>
-    !question.discoveredOn?.length || question.discoveredOn.some(source => source.insurerId === null || enabled.has(source.insurerId));
+    !question.mergedInto && (!question.discoveredOn?.length || sourcesOf(question).length > 0);
   return schema
-    .map(section => ({ ...section, questions: section.questions.filter(visible) }))
+    .map(section => ({ ...section, questions: section.questions.filter(visible).map(question => withRequirement(question, sourcesOf(question))) }))
     .filter(section => !section.discovered || section.questions.length > 0);
+}
+
+/**
+ * Question découverte : obligatoire seulement si l'un des extranets visés l'exige (une question obligatoire pour Oyat ne
+ * bloque pas un dossier qui ne vise que Zephir). Sources enregistrées avant cette règle (sans `required`) : on garde
+ * l'exigence globale de la question.
+ */
+function withRequirement(question: Question, sources: DiscoverySource[]): Question {
+  if (!question.discoveredOn?.length || !question.discoveredOn.some(source => source.required !== undefined)) return question;
+  const required = sources.some(source => source.required ?? question.required);
+  return required === question.required ? question : { ...question, required, ...(question.withKnowledge ? { mustBeKnown: required } : {}) };
+}
+
+/**
+ * Questionnaire d'un dossier : seulement les questions connues des extranets choisis (`Insurer.questions`), plus celles
+ * découvertes sur ces extranets. Si l'un d'eux n'a pas encore de liste pour le produit, on ne peut pas savoir ce qu'il
+ * demande : rien n'est retiré. Les questions qui conditionnent une question gardée (`visibleIf`) sont gardées aussi.
+ */
+export function schemaForInsurers(
+  schema: QuestionnaireSection[],
+  insurers: { id: string; questions?: Record<string, string[]> }[],
+  productId: string,
+  learned: Record<string, string[]> = {},
+): QuestionnaireSection[] {
+  const ids = insurers.map(insurer => insurer.id);
+  const byDiscovery = schemaForCabinet(schema, ids);
+  // Liste du catalogue et questions apprises des parcours : un extranet qui n'a ni l'une ni l'autre ne filtre rien.
+  const lists = insurers.map(insurer => {
+    const known = [...(insurer.questions?.[productId] ?? []), ...(learned[insurer.id] ?? [])];
+    return known.length ? known : undefined;
+  });
+  if (!lists.length || lists.some(list => !list)) return byDiscovery;
+  const known = new Set(lists.flat() as string[]);
+  const all = byDiscovery.flatMap(section => section.questions);
+  for (const question of all) {
+    if (known.has(question.canonicalPath) && question.visibleIf) known.add(question.visibleIf.path);
+  }
+  return byDiscovery
+    .map(section => ({
+      ...section,
+      questions: section.questions.filter(question => section.discovered || known.has(question.canonicalPath)),
+    }))
+    .filter(section => section.questions.length > 0);
+}
+
+/** Forme de champ équivalente à une question (pour la comparer avec les règles des champs découverts). */
+function asField(question: Question): Pick<DiscoveredFieldInput, 'label' | 'kind' | 'inputType' | 'options'> {
+  if (question.type === 'boolean') {
+    return { label: question.label, kind: 'radio', inputType: 'radio', options: [{ value: 'oui', label: 'Oui' }, { value: 'non', label: 'Non' }] };
+  }
+  if (question.type === 'choice') return { label: question.label, kind: 'select', inputType: 'select', options: question.choices ?? [] };
+  return { label: question.label, kind: question.type === 'text' ? 'text' : question.type, inputType: question.type, options: [] };
+}
+
+/**
+ * Questions découvertes qui doublent une question du catalogue (même sens, même si l'extranet la pose sous une autre
+ * forme : « Profession » en liste chez Oyat, en texte dans l'application) : fusionnées (`mergedInto`). Elles ne sont
+ * plus posées ; leur champ est rempli avec la réponse de la question du catalogue. Rien n'est supprimé. Pure.
+ * Jamais une question `keepSeparate` (l'extranet n'accepte que sa liste).
+ */
+export function mergeDuplicateQuestions(schema: QuestionnaireSection[]): { schema: QuestionnaireSection[]; changed: boolean } {
+  const catalog = schema.filter(section => !section.discovered);
+  let changed = false;
+  const next = schema.map(section => {
+    if (!section.discovered) return section;
+    return {
+      ...section,
+      questions: section.questions.map(question => {
+        if (question.mergedInto || question.keepSeparate) return question;
+        const same = findSameQuestion(catalog, asField(question));
+        if (!same) return question;
+        changed = true;
+        return { ...question, mergedInto: same.canonicalPath };
+      }),
+    };
+  });
+  return { schema: next, changed };
+}
+
+/** Plafond des questions apprises pour un extranet. */
+export const INSURER_QUESTIONS_MAX = 200;
+
+/**
+ * Questions d'un extranet apprises d'un parcours mené jusqu'au tarif : pour chaque champ vu, la question découverte
+ * qui lui est rattachée, sinon le chemin que l'extension y a rempli (une question fusionnée compte pour celle qui la
+ * remplace). Ajoutées à celles déjà apprises, jamais retirées : un champ conditionnel (détail des sinistres) n'apparaît
+ * pas à chaque parcours. Seuls les chemins du questionnaire comptent. Pure.
+ */
+export function learnInsurerQuestions(
+  schema: QuestionnaireSection[],
+  known: readonly string[] | undefined,
+  fields: SightedField[],
+  origin: string,
+): { questions: string[]; changed: boolean } {
+  const questions = schema.flatMap(section => section.questions);
+  const byPath = new Map(questions.map(question => [question.canonicalPath as string, question]));
+  const resolve = (path: string | undefined): string | null => {
+    const question = path ? byPath.get(path) : undefined;
+    if (!question) return null;
+    return question.mergedInto && byPath.has(question.mergedInto) ? question.mergedInto : question.canonicalPath;
+  };
+  const learned = new Set(known ?? []);
+  const before = learned.size;
+  for (const field of fields.slice(0, SIGHTING_MAX_FIELDS)) {
+    const discovered = findBySource(schema, origin, field.fieldKey);
+    const path = resolve(discovered && !discovered.entry.absent ? discovered.question.canonicalPath : field.canonicalPath);
+    if (path && learned.size < INSURER_QUESTIONS_MAX) learned.add(path);
+  }
+  // Ordre du questionnaire : une liste stable, lisible dans la console.
+  const order = new Map(questions.map((question, index) => [question.canonicalPath as string, index]));
+  const sorted = [...learned].sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity));
+  return { questions: sorted, changed: learned.size !== before };
 }

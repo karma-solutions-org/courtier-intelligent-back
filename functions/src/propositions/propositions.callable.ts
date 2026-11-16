@@ -1,10 +1,10 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { getActiveMembership, requireEmail, requireString } from "../core/auth.utils";
+import { getActiveMembership, requireEmail, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS, MAIL_COLLECTION } from "../core/config";
 import { addEvent } from "../core/dossier.utils";
-import { assurePath, cabinetPath, dossierPath, offerPath } from "../core/firestore-paths";
+import { assurePath, cabinetPath, dossierPath, offerPath, insurerPath } from "../core/firestore-paths";
 import {
   isTransitionAllowed,
   PROPOSAL_MESSAGE_MAX,
@@ -12,7 +12,6 @@ import {
   validateEffectiveDate,
   type DossierOutcomeResult,
   type DossierStatus,
-  insurerDocPath,
   needSnapshotOf,
   offerSnapshotOf,
   type NeedAnalysis,
@@ -29,7 +28,7 @@ const OUTCOME_RESULTS: DossierOutcomeResult[] = ["souscrit", "refuse"];
  */
 export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const requestedTo = request.data?.to ? requireEmail(request.data.to) : null;
   const message =
     typeof request.data?.message === "string" ? request.data.message.trim().substring(0, PROPOSAL_MESSAGE_MAX) : "";
@@ -61,7 +60,7 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
       tx.get(db.doc(cabinetPath(cabinetId))),
       tx.get(db.doc(assurePath(cabinetId, dossier.get("assureId")))),
       tx.get(db.doc(offerPath(cabinetId, dossierId, decision.insurerId))),
-      tx.get(db.doc(insurerDocPath(cabinetId, decision.insurerId))),
+      tx.get(db.doc(insurerPath(decision.insurerId))),
     ]);
     if (!offer.exists) {
       throw new HttpsError("failed-precondition", "L'offre retenue est introuvable.");
@@ -141,7 +140,7 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const enregistrerReponse = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const result = request.data?.result as DossierOutcomeResult;
   if (!OUTCOME_RESULTS.includes(result)) {
     throw new HttpsError("invalid-argument", "Réponse invalide.");

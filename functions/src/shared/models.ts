@@ -2,6 +2,7 @@
 import { CanonicalData, CanonicalPath } from './canonical-paths.js';
 import { DossierStatus, InvitationStatus, MemberStatus, QuoteJobStatus, CabinetRole } from './statuses.js';
 import type { DossierDocumentStatus, DossierDocumentType, OcrField } from './documents.js';
+import type { CatalogEntryPath } from './extranet-profiles.js';
 
 /**
  * Horodatage Firestore. Côté client et côté Admin SDK les classes diffèrent :
@@ -158,6 +159,8 @@ export interface Question {
   type: QuestionType;
   required: boolean;
   choices?: QuestionChoice[];
+  /** Longueur maximale de la réponse imposée par l'extranet (champ texte ou nombre). */
+  maxLength?: number;
   /** Affiché seulement si un autre champ a une valeur donnée. */
   visibleIf?: { path: CanonicalPath; equals: string | number | boolean };
   /** Demande un niveau de connaissance (connu / inconnu / déclaré inconnu). */
@@ -165,7 +168,30 @@ export interface Question {
   /** Exigé par au moins un extranet : « le client ne sait pas » ne suffit pas, un chiffre est attendu. */
   mustBeKnown?: boolean;
   /** Question ajoutée automatiquement : l'extranet (et l'assureur) où le champ a été découvert. */
-  discoveredOn?: { insurerId: string | null; origin: string; fieldKey: string }[];
+  discoveredOn?: DiscoverySource[];
+  /**
+   * Question découverte qui double une question du catalogue (même sens, autre forme) : elle n'est plus posée, la
+   * réponse de `mergedInto` sert à remplir son champ (voir mergeDuplicateQuestions, buildJobQuoteData).
+   */
+  mergedInto?: CanonicalPath;
+  /**
+   * L'extranet n'accepte que sa propre liste (aucune de ses options ne correspondait à la réponse du dossier) : la
+   * question n'est jamais fusionnée avec une question du catalogue d'une autre forme.
+   */
+  keepSeparate?: boolean;
+}
+
+/** Extranet où une question a été découverte, et ce qu'on sait de sa présence sur les derniers parcours. */
+export interface DiscoverySource {
+  insurerId: string | null;
+  origin: string;
+  fieldKey: string;
+  /** Parcours menés jusqu'au tarif, d'affilée, sans ce champ. */
+  missedRuns?: number;
+  /** Le champ a disparu de l'extranet : la question n'est plus posée pour lui (elle revient s'il réapparaît). */
+  absent?: boolean;
+  /** Cet extranet exige la réponse : la question est obligatoire dans un dossier qui le vise (voir schemaForCabinet). */
+  required?: boolean;
 }
 
 export interface QuestionnaireSection {
@@ -188,16 +214,12 @@ export interface Product {
   name: string;
   active: boolean;
   questionnaireSchema: QuestionnaireSection[];
-  guaranteeCatalog: Guarantee[];
-  /** Produit créé par le cabinet (voir cabinet-products.ts), absent du catalogue global. */
-  custom?: boolean;
-  /** Produit du cabinet retiré : caché des listes, gardé pour ses dossiers. */
-  archived?: boolean;
   /**
-   * Produit du catalogue global que cette fiche du cabinet remplace (modifié) ou masque (retiré, fiche archivée) :
-   * le cabinet ne voit plus l'original, les autres cabinets ne sont pas touchés.
+   * Questions de chaque extranet, apprises des parcours menés jusqu'au tarif (`champs-constater`) : assureur → chemins
+   * canoniques remplis sur son formulaire. S'ajoute à `Insurer.questions` (voir schemaForInsurers).
    */
-  replaces?: string | null;
+  insurerQuestions?: Record<string, string[]>;
+  guaranteeCatalog: Guarantee[];
 }
 
 /** guaranteeSynonyms/{productId} : formulations d'un assureur → code du référentiel (ex. « vitrage » → BDG). */
@@ -213,15 +235,13 @@ export interface Insurer {
   extranetUrl: string;
   extranetDomains: string[];
   productsSupported: string[];
-  /** Assureur ajouté par le cabinet (voir cabinet-insurers.ts), absent du catalogue global. */
-  custom?: boolean;
-  /** Assureur du cabinet retiré : caché des listes, gardé pour l'historique des dossiers. */
-  archived?: boolean;
+  /** Chemins d'accès communs au formulaire de devis, par produit (voir `CatalogEntryPath`). */
+  entryPaths?: Record<string, CatalogEntryPath>;
   /**
-   * Assureur du catalogue global que cette fiche du cabinet remplace (modifié) ou masque (retiré, fiche archivée) :
-   * le cabinet ne voit plus l'original, les autres cabinets ne sont pas touchés.
+   * Questions connues de l'extranet, par produit : chemins canoniques qu'il demande (ex. `vehicle.version` pour
+   * « Désignation »). Sans liste pour le produit, l'assureur ne filtre rien (toutes les questions sont posées).
    */
-  replaces?: string | null;
+  questions?: Record<string, string[]>;
 }
 
 // ── Assuré & dossier ───────────────────────────────────────────────────────
@@ -284,6 +304,8 @@ export interface Dossier {
   outcome: DossierOutcome | null;
   /** Où le courtier s'est arrêté dans le questionnaire : la reprise du brouillon s'y replace exactement. */
   draft?: { sectionIndex: number } | null;
+  /** Extranets choisis pour ce dossier (étape « Extranets ») : questionnaire et tarification. Absent ou vide : ceux du cabinet. */
+  insurerIds?: string[];
   createdBy?: string;
   createdAt?: TimestampLike;
   updatedAt?: TimestampLike;
@@ -430,7 +452,16 @@ export interface Offer {
   /** Données du dossier modifiées après la capture (`tarification-completer`) : l'offre est à refaire. */
   stale?: boolean;
   staleSince?: TimestampLike | null;
+  /**
+   * Offre lue par l'extension (`source: 'auto'`) : `pending` tant que le courtier ne l'a pas vérifiée dans l'onglet
+   * Tarification, `validated` ensuite. Absent : offre manuelle, ou capturée avant cette vérification (déjà confirmée).
+   */
+  review?: OfferReview | null;
+  reviewedBy?: string | null;
+  reviewedAt?: TimestampLike | null;
 }
+
+export type OfferReview = 'pending' | 'validated';
 
 /**
  * cabinets/{t}/dossiers/{d}/documents/{id} : écrit par les functions (devis joint à une offre saisie à la main,
@@ -487,8 +518,49 @@ export const EXTENSION_REPORT_ISSUES = [
   'fill_failed',
   /** Remplissage : l'avancement du job n'a pas pu être enregistré. */
   'job_update_failed',
+  /** Étape remplie mais pas prête (champ obligatoire manquant ou en échec) : accompagné d'un `snapshot`. */
+  'step_blocked',
+  /** L'extension a cliqué sur « Suivant » et l'extranet a refusé l'étape : accompagné d'un `snapshot`. */
+  'advance_refused',
 ] as const;
 export type ExtensionReportIssue = (typeof EXTENSION_REPORT_ISSUES)[number];
+
+/** État d'un champ dans l'étape bloquée. */
+export const STEP_FIELD_STATUSES = ['filled', 'failed', 'missing', 'unmapped', 'not_filled'] as const;
+export type StepFieldStatus = (typeof STEP_FIELD_STATUSES)[number];
+
+/** Raison d'un échec de remplissage, en code fermé (le message du moteur peut contenir la valeur du dossier). */
+export const FILL_FAILURE_CODES = ['no_option', 'rejected', 'bad_value', 'not_found', 'other'] as const;
+export type FillFailureCode = (typeof FILL_FAILURE_CODES)[number];
+
+/** Plafonds d'une photo d'étape (aussi vérifiés par les règles Firestore). */
+export const STEP_SNAPSHOT_MAX_FIELDS = 80;
+export const STEP_SNAPSHOT_MAX_BUTTONS = 30;
+export const STEP_SNAPSHOT_MAX_OPTIONS = 12;
+
+/** Un champ de l'étape bloquée : STRUCTURE seulement, jamais la valeur saisie ni celle du dossier. */
+export interface StepSnapshotField {
+  label: string;
+  kind: FormFieldKind;
+  required: boolean;
+  status: StepFieldStatus;
+  /** Donnée du dossier visée (`driver.birthDate`), ou null si le champ n'est relié à rien. */
+  path: string | null;
+  failure?: FillFailureCode;
+  /** Nombre d'options d'une liste (une liste vide ou qui se charge plus tard explique souvent un `no_option`). */
+  optionCount?: number;
+  /** Libellés des options d'un champ en échec (STEP_SNAPSHOT_MAX_OPTIONS au plus) : pourquoi aucune n'a été choisie. */
+  options?: string[];
+}
+
+/** Photo de l'étape où le parcours s'est arrêté : de quoi corriger l'extranet sans voir la page. */
+export interface BlockedStepSnapshot {
+  /** Numéro d'étape affiché par l'extranet (« Étape 2/5 »), ou null. */
+  stepNumber: number | null;
+  fields: StepSnapshotField[];
+  /** Libellés des boutons visibles (« Suivant », « Rechercher », « Ajouter un sinistre »). */
+  buttons: string[];
+}
 
 /** extensionReports/{id} : créé par l'extension, lu seulement par les opérateurs (console). */
 export interface ExtensionReport {
@@ -498,6 +570,8 @@ export interface ExtensionReport {
   origin: string;
   step: ExtensionReportStep;
   issue: ExtensionReportIssue;
+  /** Avec `step_blocked` et `advance_refused` seulement. */
+  snapshot?: BlockedStepSnapshot;
   at?: TimestampLike;
 }
 

@@ -1,12 +1,11 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { getActiveMembership, requireString } from "../core/auth.utils";
+import { getActiveMembership, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { addEvent } from "../core/dossier.utils";
-import { dossierPath, offerPath } from "../core/firestore-paths";
+import { dossierPath, offerPath, insurerPath } from "../core/firestore-paths";
 import {
-  insurerDocPath,
   isTransitionAllowed,
   needSnapshotOf,
   offerSnapshotOf,
@@ -26,8 +25,8 @@ const DECISION_STATUSES: DossierStatus[] = ["tarification", "comparaison", "deci
  */
 export const decider = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
-  const insurerId = requireString(request.data?.insurerId, "assureur");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
+  const insurerId = requireId(request.data?.insurerId, "assureur");
   const problem = validateDecisionJustification(request.data?.justification);
   if (problem) {
     throw new HttpsError("invalid-argument", problem);
@@ -41,7 +40,7 @@ export const decider = onCall(CALLABLE_OPTIONS, async request => {
     const [dossier, offer, insurer] = await Promise.all([
       tx.get(ref),
       tx.get(db.doc(offerPath(cabinetId, dossierId, insurerId))),
-      tx.get(db.doc(insurerDocPath(cabinetId, insurerId))),
+      tx.get(db.doc(insurerPath(insurerId))),
     ]);
     if (!dossier.exists) {
       throw new HttpsError("not-found", "Dossier introuvable.");

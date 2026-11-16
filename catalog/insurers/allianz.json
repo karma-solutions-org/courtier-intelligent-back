@@ -1,0 +1,8 @@
+{
+  "id": "allianz",
+  "name": "Allianz",
+  "logo": "insurers/allianz.webp",
+  "extranetUrl": "https://authentification-courtage.allianz.fr/am/XUI/?realm=courtiers",
+  "extranetDomains": ["authentification-courtage.allianz.fr"],
+  "productsSupported": ["auto"]
+}

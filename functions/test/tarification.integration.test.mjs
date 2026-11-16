@@ -18,14 +18,14 @@ let uid;
 let token;
 
 const dossier = async dossierId => (await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}`).get()).data();
-const job = async (dossierId, insurerId = 'assureur-a') =>
+const job = async (dossierId, insurerId = 'allianz') =>
   (await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/${insurerId}`).get()).data();
-const offer = async (dossierId, insurerId = 'assureur-a') =>
+const offer = async (dossierId, insurerId = 'allianz') =>
   (await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_offers/${insurerId}`).get()).data();
 const eventTypes = async dossierId =>
   (await db.collection(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_events`).get()).docs.map(d => d.get('type'));
 
-const lancer = (dossierId, insurerId = 'assureur-a') => call('tarification-lancer', token, { dossierId, insurerId });
+const lancer = (dossierId, insurerId = 'allianz') => call('tarification-lancer', token, { dossierId, insurerId });
 
 /** Un dossier Auto complet ; `validated` : besoin validé, prêt à tarifer. */
 async function newDossier({ validated = true } = {}) {
@@ -76,7 +76,7 @@ describe('Lancer une tarification', () => {
     const { data } = await lancer(dossierId);
     assert.equal(data.dossierStatus, 'tarification');
     assert.equal(data.attempts, 1);
-    assert.match(data.extranetUrl, /^https:\/\/extranet\.assureur-a/);
+    assert.match(data.extranetUrl, /^https:\/\/authentification-courtage\.allianz\.fr\//);
 
     const written = await job(dossierId);
     assert.equal(written.status, 'requested');
@@ -99,7 +99,7 @@ describe('Lancer une tarification', () => {
   it('relance un job en échec : nouvelle tentative, erreur effacée', async () => {
     const dossierId = await newDossier();
     await lancer(dossierId);
-    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/assureur-a`).update({ status: 'failed', error: 'Page inconnue' });
+    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/allianz`).update({ status: 'failed', error: 'Page inconnue' });
     const { data } = await lancer(dossierId);
     assert.equal(data.attempts, 2);
     const relaunched = await job(dossierId);
@@ -110,12 +110,12 @@ describe('Lancer une tarification', () => {
 
 describe('Champs manquants', () => {
   let dossierId;
-  const completer = answers => call('tarification-completer', token, { dossierId, insurerId: 'assureur-a', answers });
+  const completer = answers => call('tarification-completer', token, { dossierId, insurerId: 'allianz', answers });
 
   before(async () => {
     dossierId = await newDossier();
     await lancer(dossierId);
-    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/assureur-a`).update({
+    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/allianz`).update({
       status: 'needs_info',
       missingFields: [
         { canonicalPath: 'driver.profession', label: 'Profession', type: 'text' },
@@ -142,14 +142,14 @@ describe('Champs manquants', () => {
   });
 
   it('refuse quand le job n’attend plus d’informations', async () => {
-    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/assureur-a`).update({ status: 'filling' });
+    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/allianz`).update({ status: 'filling' });
     assert.equal((await completer({ 'driver.profession': 'Infirmière' })).error.details.reason, 'not_waiting_info');
   });
 });
 
 describe('Saisie manuelle d’une offre', () => {
   const saisir = (dossierId, offerInput, document) =>
-    call('tarification-saisirOffre', token, { dossierId, insurerId: 'assureur-b', offer: offerInput, ...(document ? { document } : {}) });
+    call('tarification-saisirOffre', token, { dossierId, insurerId: 'april', offer: offerInput, ...(document ? { document } : {}) });
 
   it('refuse sans besoin validé, sans prime ou avec une garantie inconnue', async () => {
     const draft = await newDossier({ validated: false });
@@ -167,14 +167,14 @@ describe('Saisie manuelle d’une offre', () => {
 
   it('écrit l’offre « manual » nettoyée, le devis joint, et marque le job en tarif obtenu', async () => {
     const dossierId = await newDossier();
-    await lancer(dossierId, 'assureur-b');
-    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/assureur-b`).update({ status: 'failed', error: 'Extranet indisponible' });
+    await lancer(dossierId, 'april');
+    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/april`).update({ status: 'failed', error: 'Extranet indisponible' });
 
-    const storagePath = `cabinets/${cabinetId}/dossiers/${dossierId}/devis/assureur-b-1.pdf`;
+    const storagePath = `cabinets/${cabinetId}/dossiers/${dossierId}/devis/april-1.pdf`;
     const { data } = await saisir(dossierId, manualOffer(), { storagePath, fileName: 'devis B.pdf' });
     assert.ok(data.documentId);
 
-    const saved = await offer(dossierId, 'assureur-b');
+    const saved = await offer(dossierId, 'april');
     assert.equal(saved.source, 'manual');
     assert.equal(saved.quoteNumber, 'DEV-42');
     assert.equal(saved.guarantees[0].label, 'Responsabilité civile');
@@ -185,7 +185,7 @@ describe('Saisie manuelle d’une offre', () => {
     const document = (await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_documents/${data.documentId}`).get()).data();
     assert.equal(document.type, 'devis');
     assert.equal(document.storagePath, storagePath);
-    assert.equal((await job(dossierId, 'assureur-b')).status, 'captured');
+    assert.equal((await job(dossierId, 'april')).status, 'captured');
     assert.ok((await eventTypes(dossierId)).includes('offer_entered'));
   });
 
@@ -193,21 +193,21 @@ describe('Saisie manuelle d’une offre', () => {
     const dossierId = await newDossier();
     const { data } = await saisir(dossierId, manualOffer({ premiumAnnual: null, premiumMonthly: 55 }));
     assert.equal(data.dossierStatus, 'tarification');
-    assert.equal(await job(dossierId, 'assureur-b'), undefined);
+    assert.equal(await job(dossierId, 'april'), undefined);
   });
 });
 
 describe('Annulation, données modifiées, corbeille', () => {
-  const jobRef = (dossierId, insurerId = 'assureur-a') => db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/${insurerId}`);
-  const offerRef = (dossierId, insurerId = 'assureur-b') => db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_offers/${insurerId}`);
+  const jobRef = (dossierId, insurerId = 'allianz') => db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_quoteJobs/${insurerId}`);
+  const offerRef = (dossierId, insurerId = 'april') => db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_offers/${insurerId}`);
 
   it('annule un job bloqué (tout membre), puis la relance reste possible', async () => {
     const dossierId = await newDossier();
     await lancer(dossierId);
-    assert.deepEqual((await call('tarification-annuler', token, { dossierId, insurerId: 'assureur-a' })).data, { status: 'cancelled' });
+    assert.deepEqual((await call('tarification-annuler', token, { dossierId, insurerId: 'allianz' })).data, { status: 'cancelled' });
     assert.equal((await job(dossierId)).status, 'cancelled');
     assert.ok((await eventTypes(dossierId)).includes('pricing_cancelled'));
-    assert.equal((await call('tarification-annuler', token, { dossierId, insurerId: 'assureur-a' })).error.details.reason, 'job_not_active');
+    assert.equal((await call('tarification-annuler', token, { dossierId, insurerId: 'allianz' })).error.details.reason, 'job_not_active');
     assert.equal((await lancer(dossierId)).data.attempts, 2);
   });
 
@@ -216,10 +216,10 @@ describe('Annulation, données modifiées, corbeille', () => {
     await lancer(dossierId);
     await offerRef(dossierId).set({ source: 'auto', premiumAnnual: 500, guarantees: [], exclusions: [], deductibles: {} });
     await jobRef(dossierId).update({ status: 'needs_info', missingFields: [{ canonicalPath: 'vehicle.registration', label: 'Immatriculation', type: 'text' }] });
-    await call('tarification-completer', token, { dossierId, insurerId: 'assureur-a', answers: { 'vehicle.registration': 'ZZ-999-ZZ' } });
-    assert.equal((await offer(dossierId, 'assureur-b')).stale, true);
+    await call('tarification-completer', token, { dossierId, insurerId: 'allianz', answers: { 'vehicle.registration': 'ZZ-999-ZZ' } });
+    assert.equal((await offer(dossierId, 'april')).stale, true);
     assert.ok((await eventTypes(dossierId)).includes('offers_stale'));
-    const decision = await call('dossiers-decider', token, { dossierId, insurerId: 'assureur-b', justification: 'Meilleur rapport garanties / prix' });
+    const decision = await call('dossiers-decider', token, { dossierId, insurerId: 'april', justification: 'Meilleur rapport garanties / prix' });
     assert.equal(decision.error?.details?.reason, 'offer_stale');
   });
 

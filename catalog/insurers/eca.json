@@ -1,0 +1,8 @@
+{
+  "id": "eca",
+  "name": "ECA Assurances",
+  "logo": "insurers/eca.jpg",
+  "extranetUrl": "https://espaceclient.eca-assurances.com/espace-courtage/",
+  "extranetDomains": ["espaceclient.eca-assurances.com"],
+  "productsSupported": ["auto"]
+}

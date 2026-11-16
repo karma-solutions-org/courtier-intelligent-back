@@ -23,27 +23,12 @@ export function originHost(origin: string, emulator = isEmulator()): string | nu
 
 /**
  * La page est-elle un extranet de cet assureur (signalement de champs) ? Domaine du catalogue (https), ou localhost
- * dans les emulators. Hors emulators, localhost n'est accepté que pour un assureur AJOUTÉ PAR LE CABINET qui déclare
- * exactement ce domaine et ce port (« localhost:8091 ») : il ne fait évoluer que les produits de ce cabinet, jamais
- * le questionnaire commun.
+ * dans les emulators seulement : le questionnaire commun ne change jamais depuis une page locale en production.
  */
-export function isInsurerExtranetOrigin(
-  origin: string,
-  domains: string[],
-  { cabinetInsurer, emulator = isEmulator() }: { cabinetInsurer: boolean; emulator?: boolean },
-): boolean {
+export function isInsurerExtranetOrigin(origin: string, domains: string[], emulator = isEmulator()): boolean {
   const host = originHost(origin, emulator);
   if (host === "localhost") return true;
-  if (host) return hostMatches(host, domains);
-  if (!cabinetInsurer) return false;
-  let url: URL;
-  try {
-    url = new URL(origin);
-  } catch {
-    return false;
-  }
-  // Port obligatoire : « localhost » seul couvrirait n'importe quel service local.
-  return url.protocol === "http:" && url.hostname === "localhost" && url.port !== "" && domains.includes(url.host);
+  return !!host && hostMatches(host, domains);
 }
 
 /** Domaines d'extranet du catalogue global (relus au plus toutes les 5 minutes). */

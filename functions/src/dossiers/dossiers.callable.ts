@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { getActiveMembership, requireString } from "../core/auth.utils";
+import { getActiveMembership, requireId, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { addEvent, cancelledJobUpdate, dossierSchema } from "../core/dossier.utils";
 import { formatReference } from "../core/dossier-reference";
@@ -12,6 +12,7 @@ import {
   dossiersPath,
   memberPath,
   cabinetPath,
+  productPath,
 } from "../core/firestore-paths";
 import {
   ACTIVE_QUOTE_JOB_STATUSES,
@@ -19,7 +20,8 @@ import {
   DOSSIER_STATUSES,
   SANS_SUITE_MOTIF_MAX,
   TERMINAL_DOSSIER_STATUSES,
-  EDITABLE_DOSSIER_STATUSES,
+  ANSWERS_EDITABLE_DOSSIER_STATUSES,
+  buildJobQuoteData,
   isTransitionAllowed,
   questionFor,
   validateAnswer,
@@ -27,11 +29,10 @@ import {
   type DossierStatus,
   type QuestionnaireSection,
   type QuoteJobStatus,
-  productDocPath,
-  isCabinetProductId,
 } from "../shared/index.js";
 
 const MAX_PATCH_FIELDS = 100;
+const MAX_INSURERS = 50;
 
 /** Champs de l'assuré repris dans le dossier (uniquement ceux que le questionnaire du produit demande). */
 function prefillFromAssure(schema: QuestionnaireSection[], assure: admin.firestore.DocumentSnapshot): CanonicalData {
@@ -61,8 +62,8 @@ function prefillFromAssure(schema: QuestionnaireSection[], assure: admin.firesto
  */
 export const creer = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const assureId = requireString(request.data?.assureId, "assuré");
-  const productId = requireString(request.data?.productId, "produit");
+  const assureId = requireId(request.data?.assureId, "assuré");
+  const productId = requireId(request.data?.productId, "produit");
 
   const db = admin.firestore();
   const dossierRef = db.collection(dossiersPath(cabinetId)).doc();
@@ -72,7 +73,7 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
   const reference = await db.runTransaction(async tx => {
     const [assure, product, cabinet, counter] = await Promise.all([
       tx.get(db.doc(assurePath(cabinetId, assureId))),
-      tx.get(db.doc(productDocPath(cabinetId, productId))),
+      tx.get(db.doc(productPath(productId))),
       tx.get(db.doc(cabinetPath(cabinetId))),
       tx.get(counterRef),
     ]);
@@ -84,15 +85,8 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
         reason: "assure_deleted",
       });
     }
-    if (!product.exists || product.get("active") !== true || product.get("archived") === true) {
+    if (!product.exists || product.get("active") !== true) {
       throw new HttpsError("not-found", "Produit introuvable ou inactif.");
-    }
-    // Produit du catalogue modifié ou retiré par le cabinet : remplacé par sa fiche du cabinet.
-    if (!isCabinetProductId(productId)) {
-      const replaced = await tx.get(db.collection(`${cabinetPath(cabinetId)}/ci_products`).where("replaces", "==", productId).limit(1));
-      if (!replaced.empty) {
-        throw new HttpsError("not-found", "Produit introuvable ou inactif.");
-      }
     }
     const enabled = (cabinet.get("enabledProducts") as string[] | undefined) ?? [];
     if (enabled.length > 0 && !enabled.includes(productId)) {
@@ -135,11 +129,12 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
 /**
  * Enregistre des réponses du questionnaire (sauvegarde automatique du brouillon) et recalcule la complétude.
  * Chaque champ est contrôlé : il doit appartenir au questionnaire du produit et avoir le bon type.
- * `sectionIndex` mémorise où le courtier s'est arrêté ; `event` trace la modification dans l'historique.
+ * `sectionIndex` mémorise où le courtier s'est arrêté ; `insurerIds`, les extranets choisis ; `event` trace la
+ * modification dans l'historique.
  */
 export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const patch = request.data?.patch;
   if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
     throw new HttpsError("invalid-argument", "Modifications invalides.");
@@ -151,6 +146,13 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
   const sectionIndex = request.data?.sectionIndex;
   if (sectionIndex !== undefined && (!Number.isInteger(sectionIndex) || sectionIndex < 0 || sectionIndex > 100)) {
     throw new HttpsError("invalid-argument", "Section invalide.");
+  }
+  const insurerIds = request.data?.insurerIds;
+  if (
+    insurerIds !== undefined &&
+    (!Array.isArray(insurerIds) || insurerIds.length > MAX_INSURERS || insurerIds.some(id => typeof id !== "string" || !/^[\w-]{1,64}$/.test(id)))
+  ) {
+    throw new HttpsError("invalid-argument", "Extranets invalides.");
   }
 
   const db = admin.firestore();
@@ -167,10 +169,18 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
       });
     }
     const status = dossier.get("status") as DossierStatus;
-    if (!EDITABLE_DOSSIER_STATUSES.includes(status)) {
+    if (!ANSWERS_EDITABLE_DOSSIER_STATUSES.includes(status)) {
       throw new HttpsError("failed-precondition", "Ce dossier n'est plus modifiable.", { reason: "not_editable" });
     }
-    const schema = await dossierSchema(tx, cabinetId, dossier);
+    const pricing = status === "tarification";
+    // Les extranets se choisissent avant la tarification (lancée sur ceux-là).
+    if (pricing && insurerIds !== undefined) {
+      throw new HttpsError("failed-precondition", "Les extranets ne se changent plus pendant la tarification.", { reason: "pricing" });
+    }
+    const schema = await dossierSchema(tx, cabinetId, dossier, insurerIds !== undefined ? { insurerIds: insurerIds as string[] } : {});
+    // Lectures avant toute écriture (transaction) : tarifications et tarifs du dossier.
+    const jobs = pricing ? await tx.get(ref.collection("ci_quoteJobs")) : null;
+    const offers = pricing ? await tx.get(ref.collection("ci_offers")) : null;
 
     for (const [path, value] of entries) {
       const question = questionFor(schema, path);
@@ -183,11 +193,19 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
       }
     }
 
-    const data = { ...(dossier.get("data") as CanonicalData), ...(patch as CanonicalData) };
+    const previous = dossier.get("data") as CanonicalData;
+    const data = { ...previous, ...(patch as CanonicalData) };
     const completeness = computeCompleteness(schema, data);
 
     // Un dossier « complet » qui cesse de l'être repasse en brouillon ; un dossier « besoin validé » ne peut pas perdre d'information obligatoire.
     let newStatus = status;
+    // Pendant la tarification : seule compte une réponse obligatoire qu'on viderait (d'autres peuvent déjà manquer).
+    const emptied = pricing ? completeness.missing.filter(path => !computeCompleteness(schema, previous).missing.includes(path)) : [];
+    if (emptied.length) {
+      throw new HttpsError("failed-precondition", "Tarification en cours : une information obligatoire ne peut pas être retirée.", {
+        reason: "validated",
+      });
+    }
     if (!completeness.ok && status === "besoin_valide") {
       throw new HttpsError("failed-precondition", "Ce dossier est validé : une information obligatoire ne peut pas être retirée.", {
         reason: "validated",
@@ -201,11 +219,31 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
       addEvent(tx, cabinetId, dossierId, uid, "data_updated", { fields: entries.map(([path]) => path) });
     }
 
+    if (pricing && jobs && offers) {
+      const changed = entries
+        .map(([path]) => path)
+        .filter(path => JSON.stringify(previous[path as keyof CanonicalData] ?? null) !== JSON.stringify(data[path as keyof CanonicalData] ?? null));
+      if (changed.length) {
+        // Tarifications en cours : nouvelles données (signal de reprise pour l'extension, comme tarification-completer).
+        const quoteData = buildJobQuoteData(schema, data);
+        for (const job of jobs.docs) {
+          if (ACTIVE_QUOTE_JOB_STATUSES.includes(job.get("status") as QuoteJobStatus)) {
+            tx.update(job.ref, { quoteData, updatedAt: FieldValue.serverTimestamp() });
+          }
+        }
+        // Tarifs déjà obtenus : calculés sur les anciennes données, donc périmés.
+        const stale = offers.docs.filter(offer => offer.get("stale") !== true);
+        for (const offer of stale) tx.update(offer.ref, { stale: true, staleSince: FieldValue.serverTimestamp() });
+        if (stale.length) addEvent(tx, cabinetId, dossierId, uid, "offers_stale", { insurers: stale.map(o => o.id), fields: changed });
+      }
+    }
+
     tx.update(ref, {
       data,
       completeness,
       status: newStatus,
       ...(sectionIndex !== undefined ? { draft: { sectionIndex } } : {}),
+      ...(insurerIds !== undefined ? { insurerIds: [...new Set(insurerIds as string[])] } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
     return { status: newStatus, completeness };
@@ -218,7 +256,7 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const target = request.data?.status as DossierStatus;
   if (!DOSSIER_STATUSES.includes(target)) {
     throw new HttpsError("invalid-argument", "Statut invalide.");
@@ -283,8 +321,8 @@ export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
 /** Assigne ou réassigne un dossier à un membre actif : l'admin à n'importe quel dossier, un courtier à ses propres dossiers. */
 export const assigner = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid, role } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
-  const assignee = requireString(request.data?.uid, "membre");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
+  const assignee = requireId(request.data?.uid, "membre");
 
   const db = admin.firestore();
   const ref = db.doc(dossierPath(cabinetId, dossierId));
@@ -322,7 +360,7 @@ export const assigner = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const classerSansSuite = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const motif = requireString(request.data?.motif, "motif", SANS_SUITE_MOTIF_MAX);
 
   const db = admin.firestore();
