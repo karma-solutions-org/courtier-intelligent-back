@@ -2,11 +2,11 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, reserveIaCall } from "../core/gemini.utils";
+import { AI_SYSTEM_PROMPTS, isAiPurpose } from "../shared/index.js";
 
 const MAX_MESSAGES = 20;
 const MAX_MESSAGE_CHARS = 30_000;
 const MAX_TOTAL_CHARS = 60_000;
-const MAX_SYSTEM_CHARS = 8_000;
 const MAX_OUTPUT_TOKENS = 2_000;
 const DEFAULT_OUTPUT_TOKENS = 1_024;
 
@@ -15,8 +15,15 @@ interface ChatMessage {
   content: string;
 }
 
-function parseRequest(data: unknown): { system?: string; messages: ChatMessage[]; maxTokens: number } {
+/**
+ * Le prompt système est choisi ici d'après `purpose` (mapping, capture, layout) : un `system` envoyé par le client est
+ * ignoré, ce qui empêche de se servir du proxy comme d'une IA généraliste.
+ */
+function parseRequest(data: unknown): { system: string; messages: ChatMessage[]; maxTokens: number } {
   const body = (typeof data === "object" && data !== null ? data : {}) as Record<string, unknown>;
+  if (!isAiPurpose(body.purpose)) {
+    throw new HttpsError("invalid-argument", "Usage de l'IA inconnu.");
+  }
   const messages = body.messages;
   if (!Array.isArray(messages) || messages.length === 0 || messages.length > MAX_MESSAGES) {
     throw new HttpsError("invalid-argument", `Entre 1 et ${MAX_MESSAGES} messages attendus.`);
@@ -35,25 +42,21 @@ function parseRequest(data: unknown): { system?: string; messages: ChatMessage[]
   if (total > MAX_TOTAL_CHARS || (messages[0] as ChatMessage).role !== "user") {
     throw new HttpsError("invalid-argument", "Conversation invalide ou trop longue.");
   }
-  const system = body.system;
-  if (system !== undefined && (typeof system !== "string" || system.length > MAX_SYSTEM_CHARS)) {
-    throw new HttpsError("invalid-argument", "Consigne système invalide.");
-  }
   const requested = body.maxTokens;
   if (requested !== undefined && (!Number.isInteger(requested) || (requested as number) < 1)) {
     throw new HttpsError("invalid-argument", "Nombre de tokens invalide.");
   }
   return {
-    ...(system !== undefined ? { system: system as string } : {}),
+    system: AI_SYSTEM_PROMPTS[body.purpose],
     messages: messages as ChatMessage[],
     maxTokens: Math.min((requested as number | undefined) ?? DEFAULT_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS),
   };
 }
 
 /** Requête Gemini (`generateContent`) construite depuis le format envoyé par l'extension (system + messages). */
-function toGeminiRequest(system: string | undefined, messages: ChatMessage[], maxTokens: number): Record<string, unknown> {
+function toGeminiRequest(system: string, messages: ChatMessage[], maxTokens: number): Record<string, unknown> {
   return {
-    ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
+    systemInstruction: { parts: [{ text: system }] },
     contents: messages.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
     generationConfig: { maxOutputTokens: maxTokens },
   };
@@ -61,7 +64,8 @@ function toGeminiRequest(system: string | undefined, messages: ChatMessage[], ma
 
 /**
  * Proxy vers l'API d'IA pour l'extension : authentification (session de l'extension), cabinet actif, limite
- * d'appels par mois selon l'offre du cabinet. La clé reste côté serveur, les modèles sont imposés (`GEMINI_MODELS`, essayés dans l’ordre), les tailles bornées.
+ * d'appels par mois selon l'offre du cabinet. La clé reste côté serveur, les modèles sont imposés (`GEMINI_MODELS`, essayés dans l’ordre),
+ * le prompt système aussi (d'après `purpose`), les tailles bornées.
  * Le contenu des messages n'est ni journalisé ni conservé.
  */
 export const proxy = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY], timeoutSeconds: 60 }, async request => {

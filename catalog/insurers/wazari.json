@@ -1,0 +1,8 @@
+{
+  "id": "wazari",
+  "name": "Wazari",
+  "logo": "insurers/wazari.webp",
+  "extranetUrl": "https://courtier.wazari.fr/#/login",
+  "extranetDomains": ["courtier.wazari.fr"],
+  "productsSupported": ["auto"]
+}

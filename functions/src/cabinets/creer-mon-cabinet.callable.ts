@@ -23,11 +23,8 @@ export const creerMonCabinet = onCall(CALLABLE_OPTIONS, async request => {
   if (user.customClaims?.[CLAIM_CABINET_ID]) {
     throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", { reason: "already_member" });
   }
-  if (user.email) {
-    const memberships = await admin.firestore().collectionGroup("ci_members").where("email", "==", user.email).limit(1).get();
-    if (!memberships.empty) {
-      throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", { reason: "already_member" });
-    }
+  if (user.email && (await hasLiveMembership(uid, user.email))) {
+    throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", { reason: "already_member" });
   }
 
   const name = requireString(request.data?.name, "nom du cabinet", 120);
@@ -36,3 +33,23 @@ export const creerMonCabinet = onCall(CALLABLE_OPTIONS, async request => {
   const cabinetId = await createCabinet({ name, orias, ownerUid: uid });
   return { cabinetId };
 });
+
+/**
+ * Adhésion à un cabinet sous cette adresse, par ce compte ou par un autre compte toujours existant. L'adhésion d'un
+ * compte supprimé depuis (même adresse, autre uid) est ignorée : elle ne doit pas bloquer l'inscription.
+ */
+async function hasLiveMembership(uid: string, email: string): Promise<boolean> {
+  const memberships = await admin.firestore().collectionGroup("ci_members").where("email", "==", email).limit(10).get();
+  for (const member of memberships.docs) {
+    if (member.id === uid) return true;
+    const exists = await admin.auth().getUser(member.id).then(
+      () => true,
+      (error: { code?: string }) => {
+        if (error.code === "auth/user-not-found") return false;
+        throw error;
+      },
+    );
+    if (exists) return true;
+  }
+  return false;
+}

@@ -99,6 +99,23 @@ export async function reserveIaCall(cabinetId: string): Promise<{ remaining: num
 }
 
 /**
+ * Réserve un appel d'IA puis lance `run` (téléchargement du fichier et appel à Gemini). L'appel réservé est rendu si `run`
+ * lève une erreur ou si aucun modèle n'a répondu (`result` null) : un échec ne consomme pas le quota du cabinet.
+ */
+export async function runIaCall(cabinetId: string, run: () => Promise<GeminiResult | null>): Promise<{ result: GeminiResult | null; remaining: number }> {
+  const { remaining, release } = await reserveIaCall(cabinetId);
+  let result: GeminiResult | null;
+  try {
+    result = await run();
+  } catch (error) {
+    await release();
+    throw error;
+  }
+  if (!result) await release();
+  return { result, remaining };
+}
+
+/**
  * Envoie une requête `generateContent` aux modèles (`GEMINI_MODELS`, dans l'ordre) : le premier qui répond l'emporte.
  * Renvoie `null` si aucun n'a répondu. Le contenu n'est ni journalisé ni conservé.
  */

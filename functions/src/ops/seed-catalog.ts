@@ -52,10 +52,17 @@ run(async () => {
       console.log(`${document.path} : ${discovered[0].questions.length} question(s) découverte(s) conservée(s).`);
     }
   }
+  // Les assureurs ne se gèrent que dans le dépôt : un assureur publié mais absent des JSON est retiré.
+  const insurerIds = new Set(catalog.insurers.map(insurer => insurer.id));
+  const staleInsurers = (await db.collection("ci_insurers").get()).docs.filter(doc => !insurerIds.has(doc.id));
   const batch = db.batch();
   for (const { path, data } of documents) {
     batch.set(db.doc(path), data);
   }
+  for (const stale of staleInsurers) {
+    batch.delete(stale.ref);
+  }
   await batch.commit();
   console.log(`Catalogue publié : ${documents.length} documents (${documents.map(d => d.path).join(", ")}).`);
+  if (staleInsurers.length) console.log(`Assureurs retirés : ${staleInsurers.map(doc => doc.id).join(", ")}.`);
 });

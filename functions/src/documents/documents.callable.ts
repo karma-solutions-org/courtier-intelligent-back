@@ -1,10 +1,10 @@
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { getActiveMembership, requireString } from "../core/auth.utils";
+import { getActiveMembership, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
-import { assurePath, documentsPath, dossierPath } from "../core/firestore-paths";
-import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, reserveIaCall } from "../core/gemini.utils";
+import { assurePath, documentsPath, dossierPath, productPath } from "../core/firestore-paths";
+import { GEMINI_API_KEY, geminiApiKey, generateWithGemini, runIaCall } from "../core/gemini.utils";
 import {
   buildDetectOcrPrompt,
   buildOcrPrompt,
@@ -23,7 +23,6 @@ import {
   parseOcrResponse,
   type DossierDocumentType,
   type QuestionnaireSection,
-  productDocPath,
   safeDocumentFileName,
 } from "../shared/index.js";
 
@@ -35,7 +34,7 @@ const MAX_OCR_OUTPUT_TOKENS = 2_000;
  */
 export const enregistrer = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
   const type = request.data?.type;
   const storagePath = request.data?.storagePath;
   if (!isDossierDocumentType(type)) {
@@ -98,8 +97,8 @@ export const enregistrer = onCall(CALLABLE_OPTIONS, async request => {
  */
 export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY], timeoutSeconds: 90, memory: "512MiB" }, async request => {
   const { cabinetId } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
-  const documentId = requireString(request.data?.documentId, "document");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
+  const documentId = requireId(request.data?.documentId, "document");
 
   const db = admin.firestore();
   const documentRef = db.doc(`${documentsPath(cabinetId, dossierId)}/${documentId}`);
@@ -118,7 +117,7 @@ export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY],
     throw new HttpsError("failed-precondition", "Emplacement du document invalide.");
   }
 
-  const product = await db.doc(productDocPath(cabinetId, dossier.get("productId") as string)).get();
+  const product = await db.doc(productPath(dossier.get("productId") as string)).get();
   const schema = (product.get("questionnaireSchema") as QuestionnaireSection[] | undefined) ?? [];
   const questionsByType: Partial<Record<DossierDocumentType, Question[]>> = {};
   for (const candidate of DOSSIER_DOCUMENT_TYPES) {
@@ -137,31 +136,31 @@ export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY],
   if (!DOSSIER_DOCUMENT_MIME_TYPES.includes(mimeType) || Number(metadata.size ?? 0) > DOSSIER_DOCUMENT_MAX_BYTES) {
     throw new HttpsError("failed-precondition", "Document illisible : PDF, JPG ou PNG de 10 Mo maximum.");
   }
-  const [bytes] = await file.download();
-
   const fail = async (reason: string) => {
     await documentRef.update({ status: "failed", error: reason, analyzedAt: FieldValue.serverTimestamp() });
   };
 
-  const { remaining, release } = await reserveIaCall(cabinetId).catch(async (error: unknown) => {
+  // Le quota est réservé avant le téléchargement : un cabinet hors quota ne télécharge rien.
+  const { result, remaining } = await runIaCall(cabinetId, async () => {
+    const [bytes] = await file.download();
+    return generateWithGemini(apiKey, {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType, data: bytes.toString("base64") } },
+            { text: detectType ? buildDetectOcrPrompt(questionsByType) : buildOcrPrompt(type, questions) },
+          ],
+        },
+      ],
+      generationConfig: { maxOutputTokens: MAX_OCR_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
+    });
+  }).catch(async (error: unknown) => {
     if (error instanceof HttpsError && error.code === "resource-exhausted") await fail("ia_quota");
     throw error;
   });
-  const result = await generateWithGemini(apiKey, {
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { inlineData: { mimeType, data: bytes.toString("base64") } },
-          { text: detectType ? buildDetectOcrPrompt(questionsByType) : buildOcrPrompt(type, questions) },
-        ],
-      },
-    ],
-    generationConfig: { maxOutputTokens: MAX_OCR_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
-  });
   if (!result) {
-    // Aucun modèle n'a répondu : l'appel réservé est rendu.
-    await release();
+    // Aucun modèle n'a répondu : l'appel réservé a été rendu.
     await fail("ia_upstream");
     throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", { reason: "ia_upstream" });
   }
@@ -190,7 +189,7 @@ export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY],
  */
 export const reprendrePiecesClient = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
-  const dossierId = requireString(request.data?.dossierId, "dossier");
+  const dossierId = requireId(request.data?.dossierId, "dossier");
 
   const db = admin.firestore();
   const dossier = await db.doc(dossierPath(cabinetId, dossierId)).get();
@@ -224,22 +223,36 @@ export const reprendrePiecesClient = onCall(CALLABLE_OPTIONS, async request => {
     if (!isDossierDocumentPath(target, cabinetId, dossierId)) continue;
     const [exists] = await bucket.file(source).exists();
     if (!exists) continue;
-    await bucket.file(source).copy(bucket.file(target));
 
-    const documentRef = db.collection(documentsPath(cabinetId, dossierId)).doc();
-    await documentRef.create({
-      type,
-      storagePath: target,
-      fileName,
-      contentType: piece.get("contentType") ?? null,
-      size: piece.get("size") ?? null,
-      ocrFields: [],
-      status: "uploaded",
-      error: null,
-      sourceAssureDocumentId: piece.id,
-      uploadedBy: uid,
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    // Identifiant tiré de la pièce : si deux appels arrivent en même temps, le second `create` échoue et la pièce
+    // n'est pas reprise deux fois. Le fichier n'est copié qu'une fois l'entrée réservée.
+    const documentRef = db.collection(documentsPath(cabinetId, dossierId)).doc(`client-${piece.id}`);
+    const reserved = await documentRef
+      .create({
+        type,
+        storagePath: target,
+        fileName,
+        contentType: piece.get("contentType") ?? null,
+        size: piece.get("size") ?? null,
+        ocrFields: [],
+        status: "uploaded",
+        error: null,
+        sourceAssureDocumentId: piece.id,
+        uploadedBy: uid,
+        createdAt: FieldValue.serverTimestamp(),
+      })
+      .then(() => true)
+      .catch((error: { code?: number }) => {
+        if (error.code === 6) return false; // ALREADY_EXISTS : déjà reprise par un appel concurrent
+        throw error;
+      });
+    if (!reserved) continue;
+    try {
+      await bucket.file(source).copy(bucket.file(target));
+    } catch (error) {
+      await documentRef.delete();
+      throw error;
+    }
     created.push({ documentId: documentRef.id, type });
   }
   return { documents: created };

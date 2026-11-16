@@ -15,17 +15,40 @@ export const DOSSIER_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 export const OCR_CONFIDENCE_THRESHOLD = 0.8;
 
 /** Nombre maximal de champs gardés d'une réponse de l'IA. */
-export const OCR_MAX_FIELDS = 40;
+export const OCR_MAX_FIELDS = 60;
 
-/** Champs que l'IA peut lire sur chaque type de document (« autre » : aucun, il n'est pas analysé). */
+/**
+ * Champs que l'IA peut lire sur chaque type de document (« autre » : aucun, il n'est pas analysé). Les questions ajoutées
+ * depuis les extranets (`extra.*` : numéro de permis, civilité…) sont proposées sur tous : l'IA ne garde que celles imprimées.
+ */
 export const OCR_PATH_PREFIXES: Record<DossierDocumentType, string[]> = {
-  carte_grise: ['vehicle.'],
-  permis: ['driver.'],
+  // Chaque pièce répond aussi aux questions voisines qu'elle imprime (adresse du titulaire sur la carte grise, immatriculation et
+  // usage sur le relevé…) : le maximum du dossier se remplit depuis les documents, sans ressaisie.
+  carte_grise: ['vehicle.', 'client.address.', 'extra.'],
+  permis: ['driver.', 'extra.'],
   // Pièce d'identité du souscripteur : nom, prénom, date de naissance, numéro, adresse (ancien modèle).
-  cin: ['client.'],
-  releve_information: ['insuranceHistory.'],
+  cin: ['client.', 'driver.firstName', 'driver.lastName', 'driver.birthDate', 'extra.'],
+  releve_information: [
+    'insuranceHistory.',
+    'vehicle.registration',
+    'vehicle.brand',
+    'vehicle.model',
+    'vehicle.usage',
+    'driver.firstName',
+    'driver.lastName',
+    'driver.birthDate',
+    'driver.licenseDate',
+    'extra.',
+  ],
   autre: [],
 };
+
+/** Rappel pour les questions ajoutées depuis les extranets : beaucoup ne figurent sur aucun document. */
+const EXTRA_HINT =
+  "- extra.* : questions propres à un assureur, à lire comme les autres d'après leur libellé. Remplis-les quand la réponse est imprimée " +
+  'sur CE document ou s\'en déduit directement (ville de naissance, immatriculation, pays d\'immatriculation, titulaire de la carte grise, ' +
+  "nombre de sinistres sur une période, usage professionnel, véhicule actuellement assuré…). Une question oui/non se répond true ou false. " +
+  'Sinon, omets-les : jamais de supposition.';
 
 /** Valeur lue sur un document, proposée au courtier (jamais écrite sans son accord). */
 export interface OcrField {
@@ -92,6 +115,13 @@ const DOCUMENT_HINTS: Partial<Record<DossierDocumentType, string[]>> = {
     '- J.1 : genre national (VP = voiture, CTTE ou VU = utilitaire, MTL/MTT1/MTT2 = moto) ; P.6 : puissance fiscale (CV) ;',
     '- P.3 : type de carburant. Codes : ES = essence ; GO = diesel ; EL = électrique ; EE ou EH = hybride (essence ou gazole + électrique non rechargeable) ;',
     '  EH avec mention rechargeable, ou « PHEV » = hybride rechargeable ; GP, GL, EG = GPL ; FE, FG = superéthanol (E85).',
+    "- Date d'achat ou d'établissement de la carte grise (vehicle.purchaseDate ou une question extra.* de ce sens) : rubrique I, date",
+    "  de délivrance du certificat actuel (rubrique « Certificat d'immatriculation … JJ/MM/AAAA » du coupon aussi) ;",
+    "- Pays d'immatriculation du véhicule (question extra.*) : « France » pour un certificat « République française » (plaque AA-123-AA) ;",
+    "- Adresse de stationnement (code postal, ville, vehicle.parking*) ou client.address.* : si rien d'autre n'est imprimé, reprends l'adresse C.3,",
+    "  avec une confiance de 0.6 au plus (le stationnement n'est pas écrit sur le document) ;",
+    "- Titulaire de la carte grise (question extra.*) : la rubrique C.4a « est le propriétaire du véhicule » vaut pour la personne en C.1 : choisis",
+    "  l'option qui désigne le souscripteur / le conducteur principal parmi celles proposées, seulement si C.1 est bien cette personne.",
   ],
   cin: [
     "Carte nationale d'identité : nom (nom de naissance, pas le nom d'usage sauf s'il est seul), prénoms (garder le premier prénom),",
@@ -103,6 +133,9 @@ const DOCUMENT_HINTS: Partial<Record<DossierDocumentType, string[]>> = {
     "- driver.birthCountry : pays du lieu de naissance imprimé en 3 entre parenthèses, en français (TUNIS → « Tunisie » ; une ville",
     "  française ou un département → « France »). Omets-le si le lieu n'est pas imprimé ;",
     '- driver.licenseCountry : pays qui a délivré le permis (permis « République française » → « France »).',
+    "- driver.licenseDate : date d'obtention de la catégorie B, au verso (ligne B, colonne 10 « Depuis le », ex. 22.02.07 → 2007-02-22).",
+    "  JAMAIS la date 4a du recto : c'est la date de délivrance de la carte, pas celle de l'obtention. Recto seul : omets ce champ ;",
+    '- Ville de naissance (question extra.*) : lieu imprimé en 3 entre parenthèses (ex. « TUNIS » → « Tunis »).',
   ],
   releve_information: [
     "Relevé d'information : coefficient bonus-malus (CRM), assureur, dates du contrat, et le tableau des sinistres des dernières années.",
@@ -110,6 +143,18 @@ const DOCUMENT_HINTS: Partial<Record<DossierDocumentType, string[]>> = {
     '  .type : nature du sinistre (« matériel », « corporel », « bris de glace », « vol », « incendie », sinon « autre ») ;',
     '  .responsibility : part de responsabilité imprimée (« 0 » non responsable, « 50 » partiellement, « 100 » totalement) ;',
     '  .date : date de survenance du sinistre (pas la date de déclaration ni de règlement).',
+    "- Usage professionnel (« Professional use of vehicle », colonne « Usage tournées / tous déplacements ») : « Non » = usage privé ;",
+    "  réponds Non (ou false) à toute question d'usage professionnel / tournées, Oui s'il est coché. Une question de type d'usage (privé,",
+    "  trajet, tous déplacements) se répond avec l'option correspondante si elle existe ;",
+    "- insuranceHistory.seniority (ancienneté d'assurance, en mois) : mois entiers entre le début de couverture du plus ancien contrat",
+    "  imprimé et la date du relevé (« Paris, le … ») ; mets une confiance de 0.7 au plus (c'est un minimum) ;",
+    "- vehicle.registration, vehicle.brand : repris du bloc « Véhicule(s) assuré(s) » du relevé (aussi pour une question extra.*",
+    "  « immatriculation ou nom, n° devis ») ;",
+    "- Nombre de sinistres sur N mois (insuranceHistory.* ou extra.*) : compte les lignes du tableau des sinistres datées dans les N mois",
+    "  précédant la date du relevé ; 0 si le tableau est vide ;",
+    "- driver.licenseDate : date d'obtention du permis imprimée dans le tableau des conducteurs, pour le conducteur principal ;",
+    "- Véhicule actuellement assuré (extra.*) : true si la date de fin de couverture est absente, « Inconnue » ou postérieure à la date",
+    "  du relevé ; false si elle est passée ;",
     "- N'invente aucune ligne : s'il n'y a pas de sinistre, omets ces champs ; une rubrique illisible d'une ligne est omise seule.",
   ],
 };
@@ -133,7 +178,11 @@ export function buildOcrPrompt(type: DossierDocumentType, questions: Question[])
     `Tu lis un ${DOCUMENT_LABELS[type]} joint. Extrais uniquement les champs suivants :`,
     ...fields,
     ...(DOCUMENT_HINTS[type] ? ['', ...DOCUMENT_HINTS[type]] : []),
+    ...(questions.some(q => q.canonicalPath.startsWith('extra.')) ? [EXTRA_HINT] : []),
     '',
+    "Réponds à un maximum de ces champs : toute réponse imprimée sur le document, ou qui se déduit directement d'une valeur imprimée",
+    "(calcul d'une durée entre deux dates, pays d'un document officiel, correspondance avec une option proposée). Pour une déduction,",
+    "mets une confiance de 0.7 au plus : le courtier la confirmera. Ne devine jamais civilité, situation familiale, profession ni revenus.",
     'Réponds UNIQUEMENT avec un JSON de la forme {"fields":[{"canonicalPath":"...","value":...,"confidence":0.0}]}.',
     'confidence est ta confiance entre 0 et 1. N\'invente jamais : un champ absent, illisible ou incertain est omis.',
     "N'utilise aucun autre canonicalPath que ceux listés.",

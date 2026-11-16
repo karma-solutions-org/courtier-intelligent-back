@@ -1,8 +1,8 @@
 import * as admin from "firebase-admin";
 import { FieldValue, Timestamp, type Transaction } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { assertSignedIn, assertCabinetAdmin, requireEmail, requireString, setCabinetClaims } from "../core/auth.utils";
-import { CLAIM_CABINET_ID, INVITATION_TTL_DAYS, MAIL_COLLECTION, CALLABLE_OPTIONS, CABINET_ROLES, UserRole } from "../core/config";
+import { assertSignedIn, assertCabinetAdmin, requireEmail, requireId, setCabinetClaims } from "../core/auth.utils";
+import { CLAIM_CABINET_ID, INVITATION_TTL_DAYS, MAIL_COLLECTION, CALLABLE_OPTIONS, CABINET_ROLES, UserRole, trustedAppOrigin } from "../core/config";
 import { escapeHtml } from "../core/html.utils";
 import { buildInvitationEmail } from "./invitation-email";
 import { assertSeatAvailable, getSeatUsage, graceUpdate, lockSeats } from "../core/seats.utils";
@@ -36,7 +36,8 @@ export const inviter = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await assertCabinetAdmin(request);
   const email = requireEmail(request.data?.email);
   const role = requireCabinetRole(request.data?.role);
-  const appUrl = requireString(request.data?.appUrl, "appUrl", 300);
+  // Jamais une adresse libre : le lien de l'email pointe toujours vers l'app (voir `APP_ORIGINS`).
+  const appUrl = trustedAppOrigin(request.data?.appUrl);
 
   const db = admin.firestore();
   const invitation = db.collection(invitationsPath(cabinetId)).doc();
@@ -66,7 +67,7 @@ export const inviter = onCall(CALLABLE_OPTIONS, async request => {
 
   const cabinet = await db.doc(cabinetPath(cabinetId)).get();
   const cabinetName = escapeHtml(String(cabinet.get("name") ?? ""));
-  const link = `${appUrl.replace(/\/$/, "")}/invitation?cabinet=${cabinetId}&invitation=${invitation.id}`;
+  const link = `${appUrl}/invitation?cabinet=${cabinetId}&invitation=${invitation.id}`;
   await db.collection(MAIL_COLLECTION).add({
     to: email,
     message: buildInvitationEmail({ cabinetName, email, link, ttlDays: INVITATION_TTL_DAYS }),
@@ -85,8 +86,8 @@ export const accepterInvitation = onCall(CALLABLE_OPTIONS, async request => {
   if (request.auth?.token.email_verified !== true) {
     throw new HttpsError("failed-precondition", "Vérifiez votre adresse email avant d'accepter l'invitation.", { reason: "email_not_verified" });
   }
-  const cabinetId = requireString(request.data?.cabinetId, "cabinet");
-  const invitationId = requireString(request.data?.invitationId, "invitation");
+  const cabinetId = requireId(request.data?.cabinetId, "cabinet");
+  const invitationId = requireId(request.data?.invitationId, "invitation");
   const user = await admin.auth().getUser(uid);
 
   const db = admin.firestore();
@@ -138,7 +139,7 @@ export const accepterInvitation = onCall(CALLABLE_OPTIONS, async request => {
 /** L'admin change le rôle d'un membre. */
 export const changerRole = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId } = await assertCabinetAdmin(request);
-  const memberUid = requireString(request.data?.uid, "uid");
+  const memberUid = requireId(request.data?.uid, "uid");
   const role = requireCabinetRole(request.data?.role);
 
   const ref = admin.firestore().doc(memberPath(cabinetId, memberUid));
@@ -162,7 +163,7 @@ export const changerRole = onCall(CALLABLE_OPTIONS, async request => {
 /** L'admin désactive ou réactive un membre. Un membre désactivé perd ses accès et ses sessions. */
 export const activerMembre = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId } = await assertCabinetAdmin(request);
-  const memberUid = requireString(request.data?.uid, "uid");
+  const memberUid = requireId(request.data?.uid, "uid");
   const status = request.data?.status;
   if (status !== "active" && status !== "disabled") {
     throw new HttpsError("invalid-argument", "Statut invalide.");
@@ -212,7 +213,7 @@ export const activerMembre = onCall(CALLABLE_OPTIONS, async request => {
 /** L'admin annule une invitation en attente : la place réservée est libérée. */
 export const annulerInvitation = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId } = await assertCabinetAdmin(request);
-  const invitationId = requireString(request.data?.invitationId, "invitation");
+  const invitationId = requireId(request.data?.invitationId, "invitation");
   const ref = admin.firestore().doc(invitationPath(cabinetId, invitationId));
   const invitation = await ref.get();
   if (!invitation.exists || invitation.get("status") !== "pending") {
@@ -231,7 +232,7 @@ const currentMonth = () => new Date().toISOString().substring(0, 7);
  */
 export const reinitialiserAppareil = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid: adminUid } = await assertCabinetAdmin(request);
-  const memberUid = requireString(request.data?.uid, "uid");
+  const memberUid = requireId(request.data?.uid, "uid");
   // Un admin ne libère pas son propre appareil : un autre admin le fait, ou le support (ops/reset-device).
   if (memberUid === adminUid) {
     throw new HttpsError(
@@ -251,7 +252,8 @@ export const reinitialiserAppareil = onCall(CALLABLE_OPTIONS, async request => {
     if (!member.exists) {
       throw new HttpsError("not-found", "Membre introuvable.");
     }
-    if (!member.get("device")) {
+    // Depuis la session unique, l'appareil est porté par `session` ; `device` reste pour les anciens membres.
+    if (!member.get("session") && !member.get("device")) {
       throw new HttpsError("failed-precondition", "Aucun appareil n'est lié à ce membre.");
     }
     const quota =

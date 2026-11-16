@@ -2,7 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   CANONICAL_PATHS,
+  ENTRY_MAX_ACTIONS,
   isCanonicalPath,
+  sanitizeCatalogEntryPath,
   type Guarantee,
   type GuaranteeType,
   type Insurer,
@@ -160,6 +162,44 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
     } else {
       for (const id of data.productsSupported as string[]) {
         if (!productIds.includes(id)) add(file, `productsSupported : produit inconnu « ${id} »`);
+      }
+    }
+    if (data.entryPaths !== undefined) {
+      if (!isObject(data.entryPaths)) {
+        add(file, "entryPaths : objet { produit: { origin, entry } } attendu");
+      } else {
+        const supported = Array.isArray(data.productsSupported) ? (data.productsSupported as unknown[]) : [];
+        for (const [productId, entryPath] of Object.entries(data.entryPaths)) {
+          if (!supported.includes(productId)) add(file, `entryPaths : produit « ${productId} » absent de productsSupported`);
+          const clean = sanitizeCatalogEntryPath(entryPath);
+          if (!clean) {
+            add(file, `entryPaths.${productId} : chemin invalide (origine https, 1 à ${ENTRY_MAX_ACTIONS} clics, aucun bouton de validation)`);
+            continue;
+          }
+          const url = new URL(clean.origin);
+          const pathHost = url.hostname === "localhost" ? url.host : url.hostname;
+          if (Array.isArray(domains) && !domains.some(d => pathHost === d || pathHost.endsWith(`.${d}`))) {
+            add(file, `entryPaths.${productId} : l'origine ${clean.origin} n'est pas couverte par extranetDomains`);
+          }
+        }
+      }
+    }
+    // Questions connues de l'extranet : une faute de frappe retirerait la question de tous ses dossiers.
+    if (data.questions !== undefined) {
+      if (!isObject(data.questions)) {
+        add(file, "questions : objet { produit: [chemins canoniques] } attendu");
+      } else {
+        const supported = Array.isArray(data.productsSupported) ? (data.productsSupported as unknown[]) : [];
+        for (const [productId, paths] of Object.entries(data.questions)) {
+          if (!supported.includes(productId)) add(file, `questions : produit « ${productId} » absent de productsSupported`);
+          if (!Array.isArray(paths) || paths.length === 0) {
+            add(file, `questions.${productId} : liste non vide de chemins attendue`);
+            continue;
+          }
+          for (const p of paths) {
+            if (typeof p !== "string" || !isCanonicalPath(p)) add(file, `questions.${productId} : chemin inconnu « ${String(p)} »`);
+          }
+        }
       }
     }
     catalog.insurers.push(data as unknown as Insurer);

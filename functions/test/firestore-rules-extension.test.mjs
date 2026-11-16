@@ -94,7 +94,8 @@ describe("Extension : ce qu'elle écrit", () => {
     await assertSucceeds(updateDoc(doc(ext(), JOB), { status: 'analyzing', currentStep: 1, totalSteps: 5, updatedAt: Timestamp.now() }));
     await assertSucceeds(updateDoc(doc(ext(), JOB), { status: 'needs_info', missingFields: [{ canonicalPath: 'vehicle.brand', label: 'Marque', type: 'text' }] }));
     await assertSucceeds(updateDoc(doc(ext(), JOB), { status: 'failed', error: 'Page introuvable', attempts: 2 }));
-    await assertSucceeds(updateDoc(doc(ext(), JOB), { status: 'captured' }));
+    // 'failed' et 'captured' sont terminaux pour l'extension : seule la function tarification-lancer relance un job.
+    await assertFails(updateDoc(doc(ext(), JOB), { status: 'captured' }));
   });
 
   it('ne modifie ni les données à remplir, ni le propriétaire du job, ni un job de collègue', async () => {

@@ -1,0 +1,8 @@
+{
+  "id": "solly-azar",
+  "name": "Solly Azar",
+  "logo": "insurers/solly-azar.png",
+  "extranetUrl": "https://www.sollyazarpro.com",
+  "extranetDomains": ["sollyazarpro.com"],
+  "productsSupported": ["auto"]
+}

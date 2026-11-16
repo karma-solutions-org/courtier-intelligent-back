@@ -5,8 +5,8 @@ import { isAnswered, isQuestionVisible, questionsOf, validateAnswer } from './qu
 
 /**
  * Pré-remplissage du véhicule par sa plaque d'immatriculation (function `vehicules-rechercher`).
- * Tout se base sur les chemins canoniques du questionnaire, jamais sur l'id du produit : le produit Auto
- * et ses copies faites par un cabinet (`cab-…`, `replaces: 'auto'`) en profitent de la même façon.
+ * Tout se base sur les chemins canoniques du questionnaire, jamais sur l'id du produit : tout produit qui pose
+ * les questions du véhicule en profite.
  */
 
 /** Plaque normalisée : SIV (depuis 2009, « AB-123-CD ») ou ancien format FNI (« 1234 AB 75 »). */
