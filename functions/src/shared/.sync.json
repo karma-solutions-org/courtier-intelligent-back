@@ -1,0 +1,28 @@
+{
+  "sourceCommit": "bd1709b613eca71cb62d1302448a6b84d6f76d31",
+  "sourceBranch": "refactor/front-architecture",
+  "files": {
+    "ai-prompts.ts": "163ff7ca2df497aa912589770182544195cc4faef53eea85273c669e6a38fef4",
+    "answer-constraints.ts": "d8f540b5afc5bb0a645f94e2eb828df54a2a701dea4ead60d5cdfe4da845f00e",
+    "assure-documents.ts": "ff58a60a9d54bb1bf1443058aff765f2d3e81c1deded33f279230352b255a392",
+    "assure-format.ts": "27607b3abbadfe67e6666815a31cc1f22e552bcdac419a29d20f41f913675ba6",
+    "canonical-paths.ts": "37cf434ac3998f490120b0fd52af052df70c1429af98b40df280edc113386c14",
+    "comparison.ts": "1a0a3c94bcf85dd56792c750c965212aafc413ab489fa3456ecfca5248b98cb4",
+    "discovered-fields.ts": "728c18bd9c202ed9a1de1d172d201acef303a0a1c4a7c6203a38ec5d01cd616a",
+    "documents.ts": "9e24df8329f15144b3108b120a1acdbe96d99ce8249b0ec80262b50f3efcfe3f",
+    "extension-reports.ts": "b0dc405171b8345a216bffc2bb746e7175581ddde3ef9b81b4106b533e2e1c54",
+    "extranet-profiles.ts": "8fc7182a7d4b404b4959336e795fbb56b403ac8175ac7498d6aaafa8a5fe526f",
+    "index.ts": "5f175ce7d7e65326dec359d4c3c74441737c21cf507ccc6a9c1fb869be91d84e",
+    "limits.ts": "4ba47f420bc1bc8b498572fc5a6255d8b4a435496cb5247b9ac59ccb79a3ca60",
+    "models.ts": "01b35151fc398a4ab52eabe7576c869712bc5e425dbc20c8155db4ac9a9b6c41",
+    "need.ts": "baeb234dd417faa3081557af686c8dfb07f942dfef0eaac759e5c50aec1f5082",
+    "pricing.ts": "58392f7b8ecadd5aa41a74fc3b132140b6dc5e8e8b55c192aab24823836beb56",
+    "proposal.ts": "eaa27dec4847bb09aa9b399146bd2e7a2025cb9fb0eda18876963999ccf1ac45",
+    "public-suffix.ts": "0489f4184f5780e6312b2fc53c34330eafcc6c3325b0b01aa724681bf9469429",
+    "question-matching.ts": "83e6736ed8651acc4544bd970683f4f695a5d106fbbc654fca1e8c12499c5139",
+    "questionnaire.ts": "0573e7e6f240efeb6d22b574764663247e3ad99db50eddd741166d2962a4e3b2",
+    "statuses.ts": "406c0b78604b8c0ba42cf34b005123d558f730d7da37b0108d7c7984da3a7a9e",
+    "text.ts": "e2cb217408b7a866d9cd54d769270ccc45bfa30c673a7ef76d3e6bbb1170dcc3",
+    "vehicle-lookup.ts": "194aedddf935b527253514d898f7aac17aa1768018273bd6df5728dee5449d7b"
+  }
+}
