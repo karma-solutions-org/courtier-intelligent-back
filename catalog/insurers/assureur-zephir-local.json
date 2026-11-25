@@ -1,0 +1,12 @@
+{
+  "id": "assureur-zephir-local",
+  "name": "Démo type Zephir (locale)",
+  "logo": null,
+  "extranetUrl": "http://localhost:8094/index.html",
+  "extranetDomains": [
+    "localhost:8094"
+  ],
+  "productsSupported": [
+    "auto"
+  ]
+}

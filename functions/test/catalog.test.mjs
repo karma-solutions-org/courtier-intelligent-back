@@ -29,12 +29,18 @@ function withCatalog(mutate) {
 const questionnaire = "products/auto/questionnaire.json";
 
 describe("Catalogue du dépôt", () => {
-  it("est valide et contient le produit Auto, les 14 extranets par défaut + les 3 assureurs de démo locale et des offres", () => {
+  it("est valide et contient le produit Auto, les 14 extranets par défaut + les 5 assureurs de démo locale et des offres", () => {
     const { catalog, issues } = loadCatalog();
     assert.deepEqual(issues, []);
-    assert.equal(catalog.insurers.length, 17);
-    // Faux extranets du repo front (extension/demo-extranet*, ports 8090 à 8092).
-    for (const id of ["assureur-test-local", "assureur-horizon-local", "assureur-atlas-local"]) {
+    assert.equal(catalog.insurers.length, 19);
+    // Faux extranets du repo front (extension/demo-extranet*, ports 8090 à 8094).
+    for (const id of [
+      "assureur-test-local",
+      "assureur-horizon-local",
+      "assureur-atlas-local",
+      "assureur-oyat-local",
+      "assureur-zephir-local",
+    ]) {
       assert.ok(
         catalog.insurers.some(i => i.id === id),
         id,

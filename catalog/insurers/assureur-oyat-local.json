@@ -1,0 +1,57 @@
+{
+  "id": "assureur-oyat-local",
+  "name": "Démo type Oyat (locale)",
+  "logo": null,
+  "extranetUrl": "http://localhost:8093/index.html",
+  "extranetDomains": [
+    "localhost:8093"
+  ],
+  "productsSupported": [
+    "auto"
+  ],
+  "questions": {
+    "auto": [
+      "client.phone",
+      "client.email",
+      "client.address.street",
+      "client.address.postalCode",
+      "client.address.city",
+      "driver.lastName",
+      "driver.firstName",
+      "driver.birthDate",
+      "driver.birthCountry",
+      "driver.licenseDate",
+      "driver.licenseCountry",
+      "driver.profession",
+      "insuranceHistory.currentlyInsured",
+      "insuranceHistory.previousContractStartDate",
+      "insuranceHistory.seniority",
+      "insuranceHistory.bonusMalus",
+      "insuranceHistory.claimsCount",
+      "insuranceHistory.wasTerminated",
+      "insuranceHistory.claims.1.type",
+      "insuranceHistory.claims.1.responsibility",
+      "insuranceHistory.claims.1.date",
+      "insuranceHistory.claims.2.type",
+      "insuranceHistory.claims.2.responsibility",
+      "insuranceHistory.claims.2.date",
+      "insuranceHistory.claims.3.type",
+      "insuranceHistory.claims.3.responsibility",
+      "insuranceHistory.claims.3.date",
+      "insuranceHistory.claims.4.type",
+      "insuranceHistory.claims.4.responsibility",
+      "insuranceHistory.claims.4.date",
+      "insuranceHistory.claims.5.type",
+      "insuranceHistory.claims.5.responsibility",
+      "insuranceHistory.claims.5.date",
+      "insuranceHistory.claims.6.type",
+      "insuranceHistory.claims.6.responsibility",
+      "insuranceHistory.claims.6.date",
+      "vehicle.registration",
+      "vehicle.usage",
+      "vehicle.parkingPostalCode",
+      "vehicle.parkingCity",
+      "vehicle.parkingType"
+    ]
+  }
+}
