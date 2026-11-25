@@ -9,6 +9,7 @@ import { call, completeAutoData, DEVICE_A, ops, ouvrir, PASSWORD, signIn } from 
 const require = createRequire(import.meta.url);
 const admin = require("firebase-admin");
 const { createCabinet } = require("../lib/core/cabinet.utils.js");
+const { setCabinetClaims } = require("../lib/core/auth.utils.js");
 
 admin.initializeApp({ projectId: "demo-courtier-intelligent" });
 const db = admin.firestore();
@@ -307,5 +308,44 @@ describe("Annulation, données modifiées, corbeille", () => {
       .doc(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}`)
       .update({ assureId: admin.firestore.FieldValue.delete(), deletedAt: new Date() });
     assert.deepEqual((await call("corbeille-restaurer", token, { kind: "dossier", id: dossierId })).data, { ok: true });
+  });
+});
+
+describe("Fiabilité des extranets (fiabilite-extranets)", () => {
+  it("bilan par assureur des tarifications lancées ci-dessus, avec les incidents de l’extension", async () => {
+    await db.collection("ci_extensionReports").add({
+      insurerId: "allianz",
+      origin: "https://extranet.allianz.fr",
+      step: "extract",
+      issue: "premium_not_found",
+      at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    const { data } = await call("fiabilite-extranets", token, { days: 7 });
+    assert.equal(data.periodDays, 7);
+    assert.equal(data.truncated, false);
+    assert.ok(data.dossiersRead > 0);
+    const allianz = data.insurers.find(insurer => insurer.insurerId === "allianz");
+    assert.ok(allianz.launched > 0);
+    assert.ok(allianz.cancelled > 0, "jobs annulés plus haut");
+    assert.ok(allianz.platformIssuesTotal >= 1);
+    assert.ok(allianz.platformIssues.some(i => i.step === "extract" && i.issue === "premium_not_found"));
+    const april = data.insurers.find(insurer => insurer.insurerId === "april");
+    assert.ok(april.capturedManual >= 1, "offre saisie à la main plus haut");
+  });
+
+  it("refuse une période hors 7, 30 ou 90 jours", async () => {
+    assert.equal((await call("fiabilite-extranets", token, { days: 14 })).error.status, "INVALID_ARGUMENT");
+  });
+
+  it("réservé aux admins du cabinet", async () => {
+    const courtier = await admin.auth().createUser({ email: "courtier-fiabilite@test.fr", password: PASSWORD });
+    await db
+      .doc(`ci_cabinets/${cabinetId}/ci_members/${courtier.uid}`)
+      .set({ email: "courtier-fiabilite@test.fr", role: "courtier", status: "active" });
+    await setCabinetClaims(courtier.uid, cabinetId, "courtier");
+    const courtierToken = await signIn("courtier-fiabilite@test.fr");
+    await ouvrir(courtierToken, DEVICE_A);
+    const { error } = await call("fiabilite-extranets", courtierToken, { days: 30 });
+    assert.equal(error.status, "PERMISSION_DENIED");
   });
 });

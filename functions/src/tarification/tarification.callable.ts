@@ -86,6 +86,9 @@ async function loadPricingInsurer(
 function enterPricing(tx: Transaction, cabinetId: string, dossier: DocumentSnapshot, uid: string): DossierStatus {
   const from = dossier.get("status") as DossierStatus;
   if (from !== "besoin_valide") {
+    // Relance ou autre assureur : le dossier reste en tarification, mais il a bougé. `updatedAt` à jour, il entre dans le
+    // bilan de fiabilité de la période (fiabilite-extranets lit les dossiers modifiés depuis le début de la période).
+    tx.update(dossier.ref, { updatedAt: FieldValue.serverTimestamp() });
     return from;
   }
   tx.update(dossier.ref, { status: "tarification", updatedAt: FieldValue.serverTimestamp() });

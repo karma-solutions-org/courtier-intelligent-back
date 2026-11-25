@@ -42,3 +42,6 @@ export * as ia from "./ia/ia.callable";
 
 // ── Mémoire partagée des formulaires d'extranet (structure seulement) ─────────────────────────
 export * as memoires from "./memoires/memoires.callable";
+
+// ── Fiabilité des extranets : bilan par assureur des tarifications du cabinet et incidents de l'extension (admin) ──
+export * as fiabilite from "./fiabilite/fiabilite.callable";
