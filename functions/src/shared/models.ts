@@ -320,6 +320,16 @@ export interface Dossier {
   createdBy?: string;
   createdAt?: TimestampLike;
   updatedAt?: TimestampLike;
+  /**
+   * Dossier précédent du client dont véhicule, conducteur et antécédents ont été repris à la création (écrit par
+   * `dossiers-creer`), null sinon.
+   */
+  reusedFrom?: { dossierId: string; reference: string | null } | null;
+  /**
+   * Réponses reprises qui peuvent avoir changé (antécédents) : « à vérifier » jusqu'à ce que le courtier les modifie ou
+   * les confirme (`dossiers-sauvegarder`, `verified`).
+   */
+  toVerify?: CanonicalPath[];
   /** Version du questionnaire du produit à la création (`questionnaireUpdatedAt` en ms, null si inconnue). */
   questionnaireVersion?: number | null;
   /**

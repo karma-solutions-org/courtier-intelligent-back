@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "a0947ad97dfef0646bdb59b15a82c5016ffaee56",
+  "sourceCommit": "ee2e8ebef207ade9a2539f692d1cb76be3c32ab6",
   "sourceBranch": "main",
   "files": {
     "ai-prompts.ts": "163ff7ca2df497aa912589770182544195cc4faef53eea85273c669e6a38fef4",
@@ -10,12 +10,13 @@
     "comparison.ts": "1a0a3c94bcf85dd56792c750c965212aafc413ab489fa3456ecfca5248b98cb4",
     "discovered-fields.ts": "c7e6c57272e175ac0776d486c14af3ea23907c991558692847ecec8b02719946",
     "documents.ts": "9e24df8329f15144b3108b120a1acdbe96d99ce8249b0ec80262b50f3efcfe3f",
+    "dossier-reuse.ts": "3b3cec1c698ee01271c447cc861a97c9955d12a1cc95e83c1bc36627083d5555",
     "extension-reports.ts": "b0dc405171b8345a216bffc2bb746e7175581ddde3ef9b81b4106b533e2e1c54",
     "extranet-profiles.ts": "8fc7182a7d4b404b4959336e795fbb56b403ac8175ac7498d6aaafa8a5fe526f",
     "extranet-reliability.ts": "d3e1c879dab9fda6d641b0d91e2278dde31842df45eab7727c2c5aff521f6eb4",
-    "index.ts": "c992684aa16b2e9d25a2f5b8a22504c6a0ad618ebdef89dddf8fe770410ef860",
+    "index.ts": "ebf6062a1427b2350761f8e40a08a28eb7bf888be3f6adc1581b54c749269eda",
     "limits.ts": "4ba47f420bc1bc8b498572fc5a6255d8b4a435496cb5247b9ac59ccb79a3ca60",
-    "models.ts": "95686c1ee430b6093dd56256bf3fafd1ab0081dcf287620b88fd5d7d9e81b429",
+    "models.ts": "686f9d86b92f5f3190adf6fc7102a7d98af440e2d57cd9768ca3367f1f633e2a",
     "need.ts": "baeb234dd417faa3081557af686c8dfb07f942dfef0eaac759e5c50aec1f5082",
     "pricing.ts": "58392f7b8ecadd5aa41a74fc3b132140b6dc5e8e8b55c192aab24823836beb56",
     "proposal.ts": "eaa27dec4847bb09aa9b399146bd2e7a2025cb9fb0eda18876963999ccf1ac45",

@@ -365,3 +365,80 @@ describe("Modification de client (assures-modifier)", () => {
     );
   });
 });
+
+describe("Reprise du dernier dossier du client (dossiers-creer)", () => {
+  const assureId = "assure-reprise";
+  before(async () => {
+    await db.doc(`ci_cabinets/${cabinetId}/ci_assures/${assureId}`).set({
+      type: "particulier",
+      firstName: "Lina",
+      lastName: "Moreau",
+      email: "lina@example.fr",
+      address: { street: "2 rue Haute", postalCode: "69001", city: "Lyon", country: "FR" },
+    });
+  });
+
+  it("premier dossier du client : rien n'est repris", async () => {
+    const created = await dossier((await creer(adminToken, assureId)).data.dossierId);
+    assert.equal(created.reusedFrom, null);
+    assert.deepEqual(created.toVerify, []);
+    assert.equal(created.data["vehicle.brand"], undefined);
+  });
+
+  it("reprend véhicule, conducteur et antécédents du dernier dossier ; les antécédents sont « à vérifier »", async () => {
+    const first = await creer(adminToken, assureId);
+    await call("dossiers-sauvegarder", adminToken, {
+      dossierId: first.data.dossierId,
+      patch: {
+        "vehicle.brand": "Peugeot",
+        "driver.licenseDate": "2010-05-01",
+        "insuranceHistory.bonusMalus": { value: 0.85, knowledge: "KNOWN" },
+        "insuranceHistory.previousInsurer": "MAAF",
+        "client.firstName": "Autre prénom",
+      },
+    });
+    const second = await creer(adminToken, assureId);
+    const created = await dossier(second.data.dossierId);
+    assert.deepEqual(created.reusedFrom, { dossierId: first.data.dossierId, reference: first.data.reference });
+    assert.equal(created.data["vehicle.brand"], "Peugeot");
+    assert.equal(created.data["driver.licenseDate"], "2010-05-01");
+    assert.deepEqual(created.data["insuranceHistory.bonusMalus"], { value: 0.85, knowledge: "KNOWN" });
+    assert.equal(created.data["client.firstName"], "Lina", "le client vient de sa fiche, pas du dossier précédent");
+    assert.deepEqual(created.toVerify.sort(), ["insuranceHistory.bonusMalus", "insuranceHistory.previousInsurer"]);
+    assert.ok(!created.completeness.missing.includes("vehicle.brand"));
+    const [event] = await events(second.data.dossierId);
+    assert.equal(event.data.reusedFrom, first.data.reference);
+    assert.equal(event.data.toVerify, 2);
+  });
+
+  it("ignore un dossier précédent dans la corbeille", async () => {
+    const latest = await creer(adminToken, assureId);
+    await call("dossiers-sauvegarder", adminToken, {
+      dossierId: latest.data.dossierId,
+      patch: { "vehicle.brand": "Fiat" },
+    });
+    await db.doc(`ci_cabinets/${cabinetId}/ci_dossiers/${latest.data.dossierId}`).update({ deletedAt: new Date() });
+    const created = await dossier((await creer(adminToken, assureId)).data.dossierId);
+    assert.equal(created.data["vehicle.brand"], "Peugeot");
+  });
+
+  it("une réponse modifiée ou confirmée n'est plus « à vérifier »", async () => {
+    const created = await creer(adminToken, assureId);
+    const dossierId = created.data.dossierId;
+    await call("dossiers-sauvegarder", adminToken, {
+      dossierId,
+      patch: { "insuranceHistory.bonusMalus": { value: 0.9, knowledge: "KNOWN" } },
+    });
+    assert.deepEqual((await dossier(dossierId)).toVerify, ["insuranceHistory.previousInsurer"]);
+    await call("dossiers-sauvegarder", adminToken, {
+      dossierId,
+      patch: {},
+      verified: ["insuranceHistory.previousInsurer"],
+    });
+    const saved = await dossier(dossierId);
+    assert.deepEqual(saved.toVerify, []);
+    assert.equal(saved.data["insuranceHistory.previousInsurer"], "MAAF", "confirmer ne change pas la réponse");
+    const refused = await call("dossiers-sauvegarder", adminToken, { dossierId, patch: {}, verified: "x" });
+    assert.equal(refused.error?.status, "INVALID_ARGUMENT");
+  });
+});

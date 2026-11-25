@@ -24,3 +24,4 @@ export * from './vehicle-lookup.js';
 export * from './ai-prompts.js';
 export * from './extranet-profiles.js';
 export * from './public-suffix.js';
+export * from './dossier-reuse.js';

@@ -25,6 +25,7 @@ import {
   buildJobQuoteData,
   isTransitionAllowed,
   questionFor,
+  reusableAnswers,
   supportsProduct,
   validateAnswer,
   withAddedComplements,
@@ -33,6 +34,7 @@ import {
   type DossierStatus,
   type QuestionnaireSection,
   type QuoteJobStatus,
+  type ReusedFrom,
 } from "../shared/index.js";
 
 const MAX_PATCH_FIELDS = 100;
@@ -58,6 +60,36 @@ function prefillFromAssure(schema: QuestionnaireSection[], assure: admin.firesto
     }
   }
   return data as CanonicalData;
+}
+
+/**
+ * Dernier dossier du client pour le même produit (hors corbeille) dont des réponses se reprennent : véhicule,
+ * conducteur et antécédents (voir `reusableAnswers`). Le plus récent d'abord ; un brouillon vide est ignoré.
+ */
+async function reuseLastDossier(
+  tx: admin.firestore.Transaction,
+  cabinetId: string,
+  assureId: string,
+  productId: string,
+  schema: QuestionnaireSection[],
+): Promise<{ data: CanonicalData; toVerify: CanonicalPath[]; reusedFrom: ReusedFrom } | null> {
+  const db = admin.firestore();
+  const dossiers = await tx.get(
+    db.collection(dossiersPath(cabinetId)).where("assureId", "==", assureId).where("productId", "==", productId),
+  );
+  const createdAt = (doc: admin.firestore.QueryDocumentSnapshot) =>
+    (doc.get("createdAt") as admin.firestore.Timestamp | undefined)?.toMillis() ?? 0;
+  const candidates = dossiers.docs.filter(doc => !doc.get("deletedAt")).sort((a, b) => createdAt(b) - createdAt(a));
+  for (const doc of candidates) {
+    const reused = reusableAnswers(schema, (doc.get("data") as CanonicalData | undefined) ?? {});
+    if (Object.keys(reused.data).length) {
+      return {
+        ...reused,
+        reusedFrom: { dossierId: doc.id, reference: (doc.get("reference") as string | null) ?? null },
+      };
+    }
+  }
+  return null;
 }
 
 /**
@@ -150,7 +182,9 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
     }
 
     const schema = product.get("questionnaireSchema") as QuestionnaireSection[];
-    const data = prefillFromAssure(schema, assure);
+    // Véhicule, conducteur et antécédents repris du dernier dossier du client ; le client vient de sa fiche.
+    const reused = await reuseLastDossier(tx, cabinetId, assureId, productId, schema);
+    const data = { ...(reused?.data ?? {}), ...prefillFromAssure(schema, assure) } as CanonicalData;
     // Complétude initiale sur le questionnaire du dossier (extranets du cabinet, socle et compléments), comme à chaque
     // enregistrement : une question facultative pour ces extranets ne compte pas parmi les champs manquants.
     const { questionnaireSchema } = await loadProduct(tx, cabinetId, productId);
@@ -171,6 +205,8 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
       questionnaireVersion:
         (product.get("questionnaireUpdatedAt") as admin.firestore.Timestamp | undefined)?.toMillis() ?? null,
       questionnaireSnapshot: null,
+      reusedFrom: reused?.reusedFrom ?? null,
+      toVerify: reused?.toVerify ?? [],
       needAnalysis: null,
       decision: null,
       proposal: null,
@@ -179,7 +215,18 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-    addEvent(tx, cabinetId, dossierRef.id, uid, "created", { reference, productId, assureId });
+    addEvent(tx, cabinetId, dossierRef.id, uid, "created", {
+      reference,
+      productId,
+      assureId,
+      ...(reused
+        ? {
+            reusedFrom: reused.reusedFrom.reference,
+            reused: Object.keys(reused.data).length,
+            toVerify: reused.toVerify.length,
+          }
+        : {}),
+    });
     return reference;
   });
 
@@ -208,6 +255,13 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
   const sectionIndex = request.data?.sectionIndex;
   if (sectionIndex !== undefined && (!Number.isInteger(sectionIndex) || sectionIndex < 0 || sectionIndex > 100)) {
     throw new HttpsError("invalid-argument", "Section invalide.");
+  }
+  const verified = request.data?.verified;
+  if (
+    verified !== undefined &&
+    (!Array.isArray(verified) || verified.length > MAX_PATCH_FIELDS || verified.some(path => typeof path !== "string"))
+  ) {
+    throw new HttpsError("invalid-argument", "Champs vérifiés invalides.");
   }
   const insurerIds = request.data?.insurerIds;
   if (
@@ -347,6 +401,11 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
       }
     }
 
+    // Réponses reprises « à vérifier » : une réponse modifiée ou confirmée par le courtier ne l'est plus.
+    const toVerify = (dossier.get("toVerify") as CanonicalPath[] | undefined) ?? [];
+    const checked = new Set<string>([...entries.map(([path]) => path), ...((verified as string[] | undefined) ?? [])]);
+    const stillToVerify = toVerify.filter(path => !checked.has(path));
+
     if (pricingInsurers?.added.length) {
       addEvent(tx, cabinetId, dossierId, uid, "insurers_added", {
         insurers: pricingInsurers.added,
@@ -358,6 +417,7 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
       data,
       completeness,
       status: newStatus,
+      ...(stillToVerify.length !== toVerify.length ? { toVerify: stillToVerify } : {}),
       ...(sectionIndex !== undefined ? { draft: { sectionIndex } } : {}),
       ...(insurerIds !== undefined && !pricing ? { insurerIds: [...new Set(insurerIds as string[])] } : {}),
       ...(pricingInsurers?.added.length

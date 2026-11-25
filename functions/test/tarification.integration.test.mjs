@@ -332,8 +332,8 @@ describe("Assureur ajouté pendant la tarification", () => {
   /** Dossier en tarification chez A, sans la réponse que B exige (facultative pour A). */
   async function pricingAtA() {
     const { dossierId } = (await call("dossiers-creer", token, { assureId: "assure-1", productId: "auto" })).data;
-    const data = completeAutoData();
-    delete data[PATH];
+    // Réponse effacée : un dossier précédent du client a pu la fournir (reprise du dernier dossier).
+    const data = { ...completeAutoData(), [PATH]: null };
     assert.ok((await call("dossiers-sauvegarder", token, { dossierId, insurerIds: [A], patch: data })).data);
     assert.ok((await call("dossiers-changerStatut", token, { dossierId, status: "complet" })).data);
     await call("dossiers-enregistrerBesoin", token, {
