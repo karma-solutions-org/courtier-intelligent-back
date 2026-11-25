@@ -3,7 +3,7 @@
 // il est signalé au serveur (function champs-signaler) qui l'ajoute automatiquement au questionnaire du produit,
 // dans la section « Questions des assureurs ». Règles communes à l'extension (ce qui est signalé) et au serveur
 // (filtre, fusion des doublons, construction de la question).
-import { ExtraCanonicalPath } from './canonical-paths.js';
+import { CanonicalPath, ExtraCanonicalPath } from './canonical-paths.js';
 import { DiscoverySource, FormFieldKind, Question, QuestionChoice, QuestionnaireSection, QuestionType } from './models.js';
 import { findMatchingQuestion, shapeOf } from './question-matching.js';
 import { foldText } from './text.js';
@@ -478,6 +478,45 @@ export function schemaWithComplements(
     .flatMap(section => section.questions.filter(question => !kept.has(question.canonicalPath)))
     .map(question => ({ ...question, required: false, ...(question.withKnowledge ? { mustBeKnown: false } : {}) }));
   return optional.length ? [...main, { title: OPTIONAL_SECTION_TITLE, questions: optional, optional: true }] : main;
+}
+
+/**
+ * Assureur ajouté pendant la tarification (lot B) : le questionnaire figé du dossier (`snapshot`) reçoit les questions
+ * que le questionnaire recalculé pour les nouveaux extranets (`fresh`, voir schemaWithComplements) pose en dehors de la
+ * section facultative et qui manquent au questionnaire figé ou n'y sont que facultatives. Elles prennent la définition de
+ * `fresh` (donc leur caractère obligatoire) et rejoignent la section de même titre (créée avant la section facultative
+ * au besoin). Le reste du questionnaire figé ne change pas. Renvoie aussi les chemins ajoutés. Pure.
+ */
+export function withAddedComplements(
+  snapshot: QuestionnaireSection[],
+  fresh: QuestionnaireSection[],
+): { schema: QuestionnaireSection[]; added: CanonicalPath[] } {
+  const asked = new Set(
+    snapshot.filter(section => !section.optional).flatMap(section => section.questions.map(question => question.canonicalPath as string)),
+  );
+  const additions = fresh
+    .filter(section => !section.optional)
+    .map(section => ({ section, questions: section.questions.filter(question => !asked.has(question.canonicalPath)) }))
+    .filter(group => group.questions.length > 0);
+  if (!additions.length) return { schema: snapshot, added: [] };
+
+  const added = additions.flatMap(group => group.questions.map(question => question.canonicalPath));
+  const addedSet = new Set<string>(added);
+  // Retire les questions promues de la section facultative (supprimée si elle se vide).
+  let schema = snapshot
+    .map(section => (section.optional ? { ...section, questions: section.questions.filter(question => !addedSet.has(question.canonicalPath)) } : section))
+    .filter(section => !section.optional || section.questions.length > 0);
+  for (const { section, questions } of additions) {
+    const index = schema.findIndex(existing => !existing.optional && existing.title === section.title);
+    if (index >= 0) {
+      schema = schema.map((existing, i) => (i === index ? { ...existing, questions: [...existing.questions, ...questions] } : existing));
+    } else {
+      const optional = schema.findIndex(existing => existing.optional);
+      const created = { ...section, questions };
+      schema = optional < 0 ? [...schema, created] : [...schema.slice(0, optional), created, ...schema.slice(optional)];
+    }
+  }
+  return { schema, added };
 }
 
 /** Nombre de questions posées au courtier (hors section facultative), pour mesurer la saisie demandée. */

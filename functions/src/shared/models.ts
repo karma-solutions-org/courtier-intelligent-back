@@ -391,7 +391,9 @@ export type DossierEventType =
   | 'proposal_sent'
   | 'outcome_recorded'
   | 'pricing_cancelled'
-  | 'offers_stale';
+  | 'offers_stale'
+  /** Assureurs ajoutés pendant la tarification (data : { insurers: ids ajoutés, questions: nombre de questions ajoutées }). */
+  | 'insurers_added';
 
 export interface DossierEvent {
   id: string;

@@ -12,6 +12,7 @@ import {
   dossiersPath,
   memberPath,
   cabinetPath,
+  insurerPath,
   productPath,
 } from "../core/firestore-paths";
 import {
@@ -24,8 +25,11 @@ import {
   buildJobQuoteData,
   isTransitionAllowed,
   questionFor,
+  supportsProduct,
   validateAnswer,
+  withAddedComplements,
   type CanonicalData,
+  type CanonicalPath,
   type DossierStatus,
   type QuestionnaireSection,
   type QuoteJobStatus,
@@ -54,6 +58,54 @@ function prefillFromAssure(schema: QuestionnaireSection[], assure: admin.firesto
     }
   }
   return data as CanonicalData;
+}
+
+/**
+ * Extranets envoyés pendant la tarification : un assureur choisi ne se retire plus (ses tarifs et son job en dépendent),
+ * on ne peut qu'en ajouter. Les ajoutés doivent tarifer le produit du dossier et être activés par le cabinet (aucun
+ * choix = tous), comme pour tarification-lancer. Liste identique : `added` vide, rien ne change.
+ * `frozen` : le dossier a un questionnaire figé (à compléter avec les questions des nouveaux assureurs).
+ */
+async function addedInsurers(
+  tx: admin.firestore.Transaction,
+  cabinetId: string,
+  dossier: admin.firestore.DocumentSnapshot,
+  requested: string[],
+): Promise<{ insurerIds: string[]; added: string[]; frozen: boolean }> {
+  const chosen = (dossier.get("insurerIds") as string[] | undefined) ?? [];
+  const next = new Set(requested);
+  if (chosen.some(id => !next.has(id))) {
+    throw new HttpsError("failed-precondition", "Un assureur choisi ne peut pas être retiré pendant la tarification.", {
+      reason: "pricing_remove",
+    });
+  }
+  const added = [...next].filter(id => !chosen.includes(id));
+  const snapshot = dossier.get("questionnaireSnapshot") as QuestionnaireSection[] | null | undefined;
+  const frozen = Array.isArray(snapshot) && snapshot.length > 0;
+  if (!added.length) return { insurerIds: chosen, added, frozen };
+
+  const db = admin.firestore();
+  const [cabinet, ...insurers] = await Promise.all([
+    tx.get(db.doc(cabinetPath(cabinetId))),
+    ...added.map(id => tx.get(db.doc(insurerPath(id)))),
+  ]);
+  const enabled = (cabinet.get("enabledInsurers") as string[] | undefined) ?? [];
+  const productId = dossier.get("productId") as string;
+  for (const insurer of insurers) {
+    const productsSupported = (insurer.get("productsSupported") as string[] | undefined) ?? [];
+    if (
+      !insurer.exists ||
+      !supportsProduct({ productsSupported }, productId) ||
+      (enabled.length > 0 && !enabled.includes(insurer.id))
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Cet assureur n'est pas disponible pour ce produit dans votre cabinet.",
+        { reason: "insurer_not_available", insurerId: insurer.id },
+      );
+    }
+  }
+  return { insurerIds: [...chosen, ...added], added, frozen };
 }
 
 /**
@@ -139,6 +191,8 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
  * Chaque champ est contrôlé : il doit appartenir au questionnaire du produit et avoir le bon type.
  * `sectionIndex` mémorise où le courtier s'est arrêté ; `insurerIds`, les extranets choisis ; `event` trace la
  * modification dans l'historique.
+ * En tarification, `insurerIds` ne peut qu'ajouter des assureurs : le questionnaire figé reçoit leurs compléments
+ * (withAddedComplements), dont les réponses obligatoires doivent arriver dans le même `patch` (événement `insurers_added`).
  */
 export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
   const { cabinetId, uid } = await getActiveMembership(request);
@@ -183,18 +237,28 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
       throw new HttpsError("failed-precondition", "Ce dossier n'est plus modifiable.", { reason: "not_editable" });
     }
     const pricing = status === "tarification";
-    // Les extranets se choisissent avant la tarification (lancée sur ceux-là).
-    if (pricing && insurerIds !== undefined) {
-      throw new HttpsError("failed-precondition", "Les extranets ne se changent plus pendant la tarification.", {
-        reason: "pricing",
-      });
+    // Pendant la tarification, la liste des extranets ne peut que s'allonger (assureur ajouté) : `pricingInsurers`
+    // dit ce qui change, et le questionnaire figé reçoit les compléments que les nouveaux assureurs exigent.
+    const pricingInsurers =
+      pricing && insurerIds !== undefined ? await addedInsurers(tx, cabinetId, dossier, insurerIds) : null;
+    let schema: QuestionnaireSection[];
+    let addedQuestions: CanonicalPath[] = [];
+    if (pricingInsurers?.added.length) {
+      const current = await dossierSchema(tx, cabinetId, dossier);
+      const fresh = (await loadProduct(tx, cabinetId, dossier.get("productId"), pricingInsurers.insurerIds))
+        .questionnaireSchema;
+      const merged = withAddedComplements(current, fresh);
+      addedQuestions = merged.added;
+      // Sans questionnaire figé (rien à compléter), le questionnaire de référence est celui des nouveaux extranets.
+      schema = pricingInsurers.frozen ? merged.schema : fresh;
+    } else {
+      schema = await dossierSchema(
+        tx,
+        cabinetId,
+        dossier,
+        insurerIds !== undefined && !pricing ? { insurerIds: insurerIds as string[] } : {},
+      );
     }
-    const schema = await dossierSchema(
-      tx,
-      cabinetId,
-      dossier,
-      insurerIds !== undefined ? { insurerIds: insurerIds as string[] } : {},
-    );
     // Lectures avant toute écriture (transaction) : tarifications et tarifs du dossier.
     const jobs = pricing ? await tx.get(ref.collection("ci_quoteJobs")) : null;
     const offers = pricing ? await tx.get(ref.collection("ci_offers")) : null;
@@ -220,6 +284,15 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
     const emptied = pricing
       ? completeness.missing.filter(path => !computeCompleteness(schema, previous).missing.includes(path))
       : [];
+    // Assureur ajouté : ses questions obligatoires (visibles) se renseignent dans le même enregistrement, sinon rien n'est écrit.
+    const unanswered = completeness.missing.filter(path => addedQuestions.includes(path));
+    if (unanswered.length) {
+      const labels = unanswered.map(path => questionFor(schema, path)?.label ?? path);
+      throw new HttpsError("invalid-argument", `Renseignez : ${labels.join(", ")}.`, {
+        reason: "incomplete",
+        missing: unanswered,
+      });
+    }
     if (emptied.length) {
       throw new HttpsError(
         "failed-precondition",
@@ -247,12 +320,16 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
     }
 
     if (pricing && jobs && offers) {
+      // Première réponse à une question ajoutée avec un assureur : rien de ce qui a servi aux tarifs ne change.
+      const firstAnswer = (path: string) =>
+        addedQuestions.includes(path as CanonicalPath) && (previous[path as keyof CanonicalData] ?? null) === null;
       const changed = entries
         .map(([path]) => path)
         .filter(
           path =>
+            !firstAnswer(path) &&
             JSON.stringify(previous[path as keyof CanonicalData] ?? null) !==
-            JSON.stringify(data[path as keyof CanonicalData] ?? null),
+              JSON.stringify(data[path as keyof CanonicalData] ?? null),
         );
       if (changed.length) {
         // Tarifications en cours : nouvelles données (signal de reprise pour l'extension, comme tarification-completer).
@@ -270,12 +347,25 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
       }
     }
 
+    if (pricingInsurers?.added.length) {
+      addEvent(tx, cabinetId, dossierId, uid, "insurers_added", {
+        insurers: pricingInsurers.added,
+        questions: addedQuestions.length,
+      });
+    }
+
     tx.update(ref, {
       data,
       completeness,
       status: newStatus,
       ...(sectionIndex !== undefined ? { draft: { sectionIndex } } : {}),
-      ...(insurerIds !== undefined ? { insurerIds: [...new Set(insurerIds as string[])] } : {}),
+      ...(insurerIds !== undefined && !pricing ? { insurerIds: [...new Set(insurerIds as string[])] } : {}),
+      ...(pricingInsurers?.added.length
+        ? {
+            insurerIds: pricingInsurers.insurerIds,
+            ...(pricingInsurers.frozen ? { questionnaireSnapshot: schema } : {}),
+          }
+        : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
     return { status: newStatus, completeness };

@@ -311,6 +311,109 @@ describe("Annulation, données modifiées, corbeille", () => {
   });
 });
 
+describe("Assureur ajouté pendant la tarification", () => {
+  // Deux assureurs de test : A ne demande aucun complément, B exige la catégorie socio-professionnelle (hors socle).
+  const A = "lotb-assureur-a";
+  const B = "lotb-assureur-b";
+  const PATH = "driver.socioProfessionalCategory";
+  const sauvegarder = (dossierId, insurerIds, patch = {}) =>
+    call("dossiers-sauvegarder", token, { dossierId, insurerIds, patch });
+
+  before(async () => {
+    const base = {
+      name: "Assureur de test",
+      extranetUrl: "https://extranet.test/",
+      extranetDomains: ["extranet.test"],
+    };
+    await db.doc(`ci_insurers/${A}`).set({ ...base, productsSupported: ["auto"], questions: { auto: [] } });
+    await db.doc(`ci_insurers/${B}`).set({ ...base, productsSupported: ["auto"], questions: { auto: [PATH] } });
+  });
+
+  /** Dossier en tarification chez A, sans la réponse que B exige (facultative pour A). */
+  async function pricingAtA() {
+    const { dossierId } = (await call("dossiers-creer", token, { assureId: "assure-1", productId: "auto" })).data;
+    const data = completeAutoData();
+    delete data[PATH];
+    assert.ok((await call("dossiers-sauvegarder", token, { dossierId, insurerIds: [A], patch: data })).data);
+    assert.ok((await call("dossiers-changerStatut", token, { dossierId, status: "complet" })).data);
+    await call("dossiers-enregistrerBesoin", token, {
+      dossierId,
+      need: {
+        coverageLevel: "tous_risques",
+        budgetMax: 700,
+        maxDeductible: 300,
+        mandatoryGuarantees: ["RC"],
+        niceToHave: [],
+        notes: null,
+      },
+    });
+    assert.ok((await call("dossiers-validerBesoin", token, { dossierId })).data);
+    assert.equal((await lancer(dossierId, A)).data.dossierStatus, "tarification");
+    return dossierId;
+  }
+
+  it("exige les réponses aux compléments du nouvel assureur, puis fige le questionnaire complété", async () => {
+    const dossierId = await pricingAtA();
+    const before = await dossier(dossierId);
+    const optional = before.questionnaireSnapshot.find(section => section.optional);
+    assert.ok(optional.questions.some(question => question.canonicalPath === PATH));
+    const jobA = await job(dossierId, A);
+
+    const refused = await sauvegarder(dossierId, [A, B]);
+    assert.equal(refused.error.status, "INVALID_ARGUMENT");
+    assert.equal(refused.error.details.reason, "incomplete");
+    assert.deepEqual(refused.error.details.missing, [PATH]);
+    assert.match(refused.error.message, /^Renseignez : .+\.$/);
+    assert.deepEqual((await dossier(dossierId)).insurerIds, [A]);
+
+    const { data } = await sauvegarder(dossierId, [A, B], { [PATH]: "cadre" });
+    assert.equal(data.status, "tarification");
+    const after = await dossier(dossierId);
+    assert.deepEqual(after.insurerIds, [A, B]);
+    assert.equal(after.data[PATH], "cadre");
+    const asked = after.questionnaireSnapshot
+      .filter(section => !section.optional)
+      .flatMap(section => section.questions)
+      .find(question => question.canonicalPath === PATH);
+    assert.equal(asked?.required, true);
+    assert.ok(
+      !after.questionnaireSnapshot
+        .filter(section => section.optional)
+        .some(section => section.questions.some(question => question.canonicalPath === PATH)),
+    );
+    const events = (await db.collection(`ci_cabinets/${cabinetId}/ci_dossiers/${dossierId}/ci_events`).get()).docs;
+    const added = events.filter(event => event.get("type") === "insurers_added");
+    assert.equal(added.length, 1);
+    assert.deepEqual(added[0].get("data"), { insurers: [B], questions: 1 });
+    // Tarification en cours chez A : intacte (première réponse à une question ajoutée).
+    assert.deepEqual(await job(dossierId, A), jobA);
+    assert.ok(!(await eventTypes(dossierId)).includes("offers_stale"));
+
+    // Lancer chez B : le job part avec le questionnaire complété.
+    assert.ok((await lancer(dossierId, B)).data);
+    const jobB = await job(dossierId, B);
+    assert.ok(jobB.productPaths.includes(PATH));
+    assert.equal(jobB.quoteData[PATH], "cadre");
+  });
+
+  it("refuse de retirer un assureur choisi ; une liste identique ne change rien", async () => {
+    const dossierId = await pricingAtA();
+    const removed = await sauvegarder(dossierId, [B]);
+    assert.equal(removed.error.status, "FAILED_PRECONDITION");
+    assert.equal(removed.error.details.reason, "pricing_remove");
+
+    const before = await dossier(dossierId);
+    assert.ok((await sauvegarder(dossierId, [A])).data);
+    const after = await dossier(dossierId);
+    assert.deepEqual(after.insurerIds, [A]);
+    assert.deepEqual(after.questionnaireSnapshot, before.questionnaireSnapshot);
+    assert.ok(!(await eventTypes(dossierId)).includes("insurers_added"));
+
+    const unknown = await sauvegarder(dossierId, [A, "assureur-inconnu"]);
+    assert.equal(unknown.error.details.reason, "insurer_not_available");
+  });
+});
+
 describe("Fiabilité des extranets (fiabilite-extranets)", () => {
   it("bilan par assureur des tarifications lancées ci-dessus, avec les incidents de l’extension", async () => {
     await db.collection("ci_extensionReports").add({
