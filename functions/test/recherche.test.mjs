@@ -49,7 +49,12 @@ describe("Documents indexés", () => {
   });
 
   it("un dossier porte le nom de son client", () => {
-    const doc = toDossierSearchDoc("cab1", "d1", { assureId: "a1", reference: "2026-000001", status: "brouillon" }, "Corinne Berthier");
+    const doc = toDossierSearchDoc(
+      "cab1",
+      "d1",
+      { assureId: "a1", reference: "2026-000001", status: "brouillon" },
+      "Corinne Berthier",
+    );
     assert.equal(doc.assureName, "Corinne Berthier");
     assert.equal(doc.cabinetId, "cab1");
     assert.equal(doc.deleted, false);
@@ -72,14 +77,19 @@ describe("Requête de recherche", () => {
 
   it("sans texte : tout le cabinet, sans clause de correspondance", () => {
     const query = buildSearchQuery("cab1", "", ASSURE_SEARCH_FIELDS, { deleted: true });
-    assert.deepEqual(query, { bool: { filter: [{ term: { "cabinetId.keyword": "cab1" } }, { term: { deleted: true } }] } });
+    assert.deepEqual(query, {
+      bool: { filter: [{ term: { "cabinetId.keyword": "cab1" } }, { term: { deleted: true } }] },
+    });
   });
 
   it("neutralise les caractères spéciaux de la syntaxe de recherche", () => {
     const query = buildSearchQuery("cab1", 'ber*th"ier OR (x)', ASSURE_SEARCH_FIELDS, { deleted: false });
     const wildcard = query.bool.should[2].query_string.query;
     assert.equal(wildcard, "*ber* AND *th* AND *ier* AND *or* AND *x*");
-    assert.deepEqual(query.bool.should[2].query_string.fields, ASSURE_SEARCH_FIELDS.map(f => f.split("^")[0]));
+    assert.deepEqual(
+      query.bool.should[2].query_string.fields,
+      ASSURE_SEARCH_FIELDS.map(f => f.split("^")[0]),
+    );
   });
 
   it("borne la saisie et la pagination", () => {
@@ -110,7 +120,10 @@ describe("Préfixe des index", () => {
 describe("Filtres, période et tri", () => {
   it("filtres des dossiers : valeurs connues seulement, en liste", () => {
     assert.deepEqual(dossierTerms({ status: ["brouillon", "inconnu"], productId: "auto", assignedTo: ["u 1", "u1"] }), {
-      status: ["brouillon"], productId: ["auto"], assignedTo: ["u1"], assureId: [],
+      status: ["brouillon"],
+      productId: ["auto"],
+      assignedTo: ["u1"],
+      assureId: [],
     });
   });
 
@@ -118,7 +131,11 @@ describe("Filtres, période et tri", () => {
     const period = periodOf("deletedAt", { from: "2026-01-01T00:00:00Z", to: 5 });
     assert.deepEqual(period, { field: "deletedAt", gte: Date.parse("2026-01-01T00:00:00Z"), lte: 5 });
     assert.equal(periodOf("deletedAt", {}), null);
-    const query = buildSearchQuery("cab1", "", DOSSIER_SEARCH_FIELDS, { deleted: true, terms: { status: ["refuse"] }, period });
+    const query = buildSearchQuery("cab1", "", DOSSIER_SEARCH_FIELDS, {
+      deleted: true,
+      terms: { status: ["refuse"] },
+      period,
+    });
     assert.deepEqual(query.bool.filter.slice(2), [
       { terms: { "status.keyword": ["refuse"] } },
       { range: { deletedAt: { gte: period.gte, lte: 5 } } },
@@ -126,7 +143,9 @@ describe("Filtres, période et tri", () => {
   });
 
   it("sans texte : les plus récents d'abord ; avec texte : pertinence", () => {
-    assert.deepEqual(sortOf("", "deletedAt"), [{ deletedAt: { order: "desc", missing: "_last", unmapped_type: "long" } }]);
+    assert.deepEqual(sortOf("", "deletedAt"), [
+      { deletedAt: { order: "desc", missing: "_last", unmapped_type: "long" } },
+    ]);
     assert.deepEqual(sortOf("dupont", "deletedAt"), []);
   });
 });

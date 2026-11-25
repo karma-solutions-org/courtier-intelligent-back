@@ -13,7 +13,9 @@ import { CALLABLE_OPTIONS, CLAIM_CABINET_ID } from "../core/config";
 export const creerMonCabinet = onCall(CALLABLE_OPTIONS, async request => {
   const uid = assertSignedIn(request);
   if (request.auth?.token.email_verified !== true) {
-    throw new HttpsError("failed-precondition", "Vérifiez votre adresse email avant de créer votre cabinet.", { reason: "email_not_verified" });
+    throw new HttpsError("failed-precondition", "Vérifiez votre adresse email avant de créer votre cabinet.", {
+      reason: "email_not_verified",
+    });
   }
   if (request.auth?.token[CLAIM_CABINET_ID]) {
     throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.");
@@ -21,10 +23,14 @@ export const creerMonCabinet = onCall(CALLABLE_OPTIONS, async request => {
   // Membre d'un cabinet (claims pas encore rafraîchis, ou compte d'avant le verrou ci_userCabinets) : refusé.
   const user = await admin.auth().getUser(uid);
   if (user.customClaims?.[CLAIM_CABINET_ID]) {
-    throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", { reason: "already_member" });
+    throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", {
+      reason: "already_member",
+    });
   }
   if (user.email && (await hasLiveMembership(uid, user.email))) {
-    throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", { reason: "already_member" });
+    throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", {
+      reason: "already_member",
+    });
   }
 
   const name = requireString(request.data?.name, "nom du cabinet", 120);
@@ -42,13 +48,16 @@ async function hasLiveMembership(uid: string, email: string): Promise<boolean> {
   const memberships = await admin.firestore().collectionGroup("ci_members").where("email", "==", email).limit(10).get();
   for (const member of memberships.docs) {
     if (member.id === uid) return true;
-    const exists = await admin.auth().getUser(member.id).then(
-      () => true,
-      (error: { code?: string }) => {
-        if (error.code === "auth/user-not-found") return false;
-        throw error;
-      },
-    );
+    const exists = await admin
+      .auth()
+      .getUser(member.id)
+      .then(
+        () => true,
+        (error: { code?: string }) => {
+          if (error.code === "auth/user-not-found") return false;
+          throw error;
+        },
+      );
     if (exists) return true;
   }
   return false;

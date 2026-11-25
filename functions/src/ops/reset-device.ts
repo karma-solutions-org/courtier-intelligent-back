@@ -28,7 +28,14 @@ run(async () => {
   if (!args.uid === !args.email) {
     fail(`Indiquez --uid ou --email (un seul des deux).\n\nUsage : ${USAGE}`);
   }
-  const uid = args.uid?.trim() || (await admin.auth().getUserByEmail(args.email!.trim().toLowerCase()).catch(() => null))?.uid;
+  const uid =
+    args.uid?.trim() ||
+    (
+      await admin
+        .auth()
+        .getUserByEmail(args.email!.trim().toLowerCase())
+        .catch(() => null)
+    )?.uid;
   if (!uid) {
     fail(`Aucun compte pour ${args.email}.`);
   }
@@ -41,7 +48,9 @@ run(async () => {
   const devices = [member.get("device"), ...((member.get("extraDevices") as BoundDevice[] | undefined) ?? [])].filter(
     Boolean,
   ) as BoundDevice[];
-  console.log(`Membre ${uid} (${String(member.get("email") ?? "?")}, ${String(member.get("role"))}, ${String(member.get("status"))})`);
+  console.log(
+    `Membre ${uid} (${String(member.get("email") ?? "?")}, ${String(member.get("role"))}, ${String(member.get("status"))})`,
+  );
   console.log(
     devices.length
       ? devices.map(device => `  appareil lié : ${device.label ?? "(sans nom)"} [${device.id}]`).join("\n")
@@ -52,7 +61,9 @@ run(async () => {
     return;
   }
   if (!args.yes) {
-    console.log("\nSimulation : relancez avec --yes pour réinitialiser (le quota mensuel du cabinet n'est pas consommé).");
+    console.log(
+      "\nSimulation : relancez avec --yes pour réinitialiser (le quota mensuel du cabinet n'est pas consommé).",
+    );
     return;
   }
 

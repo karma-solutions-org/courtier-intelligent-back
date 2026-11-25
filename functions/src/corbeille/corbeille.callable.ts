@@ -5,7 +5,13 @@ import { assertCabinetAdmin, requireId } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { assurePath, dossierPath, dossiersPath } from "../core/firestore-paths";
 import { cancelledJobUpdate } from "../core/dossier.utils";
-import { ACTIVE_QUOTE_JOB_STATUSES, assureDocumentsFolder, PROTECTED_DOSSIER_STATUSES, type DossierStatus, type QuoteJobStatus } from "../shared/index.js";
+import {
+  ACTIVE_QUOTE_JOB_STATUSES,
+  assureDocumentsFolder,
+  PROTECTED_DOSSIER_STATUSES,
+  type DossierStatus,
+  type QuoteJobStatus,
+} from "../shared/index.js";
 
 /**
  * Corbeille : un client ou un dossier supprimé n'est pas effacé, il est marqué (`deletedAt`, `deletedBy`) et disparaît
@@ -35,7 +41,9 @@ async function existing(ref: admin.firestore.DocumentReference) {
 }
 
 /** Écrit des mises à jour par lots (un lot Firestore est limité à 500 écritures). */
-async function updateInChunks(updates: { ref: admin.firestore.DocumentReference; data: admin.firestore.UpdateData<admin.firestore.DocumentData> }[]) {
+async function updateInChunks(
+  updates: { ref: admin.firestore.DocumentReference; data: admin.firestore.UpdateData<admin.firestore.DocumentData> }[],
+) {
   for (let i = 0; i < updates.length; i += 400) {
     const batch = admin.firestore().batch();
     for (const { ref, data } of updates.slice(i, i + 400)) batch.update(ref, data);
@@ -98,11 +106,18 @@ export const restaurer = onCall(CALLABLE_OPTIONS, async request => {
   if (kind === "dossier") {
     // Dossier sans client (donnée ancienne ou incomplète) : rien à vérifier côté client.
     const assureId = snapshot.get("assureId");
-    const assure = typeof assureId === "string" && assureId ? await admin.firestore().doc(assurePath(cabinetId, assureId)).get() : null;
+    const assure =
+      typeof assureId === "string" && assureId
+        ? await admin.firestore().doc(assurePath(cabinetId, assureId)).get()
+        : null;
     if (assure?.get("deletedAt")) {
-      throw new HttpsError("failed-precondition", "Le client de ce dossier est dans la corbeille : restaurez d'abord le client.", {
-        reason: "assure_deleted",
-      });
+      throw new HttpsError(
+        "failed-precondition",
+        "Le client de ce dossier est dans la corbeille : restaurez d'abord le client.",
+        {
+          reason: "assure_deleted",
+        },
+      );
     }
     await ref.update(unmark);
     return { ok: true };
@@ -144,9 +159,13 @@ export const supprimerDefinitivement = onCall({ ...CALLABLE_OPTIONS, timeoutSeco
     PROTECTED_DOSSIER_STATUSES.includes(dossier.get("status") as DossierStatus);
   if (kind === "dossier") {
     if (isProtected(snapshot)) {
-      throw new HttpsError("failed-precondition", "Un dossier dont la proposition a été envoyée ne peut pas être supprimé définitivement.", {
-        reason: "dossier_protected",
-      });
+      throw new HttpsError(
+        "failed-precondition",
+        "Un dossier dont la proposition a été envoyée ne peut pas être supprimé définitivement.",
+        {
+          reason: "dossier_protected",
+        },
+      );
     }
     await removeDossier(id);
     return { ok: true };
@@ -160,9 +179,13 @@ export const supprimerDefinitivement = onCall({ ...CALLABLE_OPTIONS, timeoutSeco
     });
   }
   if (dossiers.docs.some(isProtected)) {
-    throw new HttpsError("failed-precondition", "Ce client a un dossier dont la proposition a été envoyée : il ne peut pas être supprimé définitivement.", {
-      reason: "dossier_protected",
-    });
+    throw new HttpsError(
+      "failed-precondition",
+      "Ce client a un dossier dont la proposition a été envoyée : il ne peut pas être supprimé définitivement.",
+      {
+        reason: "dossier_protected",
+      },
+    );
   }
   for (const dossier of dossiers.docs) {
     await removeDossier(dossier.id);

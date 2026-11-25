@@ -10,10 +10,17 @@ const { buildProposalEmail } = require("../../lib/propositions/proposition.utils
 const { buildInvitationEmail } = require("../../lib/equipe/invitation-email.js");
 const { escapeHtml } = require("../../lib/core/html.utils.js");
 
-const page = (title, html) => `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${title}</title></head><body style="margin:0">${html}</body></html>`;
+const page = (title, html) =>
+  `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${title}</title></head><body style="margin:0">${html}</body></html>`;
 
 const proposal = buildProposalEmail({
-  cabinet: { name: "Cabinet Martin & Associés", orias: "12345678", address: "12 rue de la Paix, 75002 Paris", phone: "01 23 45 67 89", email: "contact@cabinet-martin.fr" },
+  cabinet: {
+    name: "Cabinet Martin & Associés",
+    orias: "12345678",
+    address: "12 rue de la Paix, 75002 Paris",
+    phone: "01 23 45 67 89",
+    email: "contact@cabinet-martin.fr",
+  },
   assureName: "Mme Claire Dubois",
   insurerName: "Assur'Plus",
   reference: "D-2026-0042",
@@ -26,11 +33,11 @@ const proposal = buildProposalEmail({
     { code: "VOL", label: "Vol et incendie", included: true, limit: 20000, deductible: 300 },
     { code: "ASS", label: "Assistance 0 km", included: false, limit: null, deductible: null },
   ],
-  justification: "Meilleur rapport garanties / prix parmi les 4 offres comparées.\nFranchise réduite et assistance incluse.",
+  justification:
+    "Meilleur rapport garanties / prix parmi les 4 offres comparées.\nFranchise réduite et assistance incluse.",
   message: "Comme convenu lors de notre échange téléphonique, voici notre recommandation.",
 });
 writeFileSync(join(here, "proposal.html"), page(proposal.subject, proposal.html));
-
 
 const invitation = buildInvitationEmail({
   cabinetName: escapeHtml("Cabinet Martin & Associés"),

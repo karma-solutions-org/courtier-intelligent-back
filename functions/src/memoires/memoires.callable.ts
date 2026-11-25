@@ -18,7 +18,8 @@ const INVALIDATION_THRESHOLD = 2;
 const TOUCH_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Empreinte courte d'un cabinet : sert à ne compter qu'une fois ses signalements, sans stocker son identifiant. */
-const cabinetToken = (cabinetId: string) => createHash("sha256").update(`memoire|${cabinetId}`).digest("hex").substring(0, 12);
+const cabinetToken = (cabinetId: string) =>
+  createHash("sha256").update(`memoire|${cabinetId}`).digest("hex").substring(0, 12);
 
 const requireKey = (value: unknown) => {
   const key = requireString(value, "mémoire", 64);
@@ -37,7 +38,12 @@ const MAX_PROPOSALS = 10;
 export const sharedFields = (fields: FormMemoryField[]) => fields.filter(field => field.canonicalPath !== null);
 const mappingHash = (fields: FormMemoryField[]) =>
   createHash("sha256")
-    .update(sharedFields(fields).map(f => `${f.fieldKey}=${f.canonicalPath}`).sort().join("|"))
+    .update(
+      sharedFields(fields)
+        .map(f => `${f.fieldKey}=${f.canonicalPath}`)
+        .sort()
+        .join("|"),
+    )
     .digest("hex")
     .substring(0, 16);
 
@@ -90,14 +96,19 @@ export const enregistrer = onCall(CALLABLE_OPTIONS, async request => {
     }
 
     // Vote du cabinet pour cette association (un cabinet = une voix, quelle que soit la fréquence de ses envois).
-    const proposals = (candidate.get("proposals") as Record<string, { cabinets: string[]; at: number }> | undefined) ?? {};
+    const proposals =
+      (candidate.get("proposals") as Record<string, { cabinets: string[]; at: number }> | undefined) ?? {};
     const current = proposals[hash] ?? { cabinets: [], at: Date.now() };
     const cabinets = [...new Set([...current.cabinets, token])].slice(-20);
     if (cabinets.length < PROMOTION_THRESHOLD) {
       const kept = Object.entries({ ...proposals, [hash]: { cabinets, at: Date.now() } })
         .sort(([, a], [, b]) => b.at - a.at)
         .slice(0, MAX_PROPOSALS);
-      tx.set(candidateRef, { origin: input.origin, proposals: Object.fromEntries(kept), updatedAt: FieldValue.serverTimestamp() });
+      tx.set(candidateRef, {
+        origin: input.origin,
+        proposals: Object.fromEntries(kept),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
       return "pending" as const;
     }
 

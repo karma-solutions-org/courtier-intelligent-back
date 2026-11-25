@@ -183,7 +183,9 @@ export const constater = onCall(CALLABLE_OPTIONS, async request => {
         ? { kind: f.kind as SightedField["kind"], inputType: f.inputType }
         : {}),
       ...(typeof f.required === "boolean" ? { required: f.required } : {}),
-      ...(typeof f.canonicalPath === "string" && isCanonicalPath(f.canonicalPath) ? { canonicalPath: f.canonicalPath } : {}),
+      ...(typeof f.canonicalPath === "string" && isCanonicalPath(f.canonicalPath)
+        ? { canonicalPath: f.canonicalPath }
+        : {}),
       options: Array.isArray(f.options)
         ? f.options
             .slice(0, DISCOVERED_MAX_CHOICES)

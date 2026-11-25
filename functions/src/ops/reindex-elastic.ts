@@ -28,7 +28,9 @@ run(async () => {
   // Index nommés d'après le projet visé (« aibs-partenaire-testing-assures »), comme dans les functions.
   process.env.GCLOUD_PROJECT ??= args.emulator ? "demo-courtier-intelligent" : args.project;
   const db = admin.firestore();
-  const cabinets = args.cabinet ? [args.cabinet] : (await db.collection("ci_cabinets").listDocuments()).map(ref => ref.id);
+  const cabinets = args.cabinet
+    ? [args.cabinet]
+    : (await db.collection("ci_cabinets").listDocuments()).map(ref => ref.id);
   console.log(`Index : ${indexName(ASSURES_INDEX)}, ${indexName(DOSSIERS_INDEX)} — ${cabinets.length} cabinet(s).`);
 
   let assures = 0;
@@ -53,13 +55,17 @@ run(async () => {
         DOSSIERS_INDEX,
         dossierDocs
           .slice(i, i + 500)
-          .map(doc => toDossierSearchDoc(cabinetId, doc.id, doc.data(), names.get(String(doc.get("assureId"))) ?? null)),
+          .map(doc =>
+            toDossierSearchDoc(cabinetId, doc.id, doc.data(), names.get(String(doc.get("assureId"))) ?? null),
+          ),
       );
     }
     console.log(`  ${cabinetId} : ${assureDocs.length} client(s), ${dossierDocs.length} dossier(s)`);
   }
 
-  console.log(`${args.confirm ? "Indexés" : "À indexer (--confirm pour écrire)"} : ${assures} client(s), ${dossiers} dossier(s).`);
+  console.log(
+    `${args.confirm ? "Indexés" : "À indexer (--confirm pour écrire)"} : ${assures} client(s), ${dossiers} dossier(s).`,
+  );
   if (failures) {
     console.error(`${failures} échec(s) : voir les détails ci-dessus.`);
     process.exitCode = 1;

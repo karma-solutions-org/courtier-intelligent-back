@@ -27,7 +27,9 @@ async function checkedImport(storagePath: string) {
   const file = admin.storage().bucket().file(storagePath);
   const [exists] = await file.exists();
   if (!exists) {
-    throw new HttpsError("failed-precondition", "Le fichier n'a pas été reçu. Réessayez l'envoi.", { reason: "file_missing" });
+    throw new HttpsError("failed-precondition", "Le fichier n'a pas été reçu. Réessayez l'envoi.", {
+      reason: "file_missing",
+    });
   }
   const [metadata] = await file.getMetadata();
   const size = Number(metadata.size ?? 0);
@@ -43,62 +45,92 @@ async function checkedImport(storagePath: string) {
  * le formulaire. Rien n'est écrit : le courtier vérifie, puis la pièce est rangée avec le client par `rattacherPiece`.
  * Compte dans le quota d'appels d'IA du cabinet.
  */
-export const lirePiece = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY], timeoutSeconds: 90, memory: "512MiB" }, async request => {
-  const { cabinetId, uid } = await getActiveMembership(request);
-  const type = request.data?.type;
-  const storagePath = request.data?.storagePath;
-  if (!isAssureReadableType(type)) {
-    throw new HttpsError("invalid-argument", "Type de pièce invalide.");
-  }
-  if (!isAssureImportPath(storagePath, cabinetId, uid)) {
-    throw new HttpsError("invalid-argument", "Emplacement du document invalide.");
-  }
-  const { file, contentType } = await checkedImport(storagePath);
-  const apiKey = geminiApiKey();
+export const lirePiece = onCall(
+  { ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY], timeoutSeconds: 90, memory: "512MiB" },
+  async request => {
+    const { cabinetId, uid } = await getActiveMembership(request);
+    const type = request.data?.type;
+    const storagePath = request.data?.storagePath;
+    if (!isAssureReadableType(type)) {
+      throw new HttpsError("invalid-argument", "Type de pièce invalide.");
+    }
+    if (!isAssureImportPath(storagePath, cabinetId, uid)) {
+      throw new HttpsError("invalid-argument", "Emplacement du document invalide.");
+    }
+    const { file, contentType } = await checkedImport(storagePath);
+    const apiKey = geminiApiKey();
 
-  const { result, remaining } = await runIaCall(cabinetId, async () => {
-    const [bytes] = await file.download();
-    return generateWithGemini(apiKey, {
-      contents: [
-        { role: "user", parts: [{ inlineData: { mimeType: contentType, data: bytes.toString("base64") } }, { text: buildAssureOcrPrompt(type) }] },
-      ],
-      generationConfig: { maxOutputTokens: MAX_OCR_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
+    const { result, remaining } = await runIaCall(cabinetId, async () => {
+      const [bytes] = await file.download();
+      return generateWithGemini(apiKey, {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { inlineData: { mimeType: contentType, data: bytes.toString("base64") } },
+              { text: buildAssureOcrPrompt(type) },
+            ],
+          },
+        ],
+        generationConfig: {
+          maxOutputTokens: MAX_OCR_OUTPUT_TOKENS,
+          responseMimeType: "application/json",
+          temperature: 0,
+        },
+      });
     });
-  });
-  if (!result) {
-    throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", { reason: "ia_upstream" });
-  }
-  const values = parseAssureOcrResponse(result.text, type);
-  return { values: values ?? {}, readable: values !== null, remaining };
-});
+    if (!result) {
+      throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", {
+        reason: "ia_upstream",
+      });
+    }
+    const values = parseAssureOcrResponse(result.text, type);
+    return { values: values ?? {}, readable: values !== null, remaining };
+  },
+);
 
 /**
  * Reconnaît le type d'une pièce déposée (CIN, carte grise, permis…) pour le pré-sélectionner dans l'app : le courtier
  * peut le corriger avant l'import. Rien n'est écrit. Compte dans le quota d'appels d'IA du cabinet.
  */
-export const reconnaitrePiece = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY], timeoutSeconds: 60, memory: "512MiB" }, async request => {
-  const { cabinetId, uid } = await getActiveMembership(request);
-  const storagePath = request.data?.storagePath;
-  if (!isAssureImportPath(storagePath, cabinetId, uid)) {
-    throw new HttpsError("invalid-argument", "Emplacement du document invalide.");
-  }
-  const { file, contentType } = await checkedImport(storagePath);
-  const apiKey = geminiApiKey();
+export const reconnaitrePiece = onCall(
+  { ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY], timeoutSeconds: 60, memory: "512MiB" },
+  async request => {
+    const { cabinetId, uid } = await getActiveMembership(request);
+    const storagePath = request.data?.storagePath;
+    if (!isAssureImportPath(storagePath, cabinetId, uid)) {
+      throw new HttpsError("invalid-argument", "Emplacement du document invalide.");
+    }
+    const { file, contentType } = await checkedImport(storagePath);
+    const apiKey = geminiApiKey();
 
-  const { result, remaining } = await runIaCall(cabinetId, async () => {
-    const [bytes] = await file.download();
-    return generateWithGemini(apiKey, {
-      contents: [
-        { role: "user", parts: [{ inlineData: { mimeType: contentType, data: bytes.toString("base64") } }, { text: buildAssureClassifyPrompt() }] },
-      ],
-      generationConfig: { maxOutputTokens: MAX_CLASSIFY_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
+    const { result, remaining } = await runIaCall(cabinetId, async () => {
+      const [bytes] = await file.download();
+      return generateWithGemini(apiKey, {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { inlineData: { mimeType: contentType, data: bytes.toString("base64") } },
+              { text: buildAssureClassifyPrompt() },
+            ],
+          },
+        ],
+        generationConfig: {
+          maxOutputTokens: MAX_CLASSIFY_OUTPUT_TOKENS,
+          responseMimeType: "application/json",
+          temperature: 0,
+        },
+      });
     });
-  });
-  if (!result) {
-    throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", { reason: "ia_upstream" });
-  }
-  return { type: parseAssureClassifyResponse(result.text), remaining };
-});
+    if (!result) {
+      throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", {
+        reason: "ia_upstream",
+      });
+    }
+    return { type: parseAssureClassifyResponse(result.text), remaining };
+  },
+);
 
 /**
  * Range une pièce déposée avec le client qui vient d'être créé : le fichier quitte le dépôt provisoire du courtier
@@ -145,7 +177,17 @@ export const rattacherPiece = onCall(CALLABLE_OPTIONS, async request => {
 /** Les valeurs reçues de l'app ne gardent que des champs texte connus, bornés (simple trace, la fiche fait foi). */
 function sanitizeValues(raw: unknown): AssureOcrValues {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const keys: (keyof AssureOcrValues)[] = ["civilite", "firstName", "lastName", "birthDate", "companyName", "siret", "street", "postalCode", "city"];
+  const keys: (keyof AssureOcrValues)[] = [
+    "civilite",
+    "firstName",
+    "lastName",
+    "birthDate",
+    "companyName",
+    "siret",
+    "street",
+    "postalCode",
+    "city",
+  ];
   const values: Record<string, string> = {};
   for (const key of keys) {
     const value = (raw as Record<string, unknown>)[key];

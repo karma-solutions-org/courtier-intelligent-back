@@ -29,7 +29,13 @@ type Attempt =
   | { ok: false; next: boolean };
 
 /** Un appel à un modèle Gemini. Ne lève jamais : un échec est décrit par le résultat. */
-async function callModel(upstream: string, apiKey: string, model: string, payload: Record<string, unknown>, timeoutMs: number): Promise<Attempt> {
+async function callModel(
+  upstream: string,
+  apiKey: string,
+  model: string,
+  payload: Record<string, unknown>,
+  timeoutMs: number,
+): Promise<Attempt> {
   let response: Response;
   try {
     response = await fetch(`${upstream}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
@@ -53,7 +59,10 @@ async function callModel(upstream: string, apiKey: string, model: string, payloa
   return {
     ok: true,
     text,
-    usage: { inputTokens: body?.usageMetadata?.promptTokenCount ?? 0, outputTokens: body?.usageMetadata?.candidatesTokenCount ?? 0 },
+    usage: {
+      inputTokens: body?.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: body?.usageMetadata?.candidatesTokenCount ?? 0,
+    },
   };
 }
 
@@ -64,7 +73,9 @@ const currentMonth = () => new Date().toISOString().substring(0, 7);
 export function geminiApiKey(): string {
   const apiKey = GEMINI_API_KEY.value();
   if (!apiKey) {
-    throw new HttpsError("failed-precondition", "Le service d'IA n'est pas configuré.", { reason: "ia_not_configured" });
+    throw new HttpsError("failed-precondition", "Le service d'IA n'est pas configuré.", {
+      reason: "ia_not_configured",
+    });
   }
   return apiKey;
 }
@@ -102,7 +113,10 @@ export async function reserveIaCall(cabinetId: string): Promise<{ remaining: num
  * Réserve un appel d'IA puis lance `run` (téléchargement du fichier et appel à Gemini). L'appel réservé est rendu si `run`
  * lève une erreur ou si aucun modèle n'a répondu (`result` null) : un échec ne consomme pas le quota du cabinet.
  */
-export async function runIaCall(cabinetId: string, run: () => Promise<GeminiResult | null>): Promise<{ result: GeminiResult | null; remaining: number }> {
+export async function runIaCall(
+  cabinetId: string,
+  run: () => Promise<GeminiResult | null>,
+): Promise<{ result: GeminiResult | null; remaining: number }> {
   const { remaining, release } = await reserveIaCall(cabinetId);
   let result: GeminiResult | null;
   try {
@@ -119,7 +133,10 @@ export async function runIaCall(cabinetId: string, run: () => Promise<GeminiResu
  * Envoie une requête `generateContent` aux modèles (`GEMINI_MODELS`, dans l'ordre) : le premier qui répond l'emporte.
  * Renvoie `null` si aucun n'a répondu. Le contenu n'est ni journalisé ni conservé.
  */
-export async function generateWithGemini(apiKey: string, payload: Record<string, unknown>): Promise<GeminiResult | null> {
+export async function generateWithGemini(
+  apiKey: string,
+  payload: Record<string, unknown>,
+): Promise<GeminiResult | null> {
   const upstream = process.env.IA_UPSTREAM_URL ?? GEMINI_API_URL;
   const deadline = Date.now() + UPSTREAM_TIMEOUT_MS;
   for (const model of GEMINI_MODELS) {

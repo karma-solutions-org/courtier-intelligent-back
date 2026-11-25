@@ -58,7 +58,9 @@ export const enregistrer = onCall(CALLABLE_OPTIONS, async request => {
 
   const [exists] = await admin.storage().bucket().file(storagePath).exists();
   if (!exists) {
-    throw new HttpsError("failed-precondition", "Le fichier n'a pas été reçu. Réessayez l'envoi.", { reason: "file_missing" });
+    throw new HttpsError("failed-precondition", "Le fichier n'a pas été reçu. Réessayez l'envoi.", {
+      reason: "file_missing",
+    });
   }
   const [metadata] = await admin.storage().bucket().file(storagePath).getMetadata();
   const size = Number(metadata.size ?? 0);
@@ -68,7 +70,11 @@ export const enregistrer = onCall(CALLABLE_OPTIONS, async request => {
   }
 
   // Un même fichier n'est enregistré qu'une fois.
-  const already = await db.collection(documentsPath(cabinetId, dossierId)).where("storagePath", "==", storagePath).limit(1).get();
+  const already = await db
+    .collection(documentsPath(cabinetId, dossierId))
+    .where("storagePath", "==", storagePath)
+    .limit(1)
+    .get();
   if (!already.empty) {
     return { documentId: already.docs[0].id };
   }
@@ -95,91 +101,106 @@ export const enregistrer = onCall(CALLABLE_OPTIONS, async request => {
  * un permis, historique pour un relevé). La réponse est contrôlée (`parseOcrResponse`) puis rangée dans `ocrFields` :
  * rien n'est écrit dans le dossier, le courtier choisit ce qu'il applique. Compte dans le quota d'appels d'IA du cabinet.
  */
-export const analyser = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY], timeoutSeconds: 90, memory: "512MiB" }, async request => {
-  const { cabinetId } = await getActiveMembership(request);
-  const dossierId = requireId(request.data?.dossierId, "dossier");
-  const documentId = requireId(request.data?.documentId, "document");
+export const analyser = onCall(
+  { ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY], timeoutSeconds: 90, memory: "512MiB" },
+  async request => {
+    const { cabinetId } = await getActiveMembership(request);
+    const dossierId = requireId(request.data?.dossierId, "dossier");
+    const documentId = requireId(request.data?.documentId, "document");
 
-  const db = admin.firestore();
-  const documentRef = db.doc(`${documentsPath(cabinetId, dossierId)}/${documentId}`);
-  const [document, dossier] = await Promise.all([documentRef.get(), db.doc(dossierPath(cabinetId, dossierId)).get()]);
-  if (!document.exists || !dossier.exists) {
-    throw new HttpsError("not-found", "Document introuvable.");
-  }
-  // `detectType` : le courtier n'a pas choisi le type, l'IA le reconnaît puis lit les champs de ce type (même appel).
-  const detectType = request.data?.detectType === true;
-  const type = document.get("type") as DossierDocumentType;
-  if (!detectType && !isAnalyzableDocumentType(type)) {
-    throw new HttpsError("failed-precondition", "Ce type de document n'est pas lu automatiquement.", { reason: "not_analyzable" });
-  }
-  const storagePath = document.get("storagePath") as string;
-  if (!isDossierDocumentPath(storagePath, cabinetId, dossierId)) {
-    throw new HttpsError("failed-precondition", "Emplacement du document invalide.");
-  }
+    const db = admin.firestore();
+    const documentRef = db.doc(`${documentsPath(cabinetId, dossierId)}/${documentId}`);
+    const [document, dossier] = await Promise.all([documentRef.get(), db.doc(dossierPath(cabinetId, dossierId)).get()]);
+    if (!document.exists || !dossier.exists) {
+      throw new HttpsError("not-found", "Document introuvable.");
+    }
+    // `detectType` : le courtier n'a pas choisi le type, l'IA le reconnaît puis lit les champs de ce type (même appel).
+    const detectType = request.data?.detectType === true;
+    const type = document.get("type") as DossierDocumentType;
+    if (!detectType && !isAnalyzableDocumentType(type)) {
+      throw new HttpsError("failed-precondition", "Ce type de document n'est pas lu automatiquement.", {
+        reason: "not_analyzable",
+      });
+    }
+    const storagePath = document.get("storagePath") as string;
+    if (!isDossierDocumentPath(storagePath, cabinetId, dossierId)) {
+      throw new HttpsError("failed-precondition", "Emplacement du document invalide.");
+    }
 
-  const product = await db.doc(productPath(dossier.get("productId") as string)).get();
-  const schema = (product.get("questionnaireSchema") as QuestionnaireSection[] | undefined) ?? [];
-  const questionsByType: Partial<Record<DossierDocumentType, Question[]>> = {};
-  for (const candidate of DOSSIER_DOCUMENT_TYPES) {
-    const list = isAnalyzableDocumentType(candidate) ? ocrQuestions(schema, candidate) : [];
-    if (list.length) questionsByType[candidate] = list;
-  }
-  const questions = detectType ? Object.values(questionsByType).flat() : ocrQuestions(schema, type);
-  if (!questions.length) {
-    throw new HttpsError("failed-precondition", "Le questionnaire de ce produit n'a aucun champ lisible sur ce document.", { reason: "no_fields" });
-  }
+    const product = await db.doc(productPath(dossier.get("productId") as string)).get();
+    const schema = (product.get("questionnaireSchema") as QuestionnaireSection[] | undefined) ?? [];
+    const questionsByType: Partial<Record<DossierDocumentType, Question[]>> = {};
+    for (const candidate of DOSSIER_DOCUMENT_TYPES) {
+      const list = isAnalyzableDocumentType(candidate) ? ocrQuestions(schema, candidate) : [];
+      if (list.length) questionsByType[candidate] = list;
+    }
+    const questions = detectType ? Object.values(questionsByType).flat() : ocrQuestions(schema, type);
+    if (!questions.length) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Le questionnaire de ce produit n'a aucun champ lisible sur ce document.",
+        { reason: "no_fields" },
+      );
+    }
 
-  const apiKey = geminiApiKey();
-  const file = admin.storage().bucket().file(storagePath);
-  const [metadata] = await file.getMetadata();
-  const mimeType = metadata.contentType ?? "";
-  if (!DOSSIER_DOCUMENT_MIME_TYPES.includes(mimeType) || Number(metadata.size ?? 0) > DOSSIER_DOCUMENT_MAX_BYTES) {
-    throw new HttpsError("failed-precondition", "Document illisible : PDF, JPG ou PNG de 10 Mo maximum.");
-  }
-  const fail = async (reason: string) => {
-    await documentRef.update({ status: "failed", error: reason, analyzedAt: FieldValue.serverTimestamp() });
-  };
+    const apiKey = geminiApiKey();
+    const file = admin.storage().bucket().file(storagePath);
+    const [metadata] = await file.getMetadata();
+    const mimeType = metadata.contentType ?? "";
+    if (!DOSSIER_DOCUMENT_MIME_TYPES.includes(mimeType) || Number(metadata.size ?? 0) > DOSSIER_DOCUMENT_MAX_BYTES) {
+      throw new HttpsError("failed-precondition", "Document illisible : PDF, JPG ou PNG de 10 Mo maximum.");
+    }
+    const fail = async (reason: string) => {
+      await documentRef.update({ status: "failed", error: reason, analyzedAt: FieldValue.serverTimestamp() });
+    };
 
-  // Le quota est réservé avant le téléchargement : un cabinet hors quota ne télécharge rien.
-  const { result, remaining } = await runIaCall(cabinetId, async () => {
-    const [bytes] = await file.download();
-    return generateWithGemini(apiKey, {
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { inlineData: { mimeType, data: bytes.toString("base64") } },
-            { text: detectType ? buildDetectOcrPrompt(questionsByType) : buildOcrPrompt(type, questions) },
-          ],
+    // Le quota est réservé avant le téléchargement : un cabinet hors quota ne télécharge rien.
+    const { result, remaining } = await runIaCall(cabinetId, async () => {
+      const [bytes] = await file.download();
+      return generateWithGemini(apiKey, {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { inlineData: { mimeType, data: bytes.toString("base64") } },
+              { text: detectType ? buildDetectOcrPrompt(questionsByType) : buildOcrPrompt(type, questions) },
+            ],
+          },
+        ],
+        generationConfig: {
+          maxOutputTokens: MAX_OCR_OUTPUT_TOKENS,
+          responseMimeType: "application/json",
+          temperature: 0,
         },
-      ],
-      generationConfig: { maxOutputTokens: MAX_OCR_OUTPUT_TOKENS, responseMimeType: "application/json", temperature: 0 },
+      });
+    }).catch(async (error: unknown) => {
+      if (error instanceof HttpsError && error.code === "resource-exhausted") await fail("ia_quota");
+      throw error;
     });
-  }).catch(async (error: unknown) => {
-    if (error instanceof HttpsError && error.code === "resource-exhausted") await fail("ia_quota");
-    throw error;
-  });
-  if (!result) {
-    // Aucun modèle n'a répondu : l'appel réservé a été rendu.
-    await fail("ia_upstream");
-    throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", { reason: "ia_upstream" });
-  }
+    if (!result) {
+      // Aucun modèle n'a répondu : l'appel réservé a été rendu.
+      await fail("ia_upstream");
+      throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", {
+        reason: "ia_upstream",
+      });
+    }
 
-  const finalType = detectType ? parseDetectedType(result.text) : type;
-  const fields = finalType ? parseOcrResponse(result.text, finalType, schema) : null;
-  if (!finalType || fields === null) {
-    await fail("ia_unusable");
-    return { status: "failed", ocrFields: [], remaining };
-  }
-  await documentRef.update({
-    type: finalType,
-    status: "analyzed",
-    ocrFields: fields,
-    error: null,
-    analyzedAt: FieldValue.serverTimestamp(),
-  });
-  return { status: "analyzed", ocrFields: fields, documentType: finalType, remaining };
-});
+    const finalType = detectType ? parseDetectedType(result.text) : type;
+    const fields = finalType ? parseOcrResponse(result.text, finalType, schema) : null;
+    if (!finalType || fields === null) {
+      await fail("ia_unusable");
+      return { status: "failed", ocrFields: [], remaining };
+    }
+    await documentRef.update({
+      type: finalType,
+      status: "analyzed",
+      ocrFields: fields,
+      error: null,
+      analyzedAt: FieldValue.serverTimestamp(),
+    });
+    return { status: "analyzed", ocrFields: fields, documentType: finalType, remaining };
+  },
+);
 
 /**
  * Reprend dans le dossier les pièces rangées avec son client (carte grise, permis, CIN, relevé d'information importés à

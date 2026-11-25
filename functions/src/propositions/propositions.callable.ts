@@ -49,9 +49,13 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
     const from = dossier.get("status") as DossierStatus;
     const decision = dossier.get("decision") as { insurerId: string; justification: string } | null;
     if (from !== "decision" && from !== "proposition_envoyee") {
-      throw new HttpsError("failed-precondition", "La proposition s'envoie une fois l'offre retenue (statut « Décision »).", {
-        reason: "invalid_transition",
-      });
+      throw new HttpsError(
+        "failed-precondition",
+        "La proposition s'envoie une fois l'offre retenue (statut « Décision »).",
+        {
+          reason: "invalid_transition",
+        },
+      );
     }
     if (!decision?.insurerId) {
       throw new HttpsError("failed-precondition", "Aucune offre retenue pour ce dossier.", { reason: "no_decision" });
@@ -66,9 +70,13 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
       throw new HttpsError("failed-precondition", "L'offre retenue est introuvable.");
     }
     if (offer.get("stale") === true) {
-      throw new HttpsError("failed-precondition", "Les données du dossier ont changé depuis ce tarif : relancez la tarification.", {
-        reason: "offer_stale",
-      });
+      throw new HttpsError(
+        "failed-precondition",
+        "Les données du dossier ont changé depuis ce tarif : relancez la tarification.",
+        {
+          reason: "offer_stale",
+        },
+      );
     }
     const to = requestedTo ?? (assure.get("email") ? requireEmail(assure.get("email")) : null);
     if (!to) {
@@ -109,7 +117,11 @@ export const envoyer = onCall(CALLABLE_OPTIONS, async request => {
     // Copies figées de ce qui est envoyé à l'assuré (chaque envoi les remplace).
     const snapshots = {
       insurerId: decision.insurerId,
-      offerSnapshot: offerSnapshotOf(decision.insurerId, (insurer.get("name") as string | undefined) ?? null, offer.data() as Partial<Offer>),
+      offerSnapshot: offerSnapshotOf(
+        decision.insurerId,
+        (insurer.get("name") as string | undefined) ?? null,
+        offer.data() as Partial<Offer>,
+      ),
       needSnapshot: needSnapshotOf(dossier.get("needAnalysis") as Partial<NeedAnalysis> | null),
     };
     tx.update(ref, {
@@ -148,7 +160,8 @@ export const enregistrerReponse = onCall(CALLABLE_OPTIONS, async request => {
   let contractNumber: string | null = null;
   let effectiveDate: string | null = null;
   if (result === "souscrit") {
-    const problem = validateContractNumber(request.data?.contractNumber) ?? validateEffectiveDate(request.data?.effectiveDate);
+    const problem =
+      validateContractNumber(request.data?.contractNumber) ?? validateEffectiveDate(request.data?.effectiveDate);
     if (problem) {
       throw new HttpsError("invalid-argument", problem);
     }

@@ -42,7 +42,12 @@ export function emailButton(href: string, label: string, color: string = EMAIL_C
  * Enveloppe complète, sobre : en-tête blanc (titre + sous-titre) souligné d'un filet, corps blanc, pied gris.
  * `headerTitle`, `headerSubtitle`, `body` et `footer` sont du HTML déjà échappé.
  */
-export function emailLayout(parts: { headerTitle: string; headerSubtitle?: string; body: string; footer?: string }): string {
+export function emailLayout(parts: {
+  headerTitle: string;
+  headerSubtitle?: string;
+  body: string;
+  footer?: string;
+}): string {
   const c = EMAIL_COLORS;
   return (
     `<div style="margin:0;padding:0;background:${c.bg}">` +

@@ -53,7 +53,11 @@ run(async () => {
 
   switch (command) {
     case "list": {
-      const rows = all.map(entry => entry.row).filter(row => (args.origin ? row.origin === args.origin : true) && (args.invalidated ? row.invalidated : true));
+      const rows = all
+        .map(entry => entry.row)
+        .filter(
+          row => (args.origin ? row.origin === args.origin : true) && (args.invalidated ? row.invalidated : true),
+        );
       rows.sort((a, b) => a.origin.localeCompare(b.origin) || a.key.localeCompare(b.key));
       console.log(rows.length ? rows.map(formatRow).join("\n") : "Aucune mémoire.");
       console.log(`\n${rows.length} mémoire(s) sur ${all.length}.`);
@@ -65,8 +69,15 @@ run(async () => {
       if (!doc.exists) fail(`Mémoire ${argument} introuvable.`);
       const row = all.find(entry => entry.row.key === argument)!.row;
       console.log(formatRow(row));
-      for (const field of (doc.get("fields") as { fieldKey: string; label: string | null; canonicalPath: string | null; confidence: number }[]) ?? []) {
-        console.log(`  ${field.fieldKey.padEnd(40)} ${(field.canonicalPath ?? "(aucun)").padEnd(40)} ${field.confidence}  ${field.label ?? ""}`);
+      for (const field of (doc.get("fields") as {
+        fieldKey: string;
+        label: string | null;
+        canonicalPath: string | null;
+        confidence: number;
+      }[]) ?? []) {
+        console.log(
+          `  ${field.fieldKey.padEnd(40)} ${(field.canonicalPath ?? "(aucun)").padEnd(40)} ${field.confidence}  ${field.label ?? ""}`,
+        );
       }
       return;
     }
@@ -75,10 +86,16 @@ run(async () => {
         ...(args.key !== undefined ? { key: args.key } : {}),
         ...(args.origin !== undefined ? { origin: args.origin } : {}),
         ...(args.invalidated ? { invalidated: true } : {}),
-        ...(args["older-than-days"] !== undefined ? { olderThanDays: optionalCount(args["older-than-days"], "older-than-days") } : {}),
+        ...(args["older-than-days"] !== undefined
+          ? { olderThanDays: optionalCount(args["older-than-days"], "older-than-days") }
+          : {}),
       };
-      if (!hasCriteria(criteria)) fail(`Aucun critère : purger sans critère viderait toute la mémoire partagée.\n\n${USAGE}`);
-      const selected = selectMemories(all.map(entry => entry.row), criteria);
+      if (!hasCriteria(criteria))
+        fail(`Aucun critère : purger sans critère viderait toute la mémoire partagée.\n\n${USAGE}`);
+      const selected = selectMemories(
+        all.map(entry => entry.row),
+        criteria,
+      );
       console.log(selected.length ? selected.map(formatRow).join("\n") : "Aucune mémoire ne correspond.");
       if (selected.length === 0) return;
       if (!args.yes) {

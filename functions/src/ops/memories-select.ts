@@ -22,7 +22,12 @@ export interface PurgeCriteria {
 
 /** Au moins un critère est obligatoire : sans lui, « purger » viderait toute la mémoire partagée. */
 export function hasCriteria(criteria: PurgeCriteria): boolean {
-  return criteria.key !== undefined || criteria.origin !== undefined || criteria.invalidated === true || criteria.olderThanDays !== undefined;
+  return (
+    criteria.key !== undefined ||
+    criteria.origin !== undefined ||
+    criteria.invalidated === true ||
+    criteria.olderThanDays !== undefined
+  );
 }
 
 /** Mémoires qui correspondent à TOUS les critères donnés. */

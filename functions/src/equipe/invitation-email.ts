@@ -16,7 +16,9 @@ export function buildInvitationEmail(input: { cabinetName: string; email: string
       headerTitle: cabinetName,
       headerSubtitle: "Invitation sur Courtier Intelligent",
       body:
-        emailParagraph(`Vous êtes invité à rejoindre le cabinet <strong>${cabinetName}</strong> sur Courtier Intelligent.`) +
+        emailParagraph(
+          `Vous êtes invité à rejoindre le cabinet <strong>${cabinetName}</strong> sur Courtier Intelligent.`,
+        ) +
         emailButton(escapeHtml(input.link), "Accepter l'invitation") +
         `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px"><tr>` +
         `<td style="padding:12px 16px;background:#fff6e0;border-left:4px solid ${EMAIL_COLORS.amber};border-radius:0 8px 8px 0;font-size:14px;line-height:22px;color:${EMAIL_COLORS.text}">` +

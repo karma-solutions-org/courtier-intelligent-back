@@ -2,7 +2,15 @@ import * as admin from "firebase-admin";
 import { FieldValue, Timestamp, type Transaction } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { assertSignedIn, assertCabinetAdmin, requireEmail, requireId, setCabinetClaims } from "../core/auth.utils";
-import { CLAIM_CABINET_ID, INVITATION_TTL_DAYS, MAIL_COLLECTION, CALLABLE_OPTIONS, CABINET_ROLES, UserRole, trustedAppOrigin } from "../core/config";
+import {
+  CLAIM_CABINET_ID,
+  INVITATION_TTL_DAYS,
+  MAIL_COLLECTION,
+  CALLABLE_OPTIONS,
+  CABINET_ROLES,
+  UserRole,
+  trustedAppOrigin,
+} from "../core/config";
 import { escapeHtml } from "../core/html.utils";
 import { buildInvitationEmail } from "./invitation-email";
 import { assertSeatAvailable, getSeatUsage, graceUpdate, lockSeats } from "../core/seats.utils";
@@ -24,7 +32,11 @@ function requireCabinetRole(value: unknown): CabinetRole {
  */
 async function assertNotLastAdmin(tx: Transaction, cabinetId: string, uid: string): Promise<void> {
   const admins = await tx.get(
-    admin.firestore().collection(`${cabinetPath(cabinetId)}/ci_members`).where("role", "==", "admin").where("status", "==", "active"),
+    admin
+      .firestore()
+      .collection(`${cabinetPath(cabinetId)}/ci_members`)
+      .where("role", "==", "admin")
+      .where("status", "==", "active"),
   );
   if (admins.size <= 1 && admins.docs[0]?.id === uid) {
     throw new HttpsError("failed-precondition", "Le cabinet doit garder au moins un administrateur.");
@@ -84,7 +96,9 @@ export const accepterInvitation = onCall(CALLABLE_OPTIONS, async request => {
   }
   // L'adresse doit être prouvée : sinon n'importe qui créerait un compte à l'adresse invitée.
   if (request.auth?.token.email_verified !== true) {
-    throw new HttpsError("failed-precondition", "Vérifiez votre adresse email avant d'accepter l'invitation.", { reason: "email_not_verified" });
+    throw new HttpsError("failed-precondition", "Vérifiez votre adresse email avant d'accepter l'invitation.", {
+      reason: "email_not_verified",
+    });
   }
   const cabinetId = requireId(request.data?.cabinetId, "cabinet");
   const invitationId = requireId(request.data?.invitationId, "invitation");
@@ -98,7 +112,9 @@ export const accepterInvitation = onCall(CALLABLE_OPTIONS, async request => {
     const cabinet = await tx.get(db.doc(cabinetPath(cabinetId)));
     const lock = await tx.get(db.doc(userCabinetPath(uid)));
     if (lock.exists) {
-      throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", { reason: "already_member" });
+      throw new HttpsError("failed-precondition", "Ce compte est déjà rattaché à un cabinet.", {
+        reason: "already_member",
+      });
     }
     // L'invitation occupait déjà une place : il suffit qu'une place de membre actif reste libre.
     const usage = await getSeatUsage(cabinetId, tx);
@@ -114,7 +130,12 @@ export const accepterInvitation = onCall(CALLABLE_OPTIONS, async request => {
       throw new HttpsError("deadline-exceeded", "Cette invitation a expiré.");
     }
     const email = user.email?.toLowerCase();
-    if (!email || !user.emailVerified || invitation.get("email") !== email || String(request.auth?.token.email ?? "").toLowerCase() !== email) {
+    if (
+      !email ||
+      !user.emailVerified ||
+      invitation.get("email") !== email ||
+      String(request.auth?.token.email ?? "").toLowerCase() !== email
+    ) {
       throw new HttpsError("permission-denied", "Cette invitation a été envoyée à une autre adresse email.", {
         reason: "wrong_email",
       });
@@ -188,7 +209,12 @@ export const activerMembre = onCall(CALLABLE_OPTIONS, async request => {
     // Désactivation : la place libérée peut ramener un cabinet en dépassement dans sa limite.
     if (status === "disabled" && member.get("status") === "active") {
       const usage = await getSeatUsage(cabinetId, tx);
-      const grace = graceUpdate(usage.activeMembers - 1, usage.maxUtilisateurs, usage.graceEndsAt, usage.delaiGraceJours);
+      const grace = graceUpdate(
+        usage.activeMembers - 1,
+        usage.maxUtilisateurs,
+        usage.graceEndsAt,
+        usage.delaiGraceJours,
+      );
       // Rien à écrire quand le cabinet n'était pas en dépassement : Firestore refuse une mise à jour vide.
       if (Object.keys(grace).length > 0) {
         tx.update(db.doc(cabinetPath(cabinetId)), grace);

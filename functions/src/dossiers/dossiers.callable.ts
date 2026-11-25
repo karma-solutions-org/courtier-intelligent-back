@@ -81,9 +81,13 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
       throw new HttpsError("not-found", "Assuré introuvable.");
     }
     if (assure.get("deletedAt")) {
-      throw new HttpsError("failed-precondition", "Ce client est dans la corbeille : restaurez-le pour lui créer un dossier.", {
-        reason: "assure_deleted",
-      });
+      throw new HttpsError(
+        "failed-precondition",
+        "Ce client est dans la corbeille : restaurez-le pour lui créer un dossier.",
+        {
+          reason: "assure_deleted",
+        },
+      );
     }
     if (!product.exists || product.get("active") !== true) {
       throw new HttpsError("not-found", "Produit introuvable ou inactif.");
@@ -109,7 +113,8 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
       data,
       completeness: computeCompleteness(schema, data),
       // Version du questionnaire du produit à la création (le questionnaire est figé à la validation de la couverture).
-      questionnaireVersion: (product.get("questionnaireUpdatedAt") as admin.firestore.Timestamp | undefined)?.toMillis() ?? null,
+      questionnaireVersion:
+        (product.get("questionnaireUpdatedAt") as admin.firestore.Timestamp | undefined)?.toMillis() ?? null,
       questionnaireSnapshot: null,
       needAnalysis: null,
       decision: null,
@@ -150,7 +155,9 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
   const insurerIds = request.data?.insurerIds;
   if (
     insurerIds !== undefined &&
-    (!Array.isArray(insurerIds) || insurerIds.length > MAX_INSURERS || insurerIds.some(id => typeof id !== "string" || !/^[\w-]{1,64}$/.test(id)))
+    (!Array.isArray(insurerIds) ||
+      insurerIds.length > MAX_INSURERS ||
+      insurerIds.some(id => typeof id !== "string" || !/^[\w-]{1,64}$/.test(id)))
   ) {
     throw new HttpsError("invalid-argument", "Extranets invalides.");
   }
@@ -175,9 +182,16 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
     const pricing = status === "tarification";
     // Les extranets se choisissent avant la tarification (lancée sur ceux-là).
     if (pricing && insurerIds !== undefined) {
-      throw new HttpsError("failed-precondition", "Les extranets ne se changent plus pendant la tarification.", { reason: "pricing" });
+      throw new HttpsError("failed-precondition", "Les extranets ne se changent plus pendant la tarification.", {
+        reason: "pricing",
+      });
     }
-    const schema = await dossierSchema(tx, cabinetId, dossier, insurerIds !== undefined ? { insurerIds: insurerIds as string[] } : {});
+    const schema = await dossierSchema(
+      tx,
+      cabinetId,
+      dossier,
+      insurerIds !== undefined ? { insurerIds: insurerIds as string[] } : {},
+    );
     // Lectures avant toute écriture (transaction) : tarifications et tarifs du dossier.
     const jobs = pricing ? await tx.get(ref.collection("ci_quoteJobs")) : null;
     const offers = pricing ? await tx.get(ref.collection("ci_offers")) : null;
@@ -200,16 +214,26 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
     // Un dossier « complet » qui cesse de l'être repasse en brouillon ; un dossier « besoin validé » ne peut pas perdre d'information obligatoire.
     let newStatus = status;
     // Pendant la tarification : seule compte une réponse obligatoire qu'on viderait (d'autres peuvent déjà manquer).
-    const emptied = pricing ? completeness.missing.filter(path => !computeCompleteness(schema, previous).missing.includes(path)) : [];
+    const emptied = pricing
+      ? completeness.missing.filter(path => !computeCompleteness(schema, previous).missing.includes(path))
+      : [];
     if (emptied.length) {
-      throw new HttpsError("failed-precondition", "Tarification en cours : une information obligatoire ne peut pas être retirée.", {
-        reason: "validated",
-      });
+      throw new HttpsError(
+        "failed-precondition",
+        "Tarification en cours : une information obligatoire ne peut pas être retirée.",
+        {
+          reason: "validated",
+        },
+      );
     }
     if (!completeness.ok && status === "besoin_valide") {
-      throw new HttpsError("failed-precondition", "Ce dossier est validé : une information obligatoire ne peut pas être retirée.", {
-        reason: "validated",
-      });
+      throw new HttpsError(
+        "failed-precondition",
+        "Ce dossier est validé : une information obligatoire ne peut pas être retirée.",
+        {
+          reason: "validated",
+        },
+      );
     }
     if (!completeness.ok && status === "complet") {
       newStatus = "brouillon";
@@ -222,7 +246,11 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
     if (pricing && jobs && offers) {
       const changed = entries
         .map(([path]) => path)
-        .filter(path => JSON.stringify(previous[path as keyof CanonicalData] ?? null) !== JSON.stringify(data[path as keyof CanonicalData] ?? null));
+        .filter(
+          path =>
+            JSON.stringify(previous[path as keyof CanonicalData] ?? null) !==
+            JSON.stringify(data[path as keyof CanonicalData] ?? null),
+        );
       if (changed.length) {
         // Tarifications en cours : nouvelles données (signal de reprise pour l'extension, comme tarification-completer).
         const quoteData = buildJobQuoteData(schema, data);
@@ -234,7 +262,8 @@ export const sauvegarder = onCall(CALLABLE_OPTIONS, async request => {
         // Tarifs déjà obtenus : calculés sur les anciennes données, donc périmés.
         const stale = offers.docs.filter(offer => offer.get("stale") !== true);
         for (const offer of stale) tx.update(offer.ref, { stale: true, staleSince: FieldValue.serverTimestamp() });
-        if (stale.length) addEvent(tx, cabinetId, dossierId, uid, "offers_stale", { insurers: stale.map(o => o.id), fields: changed });
+        if (stale.length)
+          addEvent(tx, cabinetId, dossierId, uid, "offers_stale", { insurers: stale.map(o => o.id), fields: changed });
       }
     }
 
@@ -277,16 +306,24 @@ export const changerStatut = onCall(CALLABLE_OPTIONS, async request => {
     }
     const from = dossier.get("status") as DossierStatus;
     if (target === "besoin_valide") {
-      throw new HttpsError("failed-precondition", "La couverture se valide depuis l'étape Couverture du dossier.", { reason: "use_validate_need" });
+      throw new HttpsError("failed-precondition", "La couverture se valide depuis l'étape Couverture du dossier.", {
+        reason: "use_validate_need",
+      });
     }
     // Proposition et réponse de l'assuré : uniquement par propositions-* (email, `proposal`, `outcome`).
     if (target === "sans_suite") {
-      throw new HttpsError("failed-precondition", "Un dossier se classe sans suite avec un motif.", { reason: "use_sans_suite" });
+      throw new HttpsError("failed-precondition", "Un dossier se classe sans suite avec un motif.", {
+        reason: "use_sans_suite",
+      });
     }
     if (from === "proposition_envoyee" || ["proposition_envoyee", "souscrit", "refuse"].includes(target)) {
-      throw new HttpsError("failed-precondition", "La proposition et la réponse de l'assuré se gèrent depuis l'onglet Proposition.", {
-        reason: "use_proposal",
-      });
+      throw new HttpsError(
+        "failed-precondition",
+        "La proposition et la réponse de l'assuré se gèrent depuis l'onglet Proposition.",
+        {
+          reason: "use_proposal",
+        },
+      );
     }
     if (!isTransitionAllowed(from, target)) {
       throw new HttpsError("failed-precondition", `Transition interdite : « ${from} » vers « ${target} ».`, {
@@ -338,7 +375,10 @@ export const assigner = onCall(CALLABLE_OPTIONS, async request => {
       });
     }
     if (role !== "admin" && dossier.get("assignedTo") !== uid) {
-      throw new HttpsError("permission-denied", "Seul un administrateur ou le courtier en charge peut réassigner ce dossier.");
+      throw new HttpsError(
+        "permission-denied",
+        "Seul un administrateur ou le courtier en charge peut réassigner ce dossier.",
+      );
     }
     if (!member.exists || member.get("status") !== "active") {
       throw new HttpsError("failed-precondition", "Ce membre n'est pas actif dans le cabinet.");
@@ -386,11 +426,22 @@ export const classerSansSuite = onCall(CALLABLE_OPTIONS, async request => {
 
     tx.update(ref, {
       status: "sans_suite",
-      outcome: { result: "sans_suite", motif, contractNumber: null, effectiveDate: null, decidedBy: uid, decidedAt: FieldValue.serverTimestamp() },
+      outcome: {
+        result: "sans_suite",
+        motif,
+        contractNumber: null,
+        effectiveDate: null,
+        decidedBy: uid,
+        decidedAt: FieldValue.serverTimestamp(),
+      },
       updatedAt: FieldValue.serverTimestamp(),
     });
     addEvent(tx, cabinetId, dossierId, uid, "status_changed", { from, to: "sans_suite" });
-    addEvent(tx, cabinetId, dossierId, uid, "outcome_recorded", { result: "sans_suite", motif, cancelledJobs: active.length });
+    addEvent(tx, cabinetId, dossierId, uid, "outcome_recorded", {
+      result: "sans_suite",
+      motif,
+      cancelledJobs: active.length,
+    });
     return { status: "sans_suite" as DossierStatus, cancelledJobs: active.length };
   });
 });

@@ -54,7 +54,12 @@ async function loadPricingDossier(tx: Transaction, cabinetId: string, dossierId:
 }
 
 /** L'assureur doit tarifer le produit du dossier et être activé par le cabinet (aucun choix = tous). */
-async function loadPricingInsurer(tx: Transaction, cabinetId: string, insurerId: string, productId: string): Promise<DocumentSnapshot> {
+async function loadPricingInsurer(
+  tx: Transaction,
+  cabinetId: string,
+  insurerId: string,
+  productId: string,
+): Promise<DocumentSnapshot> {
   const db = admin.firestore();
   const [insurer, cabinet] = await Promise.all([
     tx.get(db.doc(insurerPath(insurerId))),
@@ -66,9 +71,13 @@ async function loadPricingInsurer(tx: Transaction, cabinetId: string, insurerId:
   const productsSupported = (insurer.get("productsSupported") as string[] | undefined) ?? [];
   const enabled = (cabinet.get("enabledInsurers") as string[] | undefined) ?? [];
   if (!supportsProduct({ productsSupported }, productId) || (enabled.length > 0 && !enabled.includes(insurerId))) {
-    throw new HttpsError("failed-precondition", "Cet assureur n'est pas disponible pour ce produit dans votre cabinet.", {
-      reason: "insurer_not_available",
-    });
+    throw new HttpsError(
+      "failed-precondition",
+      "Cet assureur n'est pas disponible pour ce produit dans votre cabinet.",
+      {
+        reason: "insurer_not_available",
+      },
+    );
   }
   return insurer;
 }
@@ -100,7 +109,10 @@ export const lancer = onCall(CALLABLE_OPTIONS, async request => {
   return db.runTransaction(async tx => {
     const dossier = await loadPricingDossier(tx, cabinetId, dossierId);
     const insurer = await loadPricingInsurer(tx, cabinetId, insurerId, dossier.get("productId"));
-    const [job, offer] = await Promise.all([tx.get(jobRef), tx.get(db.doc(offerPath(cabinetId, dossierId, insurerId)))]);
+    const [job, offer] = await Promise.all([
+      tx.get(jobRef),
+      tx.get(db.doc(offerPath(cabinetId, dossierId, insurerId))),
+    ]);
     const questionnaireSchema = await dossierSchema(tx, cabinetId, dossier);
     // Tarif obtenu mais périmé (données du dossier modifiées depuis) : il se relance.
     const staleCapture = job.get("status") === "captured" && offer.get("stale") === true;
@@ -108,7 +120,9 @@ export const lancer = onCall(CALLABLE_OPTIONS, async request => {
     if (!staleCapture && !canLaunchQuoteJob(job.exists ? { status: job.get("status") as QuoteJobStatus } : null)) {
       throw new HttpsError(
         "failed-precondition",
-        job.get("status") === "captured" ? "Le tarif de cet assureur est déjà obtenu." : "Une tarification est déjà en cours chez cet assureur.",
+        job.get("status") === "captured"
+          ? "Le tarif de cet assureur est déjà obtenu."
+          : "Une tarification est déjà en cours chez cet assureur.",
         { reason: job.get("status") === "captured" ? "already_captured" : "job_in_progress" },
       );
     }
@@ -144,7 +158,12 @@ export const completer = onCall(CALLABLE_OPTIONS, async request => {
   const dossierId = requireId(request.data?.dossierId, "dossier");
   const insurerId = requireId(request.data?.insurerId, "assureur");
   const answers = request.data?.answers;
-  if (typeof answers !== "object" || answers === null || Array.isArray(answers) || Object.keys(answers).length > MAX_ANSWERS) {
+  if (
+    typeof answers !== "object" ||
+    answers === null ||
+    Array.isArray(answers) ||
+    Object.keys(answers).length > MAX_ANSWERS
+  ) {
     throw new HttpsError("invalid-argument", "Réponses invalides.");
   }
 
@@ -155,13 +174,17 @@ export const completer = onCall(CALLABLE_OPTIONS, async request => {
     const dossier = await loadPricingDossier(tx, cabinetId, dossierId);
     const job = await tx.get(jobRef);
     if (!job.exists || job.get("status") !== "needs_info") {
-      throw new HttpsError("failed-precondition", "Cette tarification n'attend pas d'informations.", { reason: "not_waiting_info" });
+      throw new HttpsError("failed-precondition", "Cette tarification n'attend pas d'informations.", {
+        reason: "not_waiting_info",
+      });
     }
     const schema = await dossierSchema(tx, cabinetId, dossier);
     const offers = await tx.get(dossier.ref.collection("ci_offers"));
 
     // Seuls les champs demandés par l'extension sont acceptés, et tous doivent être renseignés.
-    const fields = new Map(((job.get("missingFields") as MissingField[] | undefined) ?? []).map(f => [f.canonicalPath as string, f]));
+    const fields = new Map(
+      ((job.get("missingFields") as MissingField[] | undefined) ?? []).map(f => [f.canonicalPath as string, f]),
+    );
     for (const [path, value] of Object.entries(answers as Record<string, unknown>)) {
       const field = fields.get(path);
       if (!field) {
@@ -172,21 +195,39 @@ export const completer = onCall(CALLABLE_OPTIONS, async request => {
         throw new HttpsError("invalid-argument", problem);
       }
     }
-    const unanswered = [...fields.values()].filter(f => !isAnswered((answers as Record<string, CanonicalValue>)[f.canonicalPath]));
+    const unanswered = [...fields.values()].filter(
+      f => !isAnswered((answers as Record<string, CanonicalValue>)[f.canonicalPath]),
+    );
     if (unanswered.length) {
-      throw new HttpsError("invalid-argument", `Renseignez : ${unanswered.map(f => f.label).join(", ")}.`, { reason: "incomplete" });
+      throw new HttpsError("invalid-argument", `Renseignez : ${unanswered.map(f => f.label).join(", ")}.`, {
+        reason: "incomplete",
+      });
     }
 
     const previous = dossier.get("data") as CanonicalData;
     const data = { ...previous, ...(answers as CanonicalData) };
-    tx.update(dossier.ref, { data, completeness: computeCompleteness(schema, data), updatedAt: FieldValue.serverTimestamp() });
+    tx.update(dossier.ref, {
+      data,
+      completeness: computeCompleteness(schema, data),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     // Une réponse qui MODIFIE une donnée déjà connue rend périmés les tarifs déjà obtenus (calculés sur l'ancienne).
-    const changed = Object.keys(answers).filter(path => previous[path as keyof CanonicalData] !== undefined && JSON.stringify(previous[path as keyof CanonicalData]) !== JSON.stringify((answers as Record<string, unknown>)[path]));
+    const changed = Object.keys(answers).filter(
+      path =>
+        previous[path as keyof CanonicalData] !== undefined &&
+        JSON.stringify(previous[path as keyof CanonicalData]) !==
+          JSON.stringify((answers as Record<string, unknown>)[path]),
+    );
     const stale = changed.length ? offers.docs.filter(offer => offer.get("stale") !== true) : [];
     for (const offer of stale) tx.update(offer.ref, { stale: true, staleSince: FieldValue.serverTimestamp() });
-    if (stale.length) addEvent(tx, cabinetId, dossierId, uid, "offers_stale", { insurers: stale.map(o => o.id), fields: changed });
+    if (stale.length)
+      addEvent(tx, cabinetId, dossierId, uid, "offers_stale", { insurers: stale.map(o => o.id), fields: changed });
     // Un nouveau `quoteData` est le signal de reprise pour l'extension ; elle repose elle-même le statut du job.
-    tx.update(jobRef, { quoteData: buildJobQuoteData(schema, data), missingFields: [], updatedAt: FieldValue.serverTimestamp() });
+    tx.update(jobRef, {
+      quoteData: buildJobQuoteData(schema, data),
+      missingFields: [],
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     addEvent(tx, cabinetId, dossierId, uid, "pricing_completed", { insurerId, fields: Object.keys(answers) });
     return { success: true };
   });
@@ -217,7 +258,10 @@ export const saisirOffre = onCall(CALLABLE_OPTIONS, async request => {
     const [job, previous] = await Promise.all([tx.get(jobRef), tx.get(offerRef)]);
     const { guaranteeCatalog } = await loadProduct(tx, cabinetId, dossier.get("productId"));
 
-    const problems = validateManualOffer(received, guaranteeCatalog.map(g => g.code));
+    const problems = validateManualOffer(
+      received,
+      guaranteeCatalog.map(g => g.code),
+    );
     if (problems.length) {
       throw new HttpsError("invalid-argument", problems.join(" "));
     }
@@ -250,9 +294,18 @@ export const saisirOffre = onCall(CALLABLE_OPTIONS, async request => {
       capturedAt: FieldValue.serverTimestamp(),
     });
     if (job.exists && job.get("status") !== "captured") {
-      tx.update(jobRef, { status: "captured", missingFields: [], error: null, updatedAt: FieldValue.serverTimestamp() });
+      tx.update(jobRef, {
+        status: "captured",
+        missingFields: [],
+        error: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     }
-    addEvent(tx, cabinetId, dossierId, uid, "offer_entered", { insurerId, replaced: previous.exists, withDocument: documentId !== null });
+    addEvent(tx, cabinetId, dossierId, uid, "offer_entered", {
+      insurerId,
+      replaced: previous.exists,
+      withDocument: documentId !== null,
+    });
     return { dossierStatus: status, documentId };
   });
 });
@@ -275,10 +328,16 @@ export const annuler = onCall(CALLABLE_OPTIONS, async request => {
       throw new HttpsError("not-found", "Tarification introuvable.");
     }
     if (!ACTIVE_QUOTE_JOB_STATUSES.includes(job.get("status") as QuoteJobStatus)) {
-      throw new HttpsError("failed-precondition", "Cette tarification n'est pas en cours.", { reason: "job_not_active" });
+      throw new HttpsError("failed-precondition", "Cette tarification n'est pas en cours.", {
+        reason: "job_not_active",
+      });
     }
     tx.update(jobRef, cancelledJobUpdate("annule_par_courtier"));
-    addEvent(tx, cabinetId, dossierId, uid, "pricing_cancelled", { insurerId, from: job.get("status"), owner: job.get("ownerUid") ?? null });
+    addEvent(tx, cabinetId, dossierId, uid, "pricing_cancelled", {
+      insurerId,
+      from: job.get("status"),
+      owner: job.get("ownerUid") ?? null,
+    });
     return { status: "cancelled" as QuoteJobStatus };
   });
 });

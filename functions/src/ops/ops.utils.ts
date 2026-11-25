@@ -16,7 +16,11 @@ const TARGET_OPTIONS = {
  * La cible est toujours explicite : `--emulator` ou `--project <id>`. Le projet de test est partagé
  * avec d'autres applications, on ne vise jamais un projet réel par défaut.
  */
-export function initOps<T extends Options>(options: T, usage: string, { positionals = false }: { positionals?: boolean } = {}) {
+export function initOps<T extends Options>(
+  options: T,
+  usage: string,
+  { positionals = false }: { positionals?: boolean } = {},
+) {
   const parsed = parseArgs({ options: { ...TARGET_OPTIONS, ...options }, strict: true, allowPositionals: positionals });
   const values = parsed.values;
   const target = values as { emulator?: boolean; project?: string };
@@ -30,7 +34,9 @@ export function initOps<T extends Options>(options: T, usage: string, { position
   admin.initializeApp({ projectId: target.emulator ? EMULATOR_PROJECT_ID : target.project });
   admin.firestore().settings({ ignoreUndefinedProperties: true });
   console.log(target.emulator ? "Cible : emulators locaux" : `Cible : projet ${target.project}`);
-  return Object.assign(values as typeof values & { emulator?: boolean; project?: string }, { positionals: parsed.positionals });
+  return Object.assign(values as typeof values & { emulator?: boolean; project?: string }, {
+    positionals: parsed.positionals,
+  });
 }
 
 export function fail(message: string): never {

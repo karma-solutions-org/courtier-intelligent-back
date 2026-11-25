@@ -54,9 +54,13 @@ export const decider = onCall(CALLABLE_OPTIONS, async request => {
       throw new HttpsError("not-found", "Offre introuvable pour cet assureur.");
     }
     if (offer.get("stale") === true) {
-      throw new HttpsError("failed-precondition", "Les données du dossier ont changé depuis ce tarif : relancez la tarification.", {
-        reason: "offer_stale",
-      });
+      throw new HttpsError(
+        "failed-precondition",
+        "Les données du dossier ont changé depuis ce tarif : relancez la tarification.",
+        {
+          reason: "offer_stale",
+        },
+      );
     }
     const from = dossier.get("status") as DossierStatus;
     if (!DECISION_STATUSES.includes(from)) {
@@ -92,7 +96,11 @@ export const decider = onCall(CALLABLE_OPTIONS, async request => {
         decidedBy: uid,
         decidedAt: FieldValue.serverTimestamp(),
         // Copies figées : ce qui a été choisi, et pour quel besoin, même si l'offre est ressaisie ensuite.
-        offerSnapshot: offerSnapshotOf(insurerId, (insurer.get("name") as string | undefined) ?? null, offer.data() as Partial<Offer>),
+        offerSnapshot: offerSnapshotOf(
+          insurerId,
+          (insurer.get("name") as string | undefined) ?? null,
+          offer.data() as Partial<Offer>,
+        ),
         needSnapshot: needSnapshotOf(dossier.get("needAnalysis") as Partial<NeedAnalysis> | null),
       },
       updatedAt: FieldValue.serverTimestamp(),

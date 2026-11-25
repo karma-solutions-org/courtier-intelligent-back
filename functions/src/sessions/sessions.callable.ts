@@ -42,7 +42,11 @@ export const ouvrir = onCall(CALLABLE_OPTIONS, async request => {
     const isSameLogin = current?.authTime === authTime;
     const lastSeen = current?.lastSeen?.toMillis();
     const activeElsewhere =
-      !!current && !isSameLogin && current.id !== deviceId && lastSeen !== undefined && Date.now() - lastSeen < APP_SESSION_ACTIVE_MS;
+      !!current &&
+      !isSameLogin &&
+      current.id !== deviceId &&
+      lastSeen !== undefined &&
+      Date.now() - lastSeen < APP_SESSION_ACTIVE_MS;
     if (activeElsewhere) {
       return { refused: true as const, activeLabel: current.appareil ?? null };
     }
@@ -186,7 +190,10 @@ export const emettreJetonExtension = onCall(CALLABLE_OPTIONS, async request => {
     }
     const issuedAt = current.extensionTokenIssuedAt?.toMillis();
     if (issuedAt !== undefined && Date.now() - issuedAt < EXTENSION_TOKEN_MIN_INTERVAL_MS) {
-      throw new HttpsError("resource-exhausted", "Trop de demandes de connexion de l'extension. Réessayez dans quelques secondes.");
+      throw new HttpsError(
+        "resource-exhausted",
+        "Trop de demandes de connexion de l'extension. Réessayez dans quelques secondes.",
+      );
     }
     tx.update(memberRef, { "session.extensionTokenIssuedAt": FieldValue.serverTimestamp() });
   });

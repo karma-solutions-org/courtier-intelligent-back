@@ -17,5 +17,11 @@ export async function writeAudit(cabinetId: string, event: AuditEvent): Promise<
   await admin
     .firestore()
     .collection(auditLogPath(cabinetId))
-    .add({ type: event.type, uid: event.uid, by: event.by ?? event.uid, data: event.data ?? {}, at: FieldValue.serverTimestamp() });
+    .add({
+      type: event.type,
+      uid: event.uid,
+      by: event.by ?? event.uid,
+      data: event.data ?? {},
+      at: FieldValue.serverTimestamp(),
+    });
 }

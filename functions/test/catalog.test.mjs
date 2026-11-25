@@ -1,22 +1,22 @@
 // Validation du catalogue : le catalogue du dépôt est valide, un JSON invalide est détecté.
 // Lancer avec : npm run test:unit
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { createRequire } from 'node:module';
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { loadCatalog, CATALOG_DIR } = require('../lib/ops/catalog.js');
+const { loadCatalog, CATALOG_DIR } = require("../lib/ops/catalog.js");
 
 /** Copie le catalogue du dépôt dans un dossier temporaire, après y avoir appliqué `mutate`. */
 function withCatalog(mutate) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "catalog-"));
   fs.cpSync(CATALOG_DIR, dir, { recursive: true });
   mutate((relative, update) => {
     const file = path.join(dir, relative);
-    const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const json = JSON.parse(fs.readFileSync(file, "utf8"));
     fs.writeFileSync(file, JSON.stringify(update(json)));
   });
   try {
@@ -26,108 +26,152 @@ function withCatalog(mutate) {
   }
 }
 
-const questionnaire = 'products/auto/questionnaire.json';
+const questionnaire = "products/auto/questionnaire.json";
 
-describe('Catalogue du dépôt', () => {
-  it('est valide et contient le produit Auto, les 14 extranets par défaut + l’assureur de démo locale et des offres', () => {
+describe("Catalogue du dépôt", () => {
+  it("est valide et contient le produit Auto, les 14 extranets par défaut + les 3 assureurs de démo locale et des offres", () => {
     const { catalog, issues } = loadCatalog();
     assert.deepEqual(issues, []);
-    assert.equal(catalog.insurers.length, 15);
-    assert.ok(catalog.insurers.some(i => i.id === 'assureur-test-local'));
+    assert.equal(catalog.insurers.length, 17);
+    // Faux extranets du repo front (extension/demo-extranet*, ports 8090 à 8092).
+    for (const id of ["assureur-test-local", "assureur-horizon-local", "assureur-atlas-local"]) {
+      assert.ok(
+        catalog.insurers.some(i => i.id === id),
+        id,
+      );
+    }
     assert.ok(catalog.plans.length >= 2);
-    assert.deepEqual(catalog.products.map(p => p.id), ['auto']);
+    assert.deepEqual(
+      catalog.products.map(p => p.id),
+      ["auto"],
+    );
   });
 });
 
-describe('Validation : un JSON invalide est détecté', () => {
-  it('un canonicalPath absent du modèle canonique', () => {
-    const { issues } = withCatalog(edit => edit(questionnaire, q => { q[0].questions[0].canonicalPath = 'client.inconnu'; return q; }));
+describe("Validation : un JSON invalide est détecté", () => {
+  it("un canonicalPath absent du modèle canonique", () => {
+    const { issues } = withCatalog(edit =>
+      edit(questionnaire, q => {
+        q[0].questions[0].canonicalPath = "client.inconnu";
+        return q;
+      }),
+    );
     assert.ok(issues.some(i => i.file === questionnaire && /modèle canonique/.test(i.message)));
   });
 
-  it('un champ en double', () => {
-    const { issues } = withCatalog(edit => edit(questionnaire, q => { q[0].questions[1].canonicalPath = q[0].questions[0].canonicalPath; return q; }));
+  it("un champ en double", () => {
+    const { issues } = withCatalog(edit =>
+      edit(questionnaire, q => {
+        q[0].questions[1].canonicalPath = q[0].questions[0].canonicalPath;
+        return q;
+      }),
+    );
     assert.ok(issues.some(i => /en double/.test(i.message)));
   });
 
-  it('un type de question invalide ou un choix sans valeurs', () => {
-    const { issues } = withCatalog(edit => edit(questionnaire, q => {
-      q[0].questions[0].type = 'inconnu';
-      q[1].questions.find(x => x.type === 'choice').choices = [];
-      return q;
-    }));
+  it("un type de question invalide ou un choix sans valeurs", () => {
+    const { issues } = withCatalog(edit =>
+      edit(questionnaire, q => {
+        q[0].questions[0].type = "inconnu";
+        q[1].questions.find(x => x.type === "choice").choices = [];
+        return q;
+      }),
+    );
     assert.ok(issues.some(i => /type invalide/.test(i.message)));
     assert.ok(issues.some(i => /choices/.test(i.message)));
   });
 
   it("une condition d'affichage qui référence un champ absent", () => {
-    const { issues } = withCatalog(edit => edit(questionnaire, q => {
-      q[0].questions[0].visibleIf = { path: 'driver.profession', equals: 'x' };
-      q[3].questions = q[3].questions.filter(x => x.canonicalPath !== 'insuranceHistory.currentlyInsured');
-      return q;
-    }));
+    const { issues } = withCatalog(edit =>
+      edit(questionnaire, q => {
+        q[0].questions[0].visibleIf = { path: "driver.profession", equals: "x" };
+        q[3].questions = q[3].questions.filter(x => x.canonicalPath !== "insuranceHistory.currentlyInsured");
+        return q;
+      }),
+    );
     assert.ok(issues.some(i => /visibleIf/.test(i.message)));
   });
 
-  it('un synonyme qui pointe vers une garantie inconnue ou vers deux garanties', () => {
-    const { issues } = withCatalog(edit => edit('products/auto/synonyms.json', s => {
-      s.ZZZ = ['autre'];
-      s.VOL.push('incendie');
-      return s;
-    }));
+  it("un synonyme qui pointe vers une garantie inconnue ou vers deux garanties", () => {
+    const { issues } = withCatalog(edit =>
+      edit("products/auto/synonyms.json", s => {
+        s.ZZZ = ["autre"];
+        s.VOL.push("incendie");
+        return s;
+      }),
+    );
     assert.ok(issues.some(i => /code de garantie inconnu : ZZZ/.test(i.message)));
     assert.ok(issues.some(i => /ambiguë/.test(i.message)));
   });
 
   it("un assureur dont les domaines ne couvrent pas l'URL, ou avec un produit inconnu", () => {
-    const { issues } = withCatalog(edit => edit('insurers/allianz.json', i => {
-      i.extranetDomains = ['autre-domaine.example'];
-      i.productsSupported = ['habitation'];
-      return i;
-    }));
+    const { issues } = withCatalog(edit =>
+      edit("insurers/allianz.json", i => {
+        i.extranetDomains = ["autre-domaine.example"];
+        i.productsSupported = ["habitation"];
+        return i;
+      }),
+    );
     assert.ok(issues.some(i => /extranetDomains/.test(i.message)));
     assert.ok(issues.some(i => /produit inconnu/.test(i.message)));
   });
 
   it("un extranet en http est refusé, sauf sur localhost (démo locale)", () => {
-    const http = withCatalog(edit => edit('insurers/allianz.json', i => {
-      i.extranetUrl = 'http://authentification-courtage.allianz.fr/';
-      return i;
-    }));
+    const http = withCatalog(edit =>
+      edit("insurers/allianz.json", i => {
+        i.extranetUrl = "http://authentification-courtage.allianz.fr/";
+        return i;
+      }),
+    );
     assert.ok(http.issues.some(i => /https/.test(i.message)));
-    const local = withCatalog(edit => edit('insurers/allianz.json', i => {
-      i.extranetUrl = 'http://localhost:8090/index.html';
-      i.extranetDomains = ['localhost:8090'];
-      return i;
-    }));
+    const local = withCatalog(edit =>
+      edit("insurers/allianz.json", i => {
+        i.extranetUrl = "http://localhost:8090/index.html";
+        i.extranetDomains = ["localhost:8090"];
+        return i;
+      }),
+    );
     assert.deepEqual(local.issues, []);
     // Comme dans l'extension : pour localhost, le port fait partie du domaine.
-    const noPort = withCatalog(edit => edit('insurers/allianz.json', i => {
-      i.extranetUrl = 'http://localhost:8090/index.html';
-      i.extranetDomains = ['localhost'];
-      return i;
-    }));
+    const noPort = withCatalog(edit =>
+      edit("insurers/allianz.json", i => {
+        i.extranetUrl = "http://localhost:8090/index.html";
+        i.extranetDomains = ["localhost"];
+        return i;
+      }),
+    );
     assert.ok(noPort.issues.some(i => /ne couvre pas/.test(i.message)));
   });
 
-  it('une offre avec une limite invalide', () => {
-    const { issues } = withCatalog(edit => edit('plans/essentiel.json', p => { p.limits.maxUtilisateurs = 0; return p; }));
-    assert.ok(issues.some(i => i.file === 'plans/essentiel.json'));
+  it("une offre avec une limite invalide", () => {
+    const { issues } = withCatalog(edit =>
+      edit("plans/essentiel.json", p => {
+        p.limits.maxUtilisateurs = 0;
+        return p;
+      }),
+    );
+    assert.ok(issues.some(i => i.file === "plans/essentiel.json"));
   });
 
-  it('une offre sans appareils par utilisateur ni délai de grâce valides', () => {
-    const { issues } = withCatalog(edit => edit('plans/cabinet.json', p => { p.limits.maxAppareilsParUtilisateur = 0; delete p.limits.delaiGraceJours; return p; }));
+  it("une offre sans appareils par utilisateur ni délai de grâce valides", () => {
+    const { issues } = withCatalog(edit =>
+      edit("plans/cabinet.json", p => {
+        p.limits.maxAppareilsParUtilisateur = 0;
+        delete p.limits.delaiGraceJours;
+        return p;
+      }),
+    );
     assert.ok(issues.some(i => /maxAppareilsParUtilisateur/.test(i.message)));
     assert.ok(issues.some(i => /delaiGraceJours/.test(i.message)));
   });
 
-  it('un fichier JSON mal formé', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-'));
+  it("un fichier JSON mal formé", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "catalog-"));
     fs.cpSync(CATALOG_DIR, dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'plans/cabinet.json'), '{ pas du json');
+    fs.writeFileSync(path.join(dir, "plans/cabinet.json"), "{ pas du json");
     try {
       const { issues } = loadCatalog(dir);
-      assert.ok(issues.some(i => i.file === 'plans/cabinet.json' && /illisible/.test(i.message)));
+      assert.ok(issues.some(i => i.file === "plans/cabinet.json" && /illisible/.test(i.message)));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

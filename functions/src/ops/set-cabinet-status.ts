@@ -3,7 +3,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { cabinetPath } from "../core/firestore-paths";
 import { fail, initOps, required, run } from "./ops.utils";
 
-const USAGE = "npm run ops:set-cabinet-status -- (--emulator | --project <id>) --cabinet <id> --status (active|disabled)";
+const USAGE =
+  "npm run ops:set-cabinet-status -- (--emulator | --project <id>) --cabinet <id> --status (active|disabled)";
 
 /**
  * Active ou désactive un cabinet. Un cabinet désactivé est refusé par `sessions-ouvrir`, par les autres

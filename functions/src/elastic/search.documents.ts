@@ -25,7 +25,9 @@ export function millis(value: unknown): number | null {
   if (value instanceof Date) return value.getTime();
   const toMillis = (value as { toMillis?: () => number } | null)?.toMillis;
   if (typeof toMillis === "function") return toMillis.call(value);
-  const seconds = (value as { seconds?: unknown; _seconds?: unknown } | null)?.seconds ?? (value as { _seconds?: unknown } | null)?._seconds;
+  const seconds =
+    (value as { seconds?: unknown; _seconds?: unknown } | null)?.seconds ??
+    (value as { _seconds?: unknown } | null)?._seconds;
   return typeof seconds === "number" ? seconds * 1000 : null;
 }
 
@@ -85,7 +87,9 @@ export const SEARCH_WINDOW_MAX = 10_000;
 
 /** Taille et décalage demandés, bornés. */
 export function pageOf(raw: { size?: unknown; from?: unknown }): { size: number; from: number } {
-  const size = Number.isInteger(raw.size) ? Math.min(Math.max(raw.size as number, 1), SEARCH_SIZE_MAX) : SEARCH_SIZE_DEFAULT;
+  const size = Number.isInteger(raw.size)
+    ? Math.min(Math.max(raw.size as number, 1), SEARCH_SIZE_MAX)
+    : SEARCH_SIZE_DEFAULT;
   // Elasticsearch refuse from + size > 10 000 (max_result_window) : on reste en deçà.
   const from = Number.isInteger(raw.from) ? Math.min(Math.max(raw.from as number, 0), SEARCH_WINDOW_MAX - size) : 0;
   return { size, from };
@@ -115,7 +119,14 @@ export function buildSearchQuery(
     if (values.length) filter.push({ terms: { [`${field}.keyword`]: values } });
   }
   if (options.period) {
-    filter.push({ range: { [options.period.field]: { ...(options.period.gte != null ? { gte: options.period.gte } : {}), ...(options.period.lte != null ? { lte: options.period.lte } : {}) } } });
+    filter.push({
+      range: {
+        [options.period.field]: {
+          ...(options.period.gte != null ? { gte: options.period.gte } : {}),
+          ...(options.period.lte != null ? { lte: options.period.lte } : {}),
+        },
+      },
+    });
   }
   const tokens = input
     .replace(/[*?\\/"'()[\]{}:!^~+\-&|<>=]/g, " ")
@@ -157,7 +168,16 @@ export function buildSearchQuery(
 }
 
 /** Champs cherchés et leur poids. */
-export const ASSURE_SEARCH_FIELDS = ["lastName^3", "firstName^3", "companyName^3", "email^2", "siret^2", "phone", "city", "postalCode"];
+export const ASSURE_SEARCH_FIELDS = [
+  "lastName^3",
+  "firstName^3",
+  "companyName^3",
+  "email^2",
+  "siret^2",
+  "phone",
+  "city",
+  "postalCode",
+];
 export const DOSSIER_SEARCH_FIELDS = ["reference^3", "assureName^3", "productId"];
 
 /** Filtres exacts (champ → valeurs acceptées). */
@@ -169,9 +189,13 @@ export interface SearchPeriod {
   lte: number | null;
 }
 
-const id = (value: unknown): string | null => (typeof value === "string" && /^[\w-]{1,100}$/.test(value) ? value : null);
+const id = (value: unknown): string | null =>
+  typeof value === "string" && /^[\w-]{1,100}$/.test(value) ? value : null;
 const ids = (value: unknown): string[] =>
-  (Array.isArray(value) ? value : value === undefined || value === null ? [] : [value]).map(id).filter((v): v is string => !!v).slice(0, 20);
+  (Array.isArray(value) ? value : value === undefined || value === null ? [] : [value])
+    .map(id)
+    .filter((v): v is string => !!v)
+    .slice(0, 20);
 
 /** Filtres de la liste des dossiers : statut(s), produit(s), courtier(s) en charge, client. Valeurs inconnues ignorées. */
 export function dossierTerms(raw: Record<string, unknown> | undefined): SearchTerms {

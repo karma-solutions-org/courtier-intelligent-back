@@ -51,12 +51,19 @@ export const enregistrerBesoin = onCall(CALLABLE_OPTIONS, async request => {
     }
     const status = dossier.get("status") as DossierStatus;
     if (!NEED_STATUSES.includes(status)) {
-      throw new HttpsError("failed-precondition", "La couverture souhaitée se renseigne une fois le dossier complet, et avant la tarification.", {
-        reason: "need_not_editable",
-      });
+      throw new HttpsError(
+        "failed-precondition",
+        "La couverture souhaitée se renseigne une fois le dossier complet, et avant la tarification.",
+        {
+          reason: "need_not_editable",
+        },
+      );
     }
     const { guaranteeCatalog } = await loadProduct(tx, cabinetId, dossier.get("productId"));
-    const problems = validateNeed(received, guaranteeCatalog.map(g => g.code));
+    const problems = validateNeed(
+      received,
+      guaranteeCatalog.map(g => g.code),
+    );
     if (problems.length) {
       throw new HttpsError("invalid-argument", problems.join(" "));
     }
@@ -80,7 +87,10 @@ export const enregistrerBesoin = onCall(CALLABLE_OPTIONS, async request => {
 
     // Les notes peuvent être longues : on trace qu'elles ont changé, pas leur contenu.
     const changes = Object.fromEntries(
-      changed.map(key => [key, key === "notes" ? { changed: true } : { from: (before ?? EMPTY_NEED)[key], to: after[key] }]),
+      changed.map(key => [
+        key,
+        key === "notes" ? { changed: true } : { from: (before ?? EMPTY_NEED)[key], to: after[key] },
+      ]),
     );
     addEvent(tx, cabinetId, dossierId, uid, "need_updated", { changes });
     if (newStatus !== status) {
@@ -113,18 +123,31 @@ export const validerBesoin = onCall(CALLABLE_OPTIONS, async request => {
       return { status: "besoin_valide" };
     }
     if (!isTransitionAllowed(from, "besoin_valide")) {
-      throw new HttpsError("failed-precondition", `Transition interdite : « ${DOSSIER_STATUS_LABELS[from]} » vers « ${DOSSIER_STATUS_LABELS.besoin_valide} ».`, {
-        reason: "invalid_transition",
-      });
+      throw new HttpsError(
+        "failed-precondition",
+        `Transition interdite : « ${DOSSIER_STATUS_LABELS[from]} » vers « ${DOSSIER_STATUS_LABELS.besoin_valide} ».`,
+        {
+          reason: "invalid_transition",
+        },
+      );
     }
     const need = dossier.get("needAnalysis") as { coverageLevel?: string | null } | null;
     if (!isNeedValidatable(need as never)) {
-      throw new HttpsError("failed-precondition", "Choisissez un niveau de couverture et au moins une garantie avant de valider.", {
-        reason: "need_incomplete",
-      });
+      throw new HttpsError(
+        "failed-precondition",
+        "Choisissez un niveau de couverture et au moins une garantie avant de valider.",
+        {
+          reason: "need_incomplete",
+        },
+      );
     }
     // Questionnaire figé : la suite du dossier (complétude, tarification) s'y réfère, même si le produit change.
-    const { questionnaireSchema } = await loadProduct(tx, cabinetId, dossier.get("productId"), dossier.get("insurerIds") ?? []);
+    const { questionnaireSchema } = await loadProduct(
+      tx,
+      cabinetId,
+      dossier.get("productId"),
+      dossier.get("insurerIds") ?? [],
+    );
 
     tx.update(ref, {
       status: "besoin_valide",

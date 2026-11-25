@@ -24,7 +24,11 @@ console.log(`\n${product.name} (${product.id})${product.active ? "" : " — inac
 for (const section of product.questionnaireSchema) {
   console.log(`\n■ ${section.title}`);
   for (const q of section.questions) {
-    const flags = [q.type, q.required ? "obligatoire" : "facultatif", q.withKnowledge ? "niveau de connaissance" : ""].filter(Boolean);
+    const flags = [
+      q.type,
+      q.required ? "obligatoire" : "facultatif",
+      q.withKnowledge ? "niveau de connaissance" : "",
+    ].filter(Boolean);
     const condition = q.visibleIf ? `   ↳ seulement si ${q.visibleIf.path} = ${String(q.visibleIf.equals)}` : "";
     console.log(`  • ${q.label}  [${flags.join(", ")}]  ${q.canonicalPath}`);
     if (q.choices) console.log(`      choix : ${q.choices.map(c => c.label).join(" / ")}`);
@@ -34,6 +38,8 @@ for (const section of product.questionnaireSchema) {
 console.log(`\n${product.guaranteeCatalog.length} garanties, ${Object.keys(product.synonyms).length} avec synonymes.`);
 
 if (issues.length) {
-  console.error(`\n${issues.length} problème(s) dans le catalogue :\n${issues.map(i => ` - ${i.file} : ${i.message}`).join("\n")}`);
+  console.error(
+    `\n${issues.length} problème(s) dans le catalogue :\n${issues.map(i => ` - ${i.file} : ${i.message}`).join("\n")}`,
+  );
   process.exit(1);
 }

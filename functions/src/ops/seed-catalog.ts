@@ -39,7 +39,9 @@ run(async () => {
   for (const document of documents) {
     if (!document.path.startsWith("ci_products/")) continue;
     const published = await db.doc(document.path).get();
-    const discovered = ((published.get("questionnaireSchema") as QuestionnaireSection[] | undefined) ?? []).filter(s => s.discovered);
+    const discovered = ((published.get("questionnaireSchema") as QuestionnaireSection[] | undefined) ?? []).filter(
+      s => s.discovered,
+    );
     const data = document.data as { questionnaireSchema?: QuestionnaireSection[]; insurerRequiredPaths?: string[] };
     // Exigences apprises des extranets (champs obligatoires) : réappliquées au questionnaire republié.
     const requiredPaths = (published.get("insurerRequiredPaths") as string[] | undefined) ?? [];

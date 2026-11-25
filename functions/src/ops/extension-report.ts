@@ -40,7 +40,9 @@ run(async () => {
     failuresByInsurer.set(report.insurerId, steps);
   }
 
-  console.log(`\nBilan sur ${days} jour(s) : ${offers.size} offre(s) capturée(s) automatiquement, ${failures.length} échec(s) remonté(s).\n`);
+  console.log(
+    `\nBilan sur ${days} jour(s) : ${offers.size} offre(s) capturée(s) automatiquement, ${failures.length} échec(s) remonté(s).\n`,
+  );
   const insurers = [...new Set([...successByInsurer.keys(), ...failuresByInsurer.keys()])].sort();
   if (!insurers.length) {
     console.log("Aucune activité de l'extension sur la période.");
@@ -50,7 +52,9 @@ run(async () => {
     const steps = failuresByInsurer.get(insurerId) ?? new Map<string, number>();
     const failed = [...steps.values()].reduce((sum, count) => sum + count, 0);
     const rate = success + failed ? Math.round((success / (success + failed)) * 100) : 0;
-    console.log(`${insurerId.padEnd(30)} réussites ${String(success).padStart(5)}   échecs ${String(failed).padStart(5)}   (${rate} % de réussite)`);
+    console.log(
+      `${insurerId.padEnd(30)} réussites ${String(success).padStart(5)}   échecs ${String(failed).padStart(5)}   (${rate} % de réussite)`,
+    );
     for (const [step, count] of [...steps.entries()].sort((a, b) => b[1] - a[1])) {
       console.log(`  ${step.padEnd(28)} échecs ${String(count).padStart(5)}`);
     }
@@ -59,6 +63,8 @@ run(async () => {
   console.log(`\n${Math.min(last, failures.length)} dernier(s) échec(s) :`);
   for (const report of failures.slice(0, last)) {
     const at = (report.at as Timestamp | undefined)?.toDate().toISOString() ?? "?";
-    console.log(`  ${at}  ${report.insurerId.padEnd(24)} ${report.step.padEnd(20)} ${report.issue.padEnd(20)} ${report.origin}`);
+    console.log(
+      `  ${at}  ${report.insurerId.padEnd(24)} ${report.step.padEnd(20)} ${report.issue.padEnd(20)} ${report.origin}`,
+    );
   }
 });

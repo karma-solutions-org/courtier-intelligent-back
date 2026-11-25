@@ -10,7 +10,13 @@ const { validateContractNumber, validateEffectiveDate } = require("../lib/shared
 const NOW = Date.UTC(2026, 9, 9, 7);
 
 const input = {
-  cabinet: { name: "Cabinet <Dupont> & Fils", orias: "12345678", address: "1 rue \"A\"", phone: "01 02", email: "c@x.fr" },
+  cabinet: {
+    name: "Cabinet <Dupont> & Fils",
+    orias: "12345678",
+    address: '1 rue "A"',
+    phone: "01 02",
+    email: "c@x.fr",
+  },
   assureName: "<script>alert(1)</script>",
   insurerName: "Assur'Plus",
   reference: "2026-000001",
@@ -52,7 +58,6 @@ describe("buildProposalEmail", () => {
     assert.equal(formatEuros(1234.5), "1 234,50 €");
     assert.equal(formatEuros(300), "300 €");
   });
-
 });
 
 describe("buildProposalEmail : exclusions et écarts avec le besoin", () => {
@@ -70,20 +75,43 @@ describe("buildProposalEmail : exclusions et écarts avec le besoin", () => {
 });
 
 describe("copies figées, sans suite, doublons", () => {
-  const { conversionOutcome, duplicateReasons, isTransitionAllowed, needSnapshotOf, offerSnapshotOf } = require("../lib/shared/index.js");
+  const {
+    conversionOutcome,
+    duplicateReasons,
+    isTransitionAllowed,
+    needSnapshotOf,
+    offerSnapshotOf,
+  } = require("../lib/shared/index.js");
 
   it("offerSnapshotOf / needSnapshotOf : valeurs neutres, sans date de validation", () => {
     const snapshot = offerSnapshotOf("axa", "AXA", { premiumAnnual: 500, guarantees: [] });
     assert.deepEqual(snapshot, {
-      insurerId: "axa", insurerName: "AXA", quoteNumber: null, premiumAnnual: 500, premiumMonthly: null, deductibles: {},
-      guarantees: [], exclusions: [], gaps: [], score: null, source: null,
+      insurerId: "axa",
+      insurerName: "AXA",
+      quoteNumber: null,
+      premiumAnnual: 500,
+      premiumMonthly: null,
+      deductibles: {},
+      guarantees: [],
+      exclusions: [],
+      gaps: [],
+      score: null,
+      source: null,
     });
     assert.equal(needSnapshotOf(null), null);
     assert.ok(!("validatedAt" in needSnapshotOf({ coverageLevel: "tiers", validatedAt: "x" })));
   });
 
   it("sans suite : terminal, possible depuis toute étape non finale", () => {
-    for (const from of ["brouillon", "complet", "besoin_valide", "tarification", "comparaison", "decision", "proposition_envoyee"]) {
+    for (const from of [
+      "brouillon",
+      "complet",
+      "besoin_valide",
+      "tarification",
+      "comparaison",
+      "decision",
+      "proposition_envoyee",
+    ]) {
       assert.ok(isTransitionAllowed(from, "sans_suite"), from);
     }
     for (const from of ["souscrit", "refuse", "sans_suite"]) assert.ok(!isTransitionAllowed(from, "sans_suite"), from);
@@ -101,10 +129,16 @@ describe("copies figées, sans suite, doublons", () => {
     assert.deepEqual(duplicateReasons({ siret: "123 456 789 00012" }, { siret: "12345678900012" }), ["siret"]);
     assert.deepEqual(duplicateReasons({ email: "A@B.fr" }, { email: "a@b.fr" }), ["email"]);
     assert.deepEqual(
-      duplicateReasons({ firstName: "Élodie", lastName: "Durand", birthDate: "1990-01-01" }, { firstName: "elodie", lastName: "DURAND", birthDate: "1990-01-01" }),
+      duplicateReasons(
+        { firstName: "Élodie", lastName: "Durand", birthDate: "1990-01-01" },
+        { firstName: "elodie", lastName: "DURAND", birthDate: "1990-01-01" },
+      ),
       ["nom_naissance"],
     );
-    assert.deepEqual(duplicateReasons({ firstName: "Jean", lastName: "Durand" }, { firstName: "Jean", lastName: "Durand" }), []);
+    assert.deepEqual(
+      duplicateReasons({ firstName: "Jean", lastName: "Durand" }, { firstName: "Jean", lastName: "Durand" }),
+      [],
+    );
     assert.deepEqual(duplicateReasons({ companyName: "ACME  SAS" }, { companyName: "acme sas" }), ["raison_sociale"]);
   });
 });

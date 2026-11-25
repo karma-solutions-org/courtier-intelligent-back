@@ -83,5 +83,7 @@ export const proxy = onCall({ ...CALLABLE_OPTIONS, secrets: [GEMINI_API_KEY], ti
 
   // Aucun modèle n'a répondu : l'appel réservé est rendu.
   await release();
-  throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", { reason: "ia_upstream" });
+  throw new HttpsError("unavailable", "Le service d'IA est momentanément indisponible. Réessayez.", {
+    reason: "ia_upstream",
+  });
 });

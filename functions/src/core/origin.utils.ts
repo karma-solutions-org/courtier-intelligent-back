@@ -37,7 +37,9 @@ async function globalInsurerDomains(): Promise<string[]> {
   // Emulators : pas de cache (les tests ajoutent des assureurs à la volée).
   if (cache && !isEmulator() && Date.now() - cache.at < 5 * 60 * 1000) return cache.domains;
   const snapshot = await admin.firestore().collection("ci_insurers").get();
-  const domains = snapshot.docs.flatMap(doc => ((doc.get("extranetDomains") as string[] | undefined) ?? []).filter(d => typeof d === "string"));
+  const domains = snapshot.docs.flatMap(doc =>
+    ((doc.get("extranetDomains") as string[] | undefined) ?? []).filter(d => typeof d === "string"),
+  );
   cache = { at: Date.now(), domains };
   return domains;
 }
@@ -50,6 +52,8 @@ export async function assertKnownInsurerOrigin(origin: string): Promise<void> {
   const host = originHost(origin);
   if (host === "localhost") return;
   if (!host || !hostMatches(host, await globalInsurerDomains())) {
-    throw new HttpsError("permission-denied", "Cette page n'est pas un extranet d'assureur connu.", { reason: "unknown_origin" });
+    throw new HttpsError("permission-denied", "Cette page n'est pas un extranet d'assureur connu.", {
+      reason: "unknown_origin",
+    });
   }
 }

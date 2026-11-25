@@ -42,7 +42,8 @@ const GUARANTEE_TYPES: GuaranteeType[] = ["included", "limit", "deductible"];
 
 type Json = Record<string, unknown>;
 
-const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
+const isObject = (value: unknown): value is Json =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 const isText = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 const isCount = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value > 0;
 
@@ -51,13 +52,21 @@ function readJson(file: string, issues: CatalogIssue[], relative: string): unkno
   try {
     return JSON.parse(fs.readFileSync(file, "utf8"));
   } catch (error) {
-    issues.push({ file: relative, message: `JSON illisible : ${error instanceof Error ? error.message : String(error)}` });
+    issues.push({
+      file: relative,
+      message: `JSON illisible : ${error instanceof Error ? error.message : String(error)}`,
+    });
     return undefined;
   }
 }
 
 function listJson(dir: string): string[] {
-  return fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith(".json")).sort() : [];
+  return fs.existsSync(dir)
+    ? fs
+        .readdirSync(dir)
+        .filter(f => f.endsWith(".json"))
+        .sort()
+    : [];
 }
 
 /**
@@ -77,21 +86,37 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
     if (data === undefined) continue;
     const limits = isObject(data) && isObject(data.limits) ? data.limits : null;
     if (!isObject(data) || !isText(data.id) || !isText(data.name) || !limits) {
-      add(file, "attendu : { id, name, limits: { maxUtilisateurs, resetsAppareilParMois, appelsIaParMois, appelsPlaqueParMois, maxAppareilsParUtilisateur, delaiGraceJours } }");
+      add(
+        file,
+        "attendu : { id, name, limits: { maxUtilisateurs, resetsAppareilParMois, appelsIaParMois, appelsPlaqueParMois, maxAppareilsParUtilisateur, delaiGraceJours } }",
+      );
       continue;
     }
     if (data.id !== name.replace(/\.json$/, "")) add(file, `« id » (${data.id}) doit correspondre au nom du fichier`);
     if (!isCount(limits.maxUtilisateurs)) add(file, "limits.maxUtilisateurs : entier strictement positif attendu");
-    if (typeof limits.resetsAppareilParMois !== "number" || !Number.isInteger(limits.resetsAppareilParMois) || limits.resetsAppareilParMois < 0) {
+    if (
+      typeof limits.resetsAppareilParMois !== "number" ||
+      !Number.isInteger(limits.resetsAppareilParMois) ||
+      limits.resetsAppareilParMois < 0
+    ) {
       add(file, "limits.resetsAppareilParMois : entier positif ou nul attendu");
     }
-    if (typeof limits.appelsIaParMois !== "number" || !Number.isInteger(limits.appelsIaParMois) || limits.appelsIaParMois < 0) {
+    if (
+      typeof limits.appelsIaParMois !== "number" ||
+      !Number.isInteger(limits.appelsIaParMois) ||
+      limits.appelsIaParMois < 0
+    ) {
       add(file, "limits.appelsIaParMois : entier positif ou nul attendu");
     }
-    if (typeof limits.appelsPlaqueParMois !== "number" || !Number.isInteger(limits.appelsPlaqueParMois) || limits.appelsPlaqueParMois < 0) {
+    if (
+      typeof limits.appelsPlaqueParMois !== "number" ||
+      !Number.isInteger(limits.appelsPlaqueParMois) ||
+      limits.appelsPlaqueParMois < 0
+    ) {
       add(file, "limits.appelsPlaqueParMois : entier positif ou nul attendu");
     }
-    if (!isCount(limits.maxAppareilsParUtilisateur)) add(file, "limits.maxAppareilsParUtilisateur : entier strictement positif attendu");
+    if (!isCount(limits.maxAppareilsParUtilisateur))
+      add(file, "limits.maxAppareilsParUtilisateur : entier strictement positif attendu");
     if (!isCount(limits.delaiGraceJours)) add(file, "limits.delaiGraceJours : entier strictement positif attendu");
     catalog.plans.push(data as unknown as Plan);
   }
@@ -99,7 +124,11 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
   // ── Produits ────────────────────────────────────────────────────────────
   const productsDir = path.join(dir, "products");
   const productIds = fs.existsSync(productsDir)
-    ? fs.readdirSync(productsDir, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name).sort()
+    ? fs
+        .readdirSync(productsDir, { withFileTypes: true })
+        .filter(e => e.isDirectory())
+        .map(e => e.name)
+        .sort()
     : [];
   for (const productId of productIds) {
     const base = `products/${productId}`;
@@ -113,7 +142,8 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
       add(`${base}/product.json`, "attendu : { id, name, active }");
       continue;
     }
-    if (product.id !== productId) add(`${base}/product.json`, `« id » (${product.id}) doit correspondre au dossier (${productId})`);
+    if (product.id !== productId)
+      add(`${base}/product.json`, `« id » (${product.id}) doit correspondre au dossier (${productId})`);
 
     const guaranteeCodes = validateGuarantees(guarantees, `${base}/guarantees.json`, add);
     validateQuestionnaire(questionnaire, `${base}/questionnaire.json`, add);
@@ -170,10 +200,14 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
       } else {
         const supported = Array.isArray(data.productsSupported) ? (data.productsSupported as unknown[]) : [];
         for (const [productId, entryPath] of Object.entries(data.entryPaths)) {
-          if (!supported.includes(productId)) add(file, `entryPaths : produit « ${productId} » absent de productsSupported`);
+          if (!supported.includes(productId))
+            add(file, `entryPaths : produit « ${productId} » absent de productsSupported`);
           const clean = sanitizeCatalogEntryPath(entryPath);
           if (!clean) {
-            add(file, `entryPaths.${productId} : chemin invalide (origine https, 1 à ${ENTRY_MAX_ACTIONS} clics, aucun bouton de validation)`);
+            add(
+              file,
+              `entryPaths.${productId} : chemin invalide (origine https, 1 à ${ENTRY_MAX_ACTIONS} clics, aucun bouton de validation)`,
+            );
             continue;
           }
           const url = new URL(clean.origin);
@@ -191,13 +225,15 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
       } else {
         const supported = Array.isArray(data.productsSupported) ? (data.productsSupported as unknown[]) : [];
         for (const [productId, paths] of Object.entries(data.questions)) {
-          if (!supported.includes(productId)) add(file, `questions : produit « ${productId} » absent de productsSupported`);
+          if (!supported.includes(productId))
+            add(file, `questions : produit « ${productId} » absent de productsSupported`);
           if (!Array.isArray(paths) || paths.length === 0) {
             add(file, `questions.${productId} : liste non vide de chemins attendue`);
             continue;
           }
           for (const p of paths) {
-            if (typeof p !== "string" || !isCanonicalPath(p)) add(file, `questions.${productId} : chemin inconnu « ${String(p)} »`);
+            if (typeof p !== "string" || !isCanonicalPath(p))
+              add(file, `questions.${productId} : chemin inconnu « ${String(p)} »`);
           }
         }
       }
@@ -216,7 +252,12 @@ function validateGuarantees(data: unknown, file: string, add: (file: string, mes
     return codes;
   }
   data.forEach((item, index) => {
-    if (!isObject(item) || !isText(item.code) || !isText(item.label) || !GUARANTEE_TYPES.includes(item.type as GuaranteeType)) {
+    if (
+      !isObject(item) ||
+      !isText(item.code) ||
+      !isText(item.label) ||
+      !GUARANTEE_TYPES.includes(item.type as GuaranteeType)
+    ) {
       add(file, `garantie n°${index + 1} : attendu { code, label, type: ${GUARANTEE_TYPES.join(" | ")} }`);
       return;
     }
@@ -268,7 +309,12 @@ function validateQuestionnaire(data: unknown, file: string, add: (file: string, 
 
   const seen = new Set<string>();
   data.forEach((section, s) => {
-    if (!isObject(section) || !isText(section.title) || !Array.isArray(section.questions) || section.questions.length === 0) {
+    if (
+      !isObject(section) ||
+      !isText(section.title) ||
+      !Array.isArray(section.questions) ||
+      section.questions.length === 0
+    ) {
       add(file, `section n°${s + 1} : attendu { title, questions: [...] } non vide`);
       return;
     }
@@ -285,7 +331,8 @@ function validateQuestionnaire(data: unknown, file: string, add: (file: string, 
       if (seen.has(q.canonicalPath)) add(file, `${label} : question en double`);
       seen.add(q.canonicalPath);
       if (!isText(q.label)) add(file, `${label} : label manquant`);
-      if (!QUESTION_TYPES.includes(q.type as QuestionType)) add(file, `${label} : type invalide (${QUESTION_TYPES.join(" | ")})`);
+      if (!QUESTION_TYPES.includes(q.type as QuestionType))
+        add(file, `${label} : type invalide (${QUESTION_TYPES.join(" | ")})`);
       if (typeof q.required !== "boolean") add(file, `${label} : « required » (booléen) manquant`);
 
       if (q.type === "choice") {
@@ -296,12 +343,19 @@ function validateQuestionnaire(data: unknown, file: string, add: (file: string, 
       } else if (q.choices !== undefined) {
         add(file, `${label} : « choices » n'est valable que pour le type choice`);
       }
-      if (q.withKnowledge !== undefined && (typeof q.withKnowledge !== "boolean" || (q.withKnowledge && q.type !== "number"))) {
+      if (
+        q.withKnowledge !== undefined &&
+        (typeof q.withKnowledge !== "boolean" || (q.withKnowledge && q.type !== "number"))
+      ) {
         add(file, `${label} : « withKnowledge » est réservé aux champs numériques`);
       }
       if (q.visibleIf !== undefined) {
         const cond = q.visibleIf;
-        if (!isObject(cond) || typeof cond.path !== "string" || !["string", "number", "boolean"].includes(typeof cond.equals)) {
+        if (
+          !isObject(cond) ||
+          typeof cond.path !== "string" ||
+          !["string", "number", "boolean"].includes(typeof cond.equals)
+        ) {
           add(file, `${label} : visibleIf attendu { path, equals }`);
         } else if (!typeOf.has(cond.path)) {
           add(file, `${label} : visibleIf référence un champ absent du questionnaire (${cond.path})`);

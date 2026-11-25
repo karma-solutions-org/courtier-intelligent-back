@@ -4,7 +4,8 @@ import { getActiveMembership } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
 import { duplicateReasons, type AssureDuplicateReason, type AssureIdentity } from "../shared/index.js";
 
-const text = (value: unknown, max: number) => (typeof value === "string" && value.trim() ? value.trim().substring(0, max) : null);
+const text = (value: unknown, max: number) =>
+  typeof value === "string" && value.trim() ? value.trim().substring(0, max) : null;
 
 /**
  * Doublons d'un client, cherchés côté serveur dans TOUT le cabinet (y compris la corbeille) : même SIRET, même email,
@@ -32,7 +33,9 @@ export const verifierDoublon = onCall(CALLABLE_OPTIONS, async request => {
   const queries = [
     candidate.siret ? assures.where("siret", "==", candidate.siret).limit(20).get() : null,
     candidate.email ? assures.where("email", "==", candidate.email).limit(20).get() : null,
-    candidate.email && candidate.email !== request.data?.email ? assures.where("email", "==", String(request.data.email).trim()).limit(20).get() : null,
+    candidate.email && candidate.email !== request.data?.email
+      ? assures.where("email", "==", String(request.data.email).trim()).limit(20).get()
+      : null,
     candidate.lastName ? assures.where("lastName", "==", candidate.lastName).limit(50).get() : null,
     candidate.companyName ? assures.where("companyName", "==", candidate.companyName).limit(20).get() : null,
   ];

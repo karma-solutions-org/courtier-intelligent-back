@@ -2,7 +2,15 @@ import * as admin from "firebase-admin";
 import { FieldValue, Transaction } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 import { cabinetPath, dossierPath, insurerPath, productPath } from "./firestore-paths";
-import { DISCOVERED_SECTION_TITLE, questionsOf, schemaForCabinet, schemaForInsurers, type DossierEventType, type Product, type QuestionnaireSection } from "../shared/index.js";
+import {
+  DISCOVERED_SECTION_TITLE,
+  questionsOf,
+  schemaForCabinet,
+  schemaForInsurers,
+  type DossierEventType,
+  type Product,
+  type QuestionnaireSection,
+} from "../shared/index.js";
 
 /**
  * Produit d'un dossier (questionnaire et référentiel des garanties) : la référence pour valider ce qui est enregistré.
@@ -47,7 +55,10 @@ export function addEvent(
   type: DossierEventType,
   data?: Record<string, unknown>,
 ): void {
-  const ref = admin.firestore().collection(`${dossierPath(cabinetId, dossierId)}/ci_events`).doc();
+  const ref = admin
+    .firestore()
+    .collection(`${dossierPath(cabinetId, dossierId)}/ci_events`)
+    .doc();
   tx.create(ref, { type, by: uid, at: FieldValue.serverTimestamp(), data: data ?? {} });
 }
 
@@ -66,12 +77,19 @@ export function withLateDiscoveredQuestions(
     .filter(section => section.discovered)
     .flatMap(section => section.questions)
     .filter(question => !known.has(question.canonicalPath))
-    .filter(question => !insurerIds.length || !question.discoveredOn?.length || question.discoveredOn.some(source => source.insurerId === null || insurerIds.includes(source.insurerId)))
+    .filter(
+      question =>
+        !insurerIds.length ||
+        !question.discoveredOn?.length ||
+        question.discoveredOn.some(source => source.insurerId === null || insurerIds.includes(source.insurerId)),
+    )
     .map(question => ({ ...question, required: false, mustBeKnown: false }));
   if (!late.length) return snapshot;
   const index = snapshot.findIndex(section => section.discovered);
   if (index < 0) return [...snapshot, { title: DISCOVERED_SECTION_TITLE, questions: late, discovered: true }];
-  return snapshot.map((section, i) => (i === index ? { ...section, questions: [...section.questions, ...late] } : section));
+  return snapshot.map((section, i) =>
+    i === index ? { ...section, questions: [...section.questions, ...late] } : section,
+  );
 }
 
 /**

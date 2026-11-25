@@ -34,7 +34,10 @@ function validAssure(raw: unknown) {
   const birthDate = isPro ? null : optText(d.birthDate, "Date de naissance", 10, /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/);
   const email = optText(d.email, "Email", 254, /^[^ @]+@[^ @]+[.][^ @]{2,}$/)?.toLowerCase() ?? null;
   const phone = optText(d.phone, "Téléphone", 30);
-  const a = d.address && typeof d.address === "object" && !Array.isArray(d.address) ? (d.address as Record<string, unknown>) : {};
+  const a =
+    d.address && typeof d.address === "object" && !Array.isArray(d.address)
+      ? (d.address as Record<string, unknown>)
+      : {};
   const address = {
     street: optText(a.street, "Adresse", 200),
     postalCode: optText(a.postalCode, "Code postal", 5, /^[0-9]{5}$/),
@@ -81,10 +84,14 @@ async function assertNoDuplicate(
     data.siret ? tx.get(assures.where("siret", "==", data.siret).limit(20)) : null,
     data.email ? tx.get(assures.where("email", "==", data.email).limit(20)) : null,
   ]);
-  const duplicate = [...(bySiret?.docs ?? []), ...(byEmail?.docs ?? [])].find(doc => doc.id !== selfId && !doc.get("deletedAt"));
+  const duplicate = [...(bySiret?.docs ?? []), ...(byEmail?.docs ?? [])].find(
+    doc => doc.id !== selfId && !doc.get("deletedAt"),
+  );
   if (!duplicate) return;
   const sameSiret = !!data.siret && duplicate.get("siret") === data.siret;
-  const action = selfId ? "Ouvrez sa fiche plutôt que de modifier celle-ci." : "Ouvrez sa fiche plutôt que d'en créer un nouveau.";
+  const action = selfId
+    ? "Ouvrez sa fiche plutôt que de modifier celle-ci."
+    : "Ouvrez sa fiche plutôt que d'en créer un nouveau.";
   throw new HttpsError(
     "already-exists",
     `Un client avec ${sameSiret ? "ce SIRET" : "cet email"} existe déjà dans le cabinet. ${action}`,

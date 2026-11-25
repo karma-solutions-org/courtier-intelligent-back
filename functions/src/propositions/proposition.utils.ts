@@ -31,7 +31,6 @@ export interface ProposalEmailInput {
   message?: string | null;
 }
 
-
 /** Montant en euros, au format français (« 1 234,50 € »). */
 export function formatEuros(amount: number): string {
   const fixed = amount.toFixed(2).replace(/\.00$/, "");
@@ -109,8 +108,12 @@ export function buildProposalEmail(input: ProposalEmailInput): { subject: string
       return `<tr>${cell(escapeHtml(g.label))}${cell(details.length ? details.join(" · ") : "Incluse", `text-align:right;color:${c.muted}`)}</tr>`;
     });
 
-  const exclusions = (input.exclusions ?? []).filter(e => typeof e === "string" && e.trim()).map(e => `<li style="margin:0 0 4px">${escapeHtml(e.trim())}</li>`);
-  const gaps = (input.gaps ?? []).filter(g => g?.message).map(g => `<li style="margin:0 0 4px">${escapeHtml(g.message)}</li>`);
+  const exclusions = (input.exclusions ?? [])
+    .filter(e => typeof e === "string" && e.trim())
+    .map(e => `<li style="margin:0 0 4px">${escapeHtml(e.trim())}</li>`);
+  const gaps = (input.gaps ?? [])
+    .filter(g => g?.message)
+    .map(g => `<li style="margin:0 0 4px">${escapeHtml(g.message)}</li>`);
   const list = (items: string[]) =>
     `<ul style="margin:6px 0 0;padding-left:20px;font-size:14px;line-height:20px;color:${c.text}">${items.join("")}</ul>`;
 
@@ -130,7 +133,9 @@ export function buildProposalEmail(input: ProposalEmailInput): { subject: string
     offerCard +
     sectionTitle("Notre recommandation") +
     emailParagraph(paragraph(input.justification)) +
-    (guarantees.length ? sectionTitle("Garanties incluses") + table(["Garantie", "Plafond / franchise"], guarantees) : "") +
+    (guarantees.length
+      ? sectionTitle("Garanties incluses") + table(["Garantie", "Plafond / franchise"], guarantees)
+      : "") +
     (deductibles.length ? sectionTitle("Franchises") + table(["Franchise", "Montant"], deductibles) : "") +
     (exclusions.length ? sectionTitle("Principales exclusions") + list(exclusions) : "") +
     (gaps.length
@@ -142,8 +147,9 @@ export function buildProposalEmail(input: ProposalEmailInput): { subject: string
     `<p style="margin:0 0 6px;font-size:15px;line-height:23px;color:${c.text}">Bien cordialement,<br><strong>${escapeHtml(cabinet.name)}</strong></p>`;
 
   const footer =
-    (contact.length ? `<p style="margin:0;font-size:12px;line-height:18px;color:${c.muted}">${contact.join(" · ")}</p>` : "") +
-    cabinetLegalMentions(cabinet);
+    (contact.length
+      ? `<p style="margin:0;font-size:12px;line-height:18px;color:${c.muted}">${contact.join(" · ")}</p>`
+      : "") + cabinetLegalMentions(cabinet);
 
   const html = emailLayout({
     headerTitle: escapeHtml(cabinet.name),
@@ -158,7 +164,9 @@ export function buildProposalEmail(input: ProposalEmailInput): { subject: string
 /** Email de relance envoyé au courtier en charge (pas à l'assuré). */
 
 /** Nom affiché d'un assuré (raison sociale pour un professionnel). */
-export function assureDisplayName(assure: { firstName?: string; lastName?: string; companyName?: string | null } | undefined): string {
+export function assureDisplayName(
+  assure: { firstName?: string; lastName?: string; companyName?: string | null } | undefined,
+): string {
   if (!assure) return "Madame, Monsieur";
   if (assure.companyName) return assure.companyName;
   return [assure.firstName, assure.lastName].filter(Boolean).join(" ") || "Madame, Monsieur";
