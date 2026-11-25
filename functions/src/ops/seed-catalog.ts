@@ -43,7 +43,8 @@ run(async () => {
       s => s.discovered,
     );
     const data = document.data as { questionnaireSchema?: QuestionnaireSection[]; insurerRequiredPaths?: string[] };
-    // Exigences apprises des extranets (champs obligatoires) : réappliquées au questionnaire republié.
+    // Exigences apprises des extranets (champs obligatoires) : réappliquées au questionnaire republié. Les autres
+    // propriétés des questions (dont `core`, le socle) sont publiées telles quelles depuis les JSON.
     const requiredPaths = (published.get("insurerRequiredPaths") as string[] | undefined) ?? [];
     if (requiredPaths.length && data.questionnaireSchema) {
       data.questionnaireSchema = applyInsurerRequirements(data.questionnaireSchema, requiredPaths).schema;

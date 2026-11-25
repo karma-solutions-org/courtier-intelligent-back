@@ -2,28 +2,29 @@
   {
     "title": "Souscripteur",
     "questions": [
-      { "canonicalPath": "client.lastName", "label": "Nom", "type": "text", "required": true },
-      { "canonicalPath": "client.firstName", "label": "Prénom", "type": "text", "required": true },
-      { "canonicalPath": "client.birthDate", "label": "Date de naissance", "type": "date", "required": true },
-      { "canonicalPath": "client.email", "label": "Email", "type": "text", "required": true },
-      { "canonicalPath": "client.phone", "label": "Téléphone", "type": "text", "required": false },
-      { "canonicalPath": "client.address.street", "label": "Adresse", "type": "text", "required": true },
-      { "canonicalPath": "client.address.postalCode", "label": "Code postal", "type": "text", "required": true },
-      { "canonicalPath": "client.address.city", "label": "Ville", "type": "text", "required": true }
+      { "canonicalPath": "client.lastName", "label": "Nom", "type": "text", "required": true, "core": true },
+      { "canonicalPath": "client.firstName", "label": "Prénom", "type": "text", "required": true, "core": true },
+      { "canonicalPath": "client.birthDate", "label": "Date de naissance", "type": "date", "required": true, "core": true },
+      { "canonicalPath": "client.email", "label": "Email", "type": "text", "required": true, "core": true },
+      { "canonicalPath": "client.phone", "label": "Téléphone", "type": "text", "required": false, "core": true },
+      { "canonicalPath": "client.address.street", "label": "Adresse", "type": "text", "required": true, "core": true },
+      { "canonicalPath": "client.address.postalCode", "label": "Code postal", "type": "text", "required": true, "core": true },
+      { "canonicalPath": "client.address.city", "label": "Ville", "type": "text", "required": true, "core": true }
     ]
   },
   {
     "title": "Véhicule",
     "questions": [
-      { "canonicalPath": "vehicle.registration", "label": "Immatriculation", "type": "text", "required": true },
-      { "canonicalPath": "vehicle.brand", "label": "Marque", "type": "text", "required": true },
-      { "canonicalPath": "vehicle.model", "label": "Modèle", "type": "text", "required": true },
+      { "canonicalPath": "vehicle.registration", "label": "Immatriculation", "type": "text", "required": true, "core": true },
+      { "canonicalPath": "vehicle.brand", "label": "Marque", "type": "text", "required": true, "core": true },
+      { "canonicalPath": "vehicle.model", "label": "Modèle", "type": "text", "required": true, "core": true },
       { "canonicalPath": "vehicle.version", "label": "Version", "type": "text", "required": true },
       {
         "canonicalPath": "vehicle.firstRegistrationDate",
         "label": "Date de première mise en circulation",
         "type": "date",
-        "required": true
+        "required": true,
+        "core": true
       },
       { "canonicalPath": "vehicle.fiscalPower", "label": "Puissance fiscale (CV)", "type": "number", "required": true },
       {
@@ -58,6 +59,7 @@
         "label": "Usage du véhicule",
         "type": "choice",
         "required": true,
+        "core": true,
         "choices": [
           { "value": "prive", "label": "Privé" },
           { "value": "prive_trajet", "label": "Privé et trajet domicile-travail" },
@@ -69,31 +71,33 @@
         "label": "Lieu de stationnement la nuit",
         "type": "choice",
         "required": true,
+        "core": true,
         "choices": [
           { "value": "garage_prive", "label": "Garage privé" },
           { "value": "parking_ferme", "label": "Parking fermé" },
           { "value": "voie_publique", "label": "Voie publique" }
         ]
       },
-      { "canonicalPath": "vehicle.parkingPostalCode", "label": "Code postal du lieu de stationnement", "type": "text", "required": true },
-      { "canonicalPath": "vehicle.parkingCity", "label": "Ville du lieu de stationnement", "type": "text", "required": true },
+      { "canonicalPath": "vehicle.parkingPostalCode", "label": "Code postal du lieu de stationnement", "type": "text", "required": true, "core": true },
+      { "canonicalPath": "vehicle.parkingCity", "label": "Ville du lieu de stationnement", "type": "text", "required": true, "core": true },
       { "canonicalPath": "vehicle.purchaseDate", "label": "Date d'achat", "type": "date", "required": false }
     ]
   },
   {
     "title": "Conducteur principal",
     "questions": [
-      { "canonicalPath": "driver.lastName", "label": "Nom du conducteur", "type": "text", "required": true },
-      { "canonicalPath": "driver.firstName", "label": "Prénom du conducteur", "type": "text", "required": true },
-      { "canonicalPath": "driver.birthDate", "label": "Date de naissance du conducteur", "type": "date", "required": true },
+      { "canonicalPath": "driver.lastName", "label": "Nom du conducteur", "type": "text", "required": true, "core": true },
+      { "canonicalPath": "driver.firstName", "label": "Prénom du conducteur", "type": "text", "required": true, "core": true },
+      { "canonicalPath": "driver.birthDate", "label": "Date de naissance du conducteur", "type": "date", "required": true, "core": true },
       { "canonicalPath": "driver.birthCountry", "label": "Pays de naissance du conducteur", "type": "text", "required": false },
-      { "canonicalPath": "driver.licenseDate", "label": "Date d'obtention du permis", "type": "date", "required": true },
+      { "canonicalPath": "driver.licenseDate", "label": "Date d'obtention du permis", "type": "date", "required": true, "core": true },
       { "canonicalPath": "driver.licenseCountry", "label": "Pays d'obtention du permis", "type": "text", "required": false },
       {
         "canonicalPath": "driver.licenseType",
         "label": "Type de permis",
         "type": "choice",
         "required": true,
+        "core": true,
         "choices": [
           { "value": "B", "label": "Permis B" },
           { "value": "A", "label": "Permis A (moto)" },
@@ -130,13 +134,15 @@
         "canonicalPath": "insuranceHistory.currentlyInsured",
         "label": "Le conducteur est-il actuellement assuré ?",
         "type": "boolean",
-        "required": true
+        "required": true,
+        "core": true
       },
       {
         "canonicalPath": "insuranceHistory.previousInsurer",
         "label": "Assureur actuel",
         "type": "text",
         "required": true,
+        "core": true,
         "visibleIf": { "path": "insuranceHistory.currentlyInsured", "equals": true }
       },
       {
@@ -165,6 +171,7 @@
         "label": "Coefficient bonus-malus",
         "type": "number",
         "required": true,
+        "core": true,
         "withKnowledge": true
       },
       {
@@ -172,6 +179,7 @@
         "label": "Sinistres déclarés sur les 36 derniers mois",
         "type": "number",
         "required": true,
+        "core": true,
         "withKnowledge": true
       },
       {
@@ -192,13 +200,15 @@
         "canonicalPath": "insuranceHistory.wasTerminated",
         "label": "Le conducteur a-t-il déjà été résilié ?",
         "type": "boolean",
-        "required": true
+        "required": true,
+        "core": true
       },
       {
         "canonicalPath": "insuranceHistory.terminatedByInsurer",
         "label": "Résiliation à l'initiative de l'assureur",
         "type": "boolean",
         "required": true,
+        "core": true,
         "visibleIf": { "path": "insuranceHistory.wasTerminated", "equals": true }
       },
       {
@@ -206,6 +216,7 @@
         "label": "Motif de la résiliation",
         "type": "choice",
         "required": false,
+        "core": true,
         "visibleIf": { "path": "insuranceHistory.wasTerminated", "equals": true },
         "choices": [
           { "value": "non_paiement", "label": "Non-paiement" },
@@ -220,6 +231,7 @@
         "label": "Date de la résiliation",
         "type": "date",
         "required": false,
+        "core": true,
         "visibleIf": { "path": "insuranceHistory.wasTerminated", "equals": true }
       }
     ]

@@ -46,6 +46,31 @@ describe("Catalogue du dépôt", () => {
       ["auto"],
     );
   });
+
+  it("le questionnaire Auto déclare un socle de 29 questions (`core`), validé par le produit", () => {
+    const { catalog } = loadCatalog();
+    const questions = catalog.products[0].questionnaireSchema.flatMap(s => s.questions);
+    const core = questions.filter(q => q.core === true).map(q => q.canonicalPath);
+    assert.equal(core.length, 29);
+    for (const path of [
+      "client.lastName",
+      "vehicle.registration",
+      "driver.licenseType",
+      "insuranceHistory.bonusMalus",
+    ]) {
+      assert.ok(core.includes(path), path);
+    }
+    // Les suites de la résiliation sont au socle, comme la question qui les conditionne.
+    for (const path of [
+      "insuranceHistory.terminatedByInsurer",
+      "insuranceHistory.terminationReason",
+      "insuranceHistory.terminationDate",
+    ]) {
+      assert.ok(core.includes(path), path);
+    }
+    assert.ok(!core.includes("vehicle.version"));
+    assert.ok(questions.every(q => q.core === undefined || typeof q.core === "boolean"));
+  });
 });
 
 describe("Validation : un JSON invalide est détecté", () => {
@@ -90,6 +115,30 @@ describe("Validation : un JSON invalide est détecté", () => {
       }),
     );
     assert.ok(issues.some(i => /visibleIf/.test(i.message)));
+  });
+
+  it("« core » non booléen", () => {
+    const { issues } = withCatalog(edit =>
+      edit(questionnaire, q => {
+        q[0].questions[0].core = "oui";
+        return q;
+      }),
+    );
+    assert.ok(issues.some(i => i.file === questionnaire && /« core » doit être un booléen/.test(i.message)));
+  });
+
+  it("une question du socle conditionnée par une question hors socle", () => {
+    const { issues } = withCatalog(edit =>
+      edit(questionnaire, q => {
+        q[3].questions.find(x => x.canonicalPath === "insuranceHistory.wasTerminated").core = false;
+        return q;
+      }),
+    );
+    assert.ok(
+      issues.some(i =>
+        /terminatedByInsurer : question du socle conditionnée par insuranceHistory\.wasTerminated/.test(i.message),
+      ),
+    );
   });
 
   it("un synonyme qui pointe vers une garantie inconnue ou vers deux garanties", () => {

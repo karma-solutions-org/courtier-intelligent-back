@@ -109,17 +109,18 @@ describe("Sauvegarde automatique du brouillon", () => {
     const before = await dossier(dossierId);
     const result = await call("dossiers-sauvegarder", adminToken, {
       dossierId,
-      patch: { "vehicle.brand": "Renault", "vehicle.fiscalPower": 0, "vehicle.version": null },
+      patch: { "vehicle.brand": "Renault", "vehicle.vehicleValue": 0, "vehicle.version": null },
       sectionIndex: 2,
     });
     assert.equal(result.data.status, "brouillon");
     const saved = await dossier(dossierId);
     assert.equal(saved.data["vehicle.brand"], "Renault");
-    assert.equal(saved.data["vehicle.fiscalPower"], 0, "0 est une réponse");
+    assert.equal(saved.data["vehicle.vehicleValue"], 0, "0 est une réponse");
     assert.equal(saved.data["vehicle.version"], null, "null est conservé");
     assert.equal(saved.data["client.lastName"], "Dupont", "les autres réponses sont conservées");
     assert.deepEqual(saved.draft, { sectionIndex: 2 });
-    assert.equal(saved.completeness.missing.length, before.completeness.missing.length - 2);
+    // Une seule réponse obligatoire de plus : la marque (socle). La valeur du véhicule (0) n'est pas obligatoire.
+    assert.equal(saved.completeness.missing.length, before.completeness.missing.length - 1);
     assert.deepEqual(
       (await events(dossierId)).map(e => e.type),
       ["created"],

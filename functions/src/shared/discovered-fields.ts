@@ -425,6 +425,70 @@ export function schemaForInsurers(
     .filter(section => section.questions.length > 0);
 }
 
+/** Titre de la section des compléments qu'aucun extranet choisi ne demande. */
+export const OPTIONAL_SECTION_TITLE = 'Informations complémentaires (facultatif)';
+
+/**
+ * Questionnaire d'un dossier, en deux niveaux (phase 2) :
+ * - le **socle** (questions `core` du catalogue), toujours posé ;
+ * - les **compléments** demandés par au moins un extranet choisi (liste du catalogue ou questions apprises des parcours),
+ *   et les questions découvertes sur ces extranets ;
+ * - les autres compléments, réunis à la fin dans une section `optional` (« facultatif ») : jamais obligatoires, ils
+ *   restent remplissables, et l'extension les demandera si un extranet en a finalement besoin.
+ * Un extranet sans liste connue n'impose donc plus tout le questionnaire : il reçoit le socle.
+ * Les questions qui conditionnent une question gardée (`visibleIf`) sont gardées. Catalogue sans aucune question `core`
+ * (ancien catalogue) : comportement de schemaForInsurers, inchangé.
+ */
+export function schemaWithComplements(
+  schema: QuestionnaireSection[],
+  insurers: { id: string; questions?: Record<string, string[]> }[],
+  productId: string,
+  learned: Record<string, string[]> = {},
+): QuestionnaireSection[] {
+  const byDiscovery = schemaForCabinet(
+    schema,
+    insurers.map(insurer => insurer.id),
+  );
+  if (!byDiscovery.some(section => section.questions.some(question => question.core))) {
+    return schemaForInsurers(schema, insurers, productId, learned);
+  }
+  const all = byDiscovery.flatMap(section => section.questions);
+  const kept = new Set<string>(
+    all
+      .filter(question => question.core)
+      .map(question => question.canonicalPath as string)
+      .concat(insurers.flatMap(insurer => [...(insurer.questions?.[productId] ?? []), ...(learned[insurer.id] ?? [])])),
+  );
+  for (const section of byDiscovery) if (section.discovered) section.questions.forEach(question => kept.add(question.canonicalPath));
+  // Parents des conditions d'affichage, de proche en proche (une condition peut dépendre d'une autre).
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const question of all) {
+      if (kept.has(question.canonicalPath) && question.visibleIf && !kept.has(question.visibleIf.path)) {
+        kept.add(question.visibleIf.path);
+        grew = true;
+      }
+    }
+  }
+  const main = byDiscovery
+    .map(section => ({ ...section, questions: section.questions.filter(question => kept.has(question.canonicalPath)) }))
+    .filter(section => section.questions.length > 0);
+  const optional = byDiscovery
+    .filter(section => !section.discovered)
+    .flatMap(section => section.questions.filter(question => !kept.has(question.canonicalPath)))
+    .map(question => ({ ...question, required: false, ...(question.withKnowledge ? { mustBeKnown: false } : {}) }));
+  return optional.length ? [...main, { title: OPTIONAL_SECTION_TITLE, questions: optional, optional: true }] : main;
+}
+
+/** Nombre de questions posées au courtier (hors section facultative), pour mesurer la saisie demandée. */
+export function askedQuestionCount(schema: QuestionnaireSection[]): { asked: number; optional: number } {
+  const count = (sections: QuestionnaireSection[]) => sections.reduce((total, section) => total + section.questions.length, 0);
+  return {
+    asked: count(schema.filter(section => !section.optional)),
+    optional: count(schema.filter(section => section.optional)),
+  };
+}
+
 /** Forme de champ équivalente à une question (pour la comparer avec les règles des champs découverts). */
 function asField(question: Question): Pick<DiscoveredFieldInput, 'label' | 'kind' | 'inputType' | 'options'> {
   if (question.type === 'boolean') {

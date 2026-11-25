@@ -299,10 +299,15 @@ function validateQuestionnaire(data: unknown, file: string, add: (file: string, 
     return;
   }
   const typeOf = new Map<string, QuestionType>();
+  // Questions du socle (`core`, posées à tous les dossiers) : pour contrôler leurs conditions d'affichage.
+  const corePaths = new Set<string>();
   for (const section of data) {
     if (isObject(section) && Array.isArray(section.questions)) {
       for (const q of section.questions) {
-        if (isObject(q) && typeof q.canonicalPath === "string") typeOf.set(q.canonicalPath, q.type as QuestionType);
+        if (isObject(q) && typeof q.canonicalPath === "string") {
+          typeOf.set(q.canonicalPath, q.type as QuestionType);
+          if (q.core === true) corePaths.add(q.canonicalPath);
+        }
       }
     }
   }
@@ -334,6 +339,8 @@ function validateQuestionnaire(data: unknown, file: string, add: (file: string, 
       if (!QUESTION_TYPES.includes(q.type as QuestionType))
         add(file, `${label} : type invalide (${QUESTION_TYPES.join(" | ")})`);
       if (typeof q.required !== "boolean") add(file, `${label} : « required » (booléen) manquant`);
+      // Socle du questionnaire (voir schemaWithComplements) : facultatif, booléen s'il est présent.
+      if (q.core !== undefined && typeof q.core !== "boolean") add(file, `${label} : « core » doit être un booléen`);
 
       if (q.type === "choice") {
         const values = Array.isArray(q.choices) ? q.choices.map(c => (isObject(c) ? c.value : undefined)) : [];
@@ -363,6 +370,10 @@ function validateQuestionnaire(data: unknown, file: string, add: (file: string, 
           add(file, `${label} : visibleIf ne peut pas dépendre du champ lui-même`);
         } else if (typeOf.get(cond.path) === "boolean" && typeof cond.equals !== "boolean") {
           add(file, `${label} : visibleIf compare un booléen (${cond.path}) à autre chose qu'un booléen`);
+        } else if (q.core === true && !corePaths.has(cond.path)) {
+          // Le parent d'une question du socle serait de toute façon posé à tous les dossiers (schemaWithComplements
+          // garde les parents des conditions), avec son caractère obligatoire : il doit donc être déclaré au socle.
+          add(file, `${label} : question du socle conditionnée par ${cond.path}, qui doit aussi être « core »`);
         }
       }
     }

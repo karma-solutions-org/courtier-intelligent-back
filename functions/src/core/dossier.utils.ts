@@ -1,12 +1,12 @@
 import * as admin from "firebase-admin";
 import { FieldValue, Transaction } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
-import { cabinetPath, dossierPath, insurerPath, productPath } from "./firestore-paths";
+import { cabinetPath, dossierPath, insurerPath, insurersPath, productPath } from "./firestore-paths";
 import {
   DISCOVERED_SECTION_TITLE,
   questionsOf,
   schemaForCabinet,
-  schemaForInsurers,
+  schemaWithComplements,
   type DossierEventType,
   type Product,
   type QuestionnaireSection,
@@ -15,7 +15,10 @@ import {
 /**
  * Produit d'un dossier (questionnaire et référentiel des garanties) : la référence pour valider ce qui est enregistré.
  * Le questionnaire est celui des extranets choisis pour le dossier (`insurerIds`), à défaut ceux du cabinet : même
- * règle que l'app (schemaForInsurers). Les questions découvertes chez un autre assureur ne sont donc jamais exigées.
+ * règle que l'app (schemaWithComplements). Les questions découvertes chez un autre assureur ne sont donc jamais exigées.
+ * Avec un catalogue à socle (`core`), les compléments qu'aucun extranet choisi ne demande sont dans une dernière section
+ * `optional` : jamais obligatoires (complétude), mais toujours acceptés à l'enregistrement (questionFor) et envoyés à
+ * l'extension (`productPaths`, `quoteData`).
  */
 export async function loadProduct(
   tx: Transaction,
@@ -33,16 +36,26 @@ export async function loadProduct(
   const schema = product.get("questionnaireSchema") as QuestionnaireSection[];
   const enabled = (cabinet.get("enabledInsurers") as string[] | undefined) ?? [];
   const selected = insurerIds.length ? [...insurerIds] : enabled;
-  let questionnaireSchema = schemaForCabinet(schema, selected);
-  if (selected.length) {
-    const docs = await tx.getAll(...selected.slice(0, 50).map(id => admin.firestore().doc(insurerPath(id))));
-    const insurers = docs
-      .filter(doc => doc.exists && ((doc.get("productsSupported") as string[] | undefined) ?? []).includes(productId))
-      .map(doc => ({ id: doc.id, questions: doc.get("questions") as Record<string, string[]> | undefined }));
-    // Questions apprises des parcours (champs-constater) : sans elles, le serveur exigerait ce que l'app ne pose pas.
-    const learned = (product.get("insurerQuestions") as Record<string, string[]> | undefined) ?? {};
-    if (insurers.length) questionnaireSchema = schemaForInsurers(schema, insurers, productId, learned);
-  }
+  // Comme l'app (with-dossier-derived) : à défaut d'extranets choisis ou activés, tous ceux qui proposent le produit.
+  // Sinon le serveur exigerait des compléments que l'app range dans la section facultative.
+  const docs = selected.length
+    ? await tx.getAll(...selected.slice(0, 50).map(id => admin.firestore().doc(insurerPath(id))))
+    : (
+        await tx.get(
+          admin.firestore().collection(insurersPath()).where("productsSupported", "array-contains", productId),
+        )
+      ).docs;
+  const insurers = docs
+    .filter(doc => doc.exists && ((doc.get("productsSupported") as string[] | undefined) ?? []).includes(productId))
+    .map(doc => ({ id: doc.id, questions: doc.get("questions") as Record<string, string[]> | undefined }));
+  // Questions apprises des parcours (champs-constater) : sans elles, le serveur exigerait ce que l'app ne pose pas.
+  const learned = (product.get("insurerQuestions") as Record<string, string[]> | undefined) ?? {};
+  // Catalogue sans socle (`core`) et aucun extranet : tout le questionnaire, comme avant.
+  const questionnaireSchema = insurers.length
+    ? schemaWithComplements(schema, insurers, productId, learned)
+    : schema.some(section => section.questions.some(question => question.core))
+      ? schemaWithComplements(schema, [], productId, learned)
+      : schemaForCabinet(schema, selected);
   return { questionnaireSchema, guaranteeCatalog: product.get("guaranteeCatalog") ?? [] };
 }
 
@@ -86,7 +99,15 @@ export function withLateDiscoveredQuestions(
     .map(question => ({ ...question, required: false, mustBeKnown: false }));
   if (!late.length) return snapshot;
   const index = snapshot.findIndex(section => section.discovered);
-  if (index < 0) return [...snapshot, { title: DISCOVERED_SECTION_TITLE, questions: late, discovered: true }];
+  if (index < 0) {
+    // Jamais dans la section facultative (compléments du catalogue, toujours en dernier) : la section des questions
+    // découvertes se place juste avant elle. Ancien instantané sans section facultative : à la fin, comme avant.
+    const section = { title: DISCOVERED_SECTION_TITLE, questions: late, discovered: true };
+    const optional = snapshot.findIndex(s => s.optional);
+    return optional < 0
+      ? [...snapshot, section]
+      : [...snapshot.slice(0, optional), section, ...snapshot.slice(optional)];
+  }
   return snapshot.map((section, i) =>
     i === index ? { ...section, questions: [...section.questions, ...late] } : section,
   );

@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { getActiveMembership, requireId, requireString } from "../core/auth.utils";
 import { CALLABLE_OPTIONS } from "../core/config";
-import { addEvent, cancelledJobUpdate, dossierSchema } from "../core/dossier.utils";
+import { addEvent, cancelledJobUpdate, dossierSchema, loadProduct } from "../core/dossier.utils";
 import { formatReference } from "../core/dossier-reference";
 import {
   assurePath,
@@ -99,6 +99,9 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
 
     const schema = product.get("questionnaireSchema") as QuestionnaireSection[];
     const data = prefillFromAssure(schema, assure);
+    // Complétude initiale sur le questionnaire du dossier (extranets du cabinet, socle et compléments), comme à chaque
+    // enregistrement : une question facultative pour ces extranets ne compte pas parmi les champs manquants.
+    const { questionnaireSchema } = await loadProduct(tx, cabinetId, productId);
     const sequence = ((counter.get("value") as number | undefined) ?? 0) + 1;
     const reference = formatReference(year, sequence);
 
@@ -111,7 +114,7 @@ export const creer = onCall(CALLABLE_OPTIONS, async request => {
       createdBy: uid,
       status: "brouillon",
       data,
-      completeness: computeCompleteness(schema, data),
+      completeness: computeCompleteness(questionnaireSchema, data),
       // Version du questionnaire du produit à la création (le questionnaire est figé à la validation de la couverture).
       questionnaireVersion:
         (product.get("questionnaireUpdatedAt") as admin.firestore.Timestamp | undefined)?.toMillis() ?? null,
