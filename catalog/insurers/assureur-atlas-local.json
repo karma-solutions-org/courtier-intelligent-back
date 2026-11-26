@@ -4,6 +4,22 @@
   "logo": null,
   "extranetUrl": "http://localhost:8092/index.html",
   "autoSubmitAllowed": true,
-  "extranetDomains": ["localhost:8092"],
-  "productsSupported": ["auto"]
+  "extranetDomains": [
+    "localhost:8092"
+  ],
+  "productsSupported": [
+    "auto"
+  ],
+  "entryPaths": {
+    "auto": {
+      "origin": "http://localhost:8092",
+      "entry": [
+        {
+          "label": "Démarrer une étude tarifaire",
+          "selector": null,
+          "urlPattern": null
+        }
+      ]
+    }
+  }
 }

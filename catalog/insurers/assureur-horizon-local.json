@@ -4,6 +4,22 @@
   "logo": null,
   "extranetUrl": "http://localhost:8091/index.html",
   "autoSubmitAllowed": true,
-  "extranetDomains": ["localhost:8091"],
-  "productsSupported": ["auto"]
+  "extranetDomains": [
+    "localhost:8091"
+  ],
+  "productsSupported": [
+    "auto"
+  ],
+  "entryPaths": {
+    "auto": {
+      "origin": "http://localhost:8091",
+      "entry": [
+        {
+          "label": "Ouvrir un projet auto",
+          "selector": null,
+          "urlPattern": null
+        }
+      ]
+    }
+  }
 }

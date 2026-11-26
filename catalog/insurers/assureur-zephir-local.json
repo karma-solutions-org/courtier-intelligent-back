@@ -9,5 +9,17 @@
   ],
   "productsSupported": [
     "auto"
-  ]
+  ],
+  "entryPaths": {
+    "auto": {
+      "origin": "http://localhost:8094",
+      "entry": [
+        {
+          "label": "Nouveau projet Auto",
+          "selector": null,
+          "urlPattern": null
+        }
+      ]
+    }
+  }
 }

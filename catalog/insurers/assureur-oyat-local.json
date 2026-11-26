@@ -10,6 +10,18 @@
   "productsSupported": [
     "auto"
   ],
+  "entryPaths": {
+    "auto": {
+      "origin": "http://localhost:8093",
+      "entry": [
+        {
+          "label": "Nouveau devis automobile",
+          "selector": null,
+          "urlPattern": null
+        }
+      ]
+    }
+  },
   "questions": {
     "auto": [
       "client.phone",
