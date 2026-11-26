@@ -38,6 +38,8 @@ export interface Cabinet {
   ownerUid: string;
   enabledInsurers: string[];
   enabledProducts: string[];
+  /** Assureurs pour lesquels l'extension clique elle-même sur « Obtenir mon tarif » (si le catalogue l'autorise). */
+  autoSubmitInsurers?: string[];
   createdAt?: TimestampLike;
 }
 
@@ -253,6 +255,11 @@ export interface Insurer {
    * « Désignation »). Sans liste pour le produit, l'assureur ne filtre rien (toutes les questions sont posées).
    */
   questions?: Record<string, string[]>;
+  /**
+   * Les CGU de l'extranet autorisent l'automatisation : un cabinet peut laisser l'extension cliquer elle-même sur le
+   * bouton de calcul du tarif (« Obtenir mon tarif »). Absent : jamais, le courtier clique lui-même.
+   */
+  autoSubmitAllowed?: boolean;
 }
 
 // ── Assuré & dossier ───────────────────────────────────────────────────────
@@ -436,6 +443,11 @@ export interface QuoteJob {
   attempts: number;
   /** Référence du dossier (copiée à la création du job) : affichée dans le side panel de l'extension. */
   dossierReference?: string | null;
+  /**
+   * Clic final automatique (écrit par `tarification-lancer` d'après le catalogue et le réglage du cabinet) : la dernière
+   * étape remplie, l'extension clique elle-même sur le bouton de calcul du tarif. Absent : le courtier clique.
+   */
+  autoSubmit?: boolean;
   requestedAt?: TimestampLike;
   updatedAt?: TimestampLike;
 }

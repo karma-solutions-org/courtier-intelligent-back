@@ -3,6 +3,7 @@
   "name": "Démo type Zephir (locale)",
   "logo": null,
   "extranetUrl": "http://localhost:8094/index.html",
+  "autoSubmitAllowed": true,
   "extranetDomains": [
     "localhost:8094"
   ],

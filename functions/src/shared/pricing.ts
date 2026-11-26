@@ -35,6 +35,17 @@ export function insurersForProduct(insurers: Insurer[], productId: string, enabl
   );
 }
 
+/**
+ * Clic final automatique pour cet assureur ? Seulement si le catalogue l'autorise (CGU de l'extranet) ET que l'admin
+ * du cabinet l'a activé : sans l'un des deux, le courtier lance lui-même le calcul sur l'extranet.
+ */
+export function autoSubmitFor(
+  insurer: Pick<Insurer, 'id' | 'autoSubmitAllowed'>,
+  autoSubmitInsurers: readonly string[] | null | undefined,
+): boolean {
+  return insurer.autoSubmitAllowed === true && (autoSubmitInsurers ?? []).includes(insurer.id);
+}
+
 /** L'assureur tarifie-t-il ce produit ? */
 export function supportsProduct(insurer: Pick<Insurer, 'productsSupported'>, productId: string): boolean {
   return insurer.productsSupported.includes(productId);

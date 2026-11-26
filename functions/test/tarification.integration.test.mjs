@@ -108,6 +108,25 @@ describe("Lancer une tarification", () => {
     assert.equal((await lancer(dossierId, "assureur-inconnu")).error.status, "NOT_FOUND");
   });
 
+  it("clic final automatique : seulement si le catalogue l’autorise ET que le cabinet l’a activé", async () => {
+    const DEMO = "assureur-horizon-local"; // autoSubmitAllowed: true au catalogue (démo locale)
+    const cabinetRef = db.doc(`ci_cabinets/${cabinetId}`);
+    try {
+      const notEnabled = await newDossier();
+      await lancer(notEnabled, DEMO);
+      assert.equal((await job(notEnabled, DEMO)).autoSubmit, false);
+
+      await cabinetRef.update({ autoSubmitInsurers: ["allianz", DEMO] });
+      const enabled = await newDossier();
+      await lancer(enabled, DEMO);
+      await lancer(enabled, "allianz"); // activé par le cabinet, mais pas autorisé par le catalogue
+      assert.equal((await job(enabled, DEMO)).autoSubmit, true);
+      assert.equal((await job(enabled, "allianz")).autoSubmit, false);
+    } finally {
+      await cabinetRef.update({ autoSubmitInsurers: [] });
+    }
+  });
+
   it("relance un job en échec : nouvelle tentative, erreur effacée", async () => {
     const dossierId = await newDossier();
     await lancer(dossierId);

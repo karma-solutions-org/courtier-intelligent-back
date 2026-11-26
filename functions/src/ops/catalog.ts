@@ -238,6 +238,10 @@ export function loadCatalog(dir = CATALOG_DIR): { catalog: Catalog; issues: Cata
         }
       }
     }
+    // Clic final automatique : à n'activer qu'après lecture des CGU de l'extranet (automatisation autorisée).
+    if (data.autoSubmitAllowed !== undefined && typeof data.autoSubmitAllowed !== "boolean") {
+      add(file, "autoSubmitAllowed : true ou false attendu");
+    }
     catalog.insurers.push(data as unknown as Insurer);
   }
 

@@ -3,6 +3,7 @@
   "name": "Atlas Mutuelle (démo locale)",
   "logo": null,
   "extranetUrl": "http://localhost:8092/index.html",
+  "autoSubmitAllowed": true,
   "extranetDomains": ["localhost:8092"],
   "productsSupported": ["auto"]
 }

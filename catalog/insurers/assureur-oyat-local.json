@@ -3,6 +3,7 @@
   "name": "Démo type Oyat (locale)",
   "logo": null,
   "extranetUrl": "http://localhost:8093/index.html",
+  "autoSubmitAllowed": true,
   "extranetDomains": [
     "localhost:8093"
   ],

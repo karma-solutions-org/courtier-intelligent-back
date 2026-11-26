@@ -1003,13 +1003,16 @@ service cloud.firestore {
       allow create, delete: if false;
       allow update: if ciActiveAdmin(cabinetId) &&
         onlyChangedKeys(['name', 'orias', 'address', 'phone', 'email', 'logoPath',
-                         'enabledInsurers', 'enabledProducts']) &&
+                         'enabledInsurers', 'enabledProducts', 'autoSubmitInsurers']) &&
         request.resource.data.name is string &&
         request.resource.data.name.size() > 0 &&
         request.resource.data.name.size() < 200 &&
         // Identifiants du catalogue : listes de textes, bornées (les règles ne peuvent pas vérifier chaque élément).
         request.resource.data.get('enabledInsurers', []) is list &&
         request.resource.data.get('enabledInsurers', []).size() <= 100 &&
+        // Clic final automatique : sans effet pour un assureur que le catalogue n'autorise pas (tarification-lancer).
+        request.resource.data.get('autoSubmitInsurers', []) is list &&
+        request.resource.data.get('autoSubmitInsurers', []).size() <= 100 &&
         request.resource.data.get('enabledProducts', []) is list &&
         request.resource.data.get('enabledProducts', []).size() <= 50;
 

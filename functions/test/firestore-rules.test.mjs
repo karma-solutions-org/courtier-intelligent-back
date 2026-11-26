@@ -178,6 +178,15 @@ describe("Droits dans un cabinet", () => {
     await assertFails(updateDoc(doc(courtierA(), "ci_cabinets/A"), { enabledInsurers: ["axa"] }));
   });
 
+  it("l'admin choisit les assureurs à clic final automatique (une liste bornée), pas le courtier", async () => {
+    await assertSucceeds(updateDoc(doc(adminA(), "ci_cabinets/A"), { autoSubmitInsurers: ["axa"] }));
+    await assertFails(updateDoc(doc(adminA(), "ci_cabinets/A"), { autoSubmitInsurers: "axa" }));
+    await assertFails(
+      updateDoc(doc(adminA(), "ci_cabinets/A"), { autoSubmitInsurers: Array.from({ length: 101 }, (_, i) => `a${i}`) }),
+    );
+    await assertFails(updateDoc(doc(courtierA(), "ci_cabinets/A"), { autoSubmitInsurers: ["axa"] }));
+  });
+
   it("l'admin ne peut ni réactiver son cabinet ni changer son propriétaire", async () => {
     await assertFails(updateDoc(doc(adminA(), "ci_cabinets/A"), { active: false }));
     await assertFails(updateDoc(doc(adminA(), "ci_cabinets/A"), { ownerUid: "quelquun" }));

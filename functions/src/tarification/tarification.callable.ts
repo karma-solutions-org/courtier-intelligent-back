@@ -7,6 +7,7 @@ import { addEvent, cancelledJobUpdate, dossierSchema, loadProduct } from "../cor
 import { cabinetPath, documentsPath, dossierPath, offerPath, quoteJobPath, insurerPath } from "../core/firestore-paths";
 import {
   ACTIVE_QUOTE_JOB_STATUSES,
+  autoSubmitFor,
   buildJobQuoteData,
   canLaunchQuoteJob,
   computeCompleteness,
@@ -59,7 +60,7 @@ async function loadPricingInsurer(
   cabinetId: string,
   insurerId: string,
   productId: string,
-): Promise<DocumentSnapshot> {
+): Promise<{ insurer: DocumentSnapshot; cabinet: DocumentSnapshot }> {
   const db = admin.firestore();
   const [insurer, cabinet] = await Promise.all([
     tx.get(db.doc(insurerPath(insurerId))),
@@ -79,7 +80,7 @@ async function loadPricingInsurer(
       },
     );
   }
-  return insurer;
+  return { insurer, cabinet };
 }
 
 /** Premier passage en tarification : le dossier quitte « besoin validé ». */
@@ -111,7 +112,7 @@ export const lancer = onCall(CALLABLE_OPTIONS, async request => {
 
   return db.runTransaction(async tx => {
     const dossier = await loadPricingDossier(tx, cabinetId, dossierId);
-    const insurer = await loadPricingInsurer(tx, cabinetId, insurerId, dossier.get("productId"));
+    const { insurer, cabinet } = await loadPricingInsurer(tx, cabinetId, insurerId, dossier.get("productId"));
     const [job, offer] = await Promise.all([
       tx.get(jobRef),
       tx.get(db.doc(offerPath(cabinetId, dossierId, insurerId))),
@@ -144,6 +145,11 @@ export const lancer = onCall(CALLABLE_OPTIONS, async request => {
       error: null,
       attempts,
       dossierReference: dossier.get("reference") ?? null,
+      // Clic final automatique : autorisé par le catalogue (CGU) et activé par l'admin du cabinet, figé au lancement.
+      autoSubmit: autoSubmitFor(
+        { id: insurerId, autoSubmitAllowed: insurer.get("autoSubmitAllowed") === true },
+        cabinet.get("autoSubmitInsurers") as string[] | undefined,
+      ),
       requestedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });

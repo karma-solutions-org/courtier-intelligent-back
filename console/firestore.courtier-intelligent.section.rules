@@ -155,7 +155,7 @@
       // jamais active, ownerUid, planId, overrides, limits, graceEndsAt ni deviceResets (offre et quotas).
       allow update: if ciInCabinet(cabinetId) && ciHasRole(['admin'])
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['name', 'orias', 'address', 'phone', 'email', 'logoPath', 'enabledInsurers', 'enabledProducts']);
+          .hasOnly(['name', 'orias', 'address', 'phone', 'email', 'logoPath', 'enabledInsurers', 'enabledProducts', 'autoSubmitInsurers']);
 
       // Membres : écrits par les Cloud Functions, sauf le signal de vie de sa propre session.
       match /ci_members/{uid} {
